@@ -278,6 +278,10 @@
         onStage: () => flight.requestStage && flight.requestStage()
       });
     }
+
+    // ---------- Character Trio (Phase 4): CAPCOM "ดั๊ก" + Operator "คาปิบารา" ----------
+    if (window.Capcom) window.Capcom.mount();
+    if (window.Operator) window.Operator.mount();
     const H = {
       alt: document.getElementById("lh-alt"), vel: document.getElementById("lh-vel"),
       q: document.getElementById("lh-q"), maxq: document.getElementById("lh-maxq"),
@@ -365,9 +369,12 @@
         if (e.k === "burnup" || e.k === "lantern-burnup") shake = Math.max(shake, 0.7);
         if (e.k === "pad-explosion") shake = Math.max(shake, 0.9);
         if (e.k === "crash") shake = Math.max(shake, 0.5);
+        if (window.Capcom) window.Capcom.event(e, flight);
+        if (window.Operator) window.Operator.event(e.k);
       }
 
       if (hudOn) window.FlightHUD.update(s, flight);
+      if (window.Capcom) window.Capcom.feed(s, flight);
 
       // world sink
       const u = altU(alt);
@@ -445,7 +452,10 @@
       }
       if (evTimer > 0) { evTimer -= dt; if (evTimer <= 0 && evEl) evEl.hidden = true; }
 
-      if (s.phase === "done" && !done) done = true;
+      if (s.phase === "done" && !done) {
+        done = true;
+        if (window.Operator) window.Operator.result(flight.summary());
+      }
       updateDetached(dt);
 
       composer ? composer.render(dt) : renderer.render(scene, camera);
@@ -488,6 +498,8 @@
       if (raf) cancelAnimationFrame(raf);
       window.removeEventListener("resize", resize);
       if (hudOn) window.FlightHUD.unmount();
+      if (window.Capcom) window.Capcom.unmount();
+      if (window.Operator) window.Operator.unmount();
       if (hud) hud.hidden = true;
       if (camTag) camTag.hidden = true;
       if (evEl) evEl.hidden = true;

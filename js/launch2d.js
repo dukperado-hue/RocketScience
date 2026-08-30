@@ -41,7 +41,11 @@ function run(canvas, flightConfig, hooks = {}) {
   let last = performance.now();
   let simSpeed = 4;             // เร่งเวลาให้เที่ยวบินไม่ยืดเยื้อ
   let holdEndFrames = 0;
+  let seenEv = 0, resultDone = false;   // Phase 4: drain physics events → Capcom/Operator
   const target = flightConfig.targetAltitude || 100;
+
+  if (window.Capcom) window.Capcom.mount();
+  if (window.Operator) window.Operator.mount();
 
   function spawnSmoke(px, py, hot) {
     smoke.push({
@@ -69,6 +73,20 @@ function run(canvas, flightConfig, hooks = {}) {
       if (flight.state.phase !== "done") flight.step(simDt / steps);
     }
     const s = flight.state;
+
+    // ---------- Phase 4: CAPCOM / Operator ----------
+    if (window.Capcom || window.Operator) {
+      while (seenEv < s.events.length) {
+        const e = s.events[seenEv++];
+        if (window.Capcom) window.Capcom.event(e, flight);
+        if (window.Operator) window.Operator.event(e.k);
+      }
+      if (window.Capcom) window.Capcom.feed(s, flight);
+      if (s.phase === "done" && !resultDone) {
+        resultDone = true;
+        if (window.Operator) window.Operator.result(flight.summary());
+      }
+    }
 
     // ---------- draw ----------
     const W = canvas.clientWidth, H = canvas.clientHeight;
@@ -191,6 +209,8 @@ function run(canvas, flightConfig, hooks = {}) {
     if (LaunchCtl.raf) cancelAnimationFrame(LaunchCtl.raf);
     LaunchCtl.raf = null;
     if (hudOn) window.FlightHUD.unmount();
+    if (window.Capcom) window.Capcom.unmount();
+    if (window.Operator) window.Operator.unmount();
   }
 
   LaunchCtl.raf = requestAnimationFrame(frame);
