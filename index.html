@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+Thai:wght@500;600;700;900&family=Sarabun:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=1">
+<link rel="stylesheet" href="css/style.css?v=4">
 </head>
 <body>
 <script>
@@ -99,8 +99,8 @@
     <div class="vab">
       <!-- LEFT: part inventory -->
       <aside class="vab-panel vab-inventory">
-        <h3>คลังชิ้นส่วน</h3>
-        <p class="vab-panel-hint">ลากชิ้นส่วนไปวางในกริดตรงกลาง</p>
+        <h3>คลังชิ้นส่วน <span class="vab-mode-tag" id="vab-mode-tag"></span></h3>
+        <p class="vab-panel-hint">Tier 1–2 ลากชิ้นส่วนไปวาง · Tier 3–5 เลือกเพย์โหลด/อัปเกรด</p>
         <div id="vab-parts" class="vab-parts-list"></div>
       </aside>
 
@@ -119,14 +119,7 @@
       <!-- RIGHT: telemetry -->
       <aside class="vab-panel vab-telemetry">
         <h3>ค่าประเมิน</h3>
-        <dl class="telem">
-          <div><dt>มวลรวม</dt><dd id="t-mass">0 kg</dd></div>
-          <div><dt>แรงขับรวม</dt><dd id="t-thrust">0 N</dd></div>
-          <div><dt>อัตราส่วนแรงขับ/น้ำหนัก (TWR)</dt><dd id="t-twr">0.00</dd></div>
-          <div><dt>Δv โดยประมาณ</dt><dd id="t-dv">0 m/s</dd></div>
-          <div><dt>เวลาเผาไหม้</dt><dd id="t-burn">0.0 s</dd></div>
-          <div><dt>ระดับที่เดาได้</dt><dd id="t-tier">—</dd></div>
-        </dl>
+        <dl class="telem" id="vab-telem"></dl>
         <p class="telem-verdict" id="t-verdict">ยังประกอบไม่ครบ</p>
       </aside>
     </div>
@@ -138,6 +131,17 @@
     <h2 class="screen-title">6 · ปล่อยจรวด</h2>
     <div class="launch-wrap">
       <canvas id="launch-canvas"></canvas>
+      <div id="launch-hud" class="launch-hud" hidden>
+        <div class="lh-row"><span>ALT</span><b id="lh-alt">0 m</b></div>
+        <div class="lh-row"><span>VEL</span><b id="lh-vel">0 m/s</b></div>
+        <div class="lh-row"><span>Q</span><b id="lh-q">0 Pa</b></div>
+        <div class="lh-row"><span>MaxQ</span><b id="lh-maxq">—</b></div>
+        <div class="lh-row"><span>STAGE</span><b id="lh-stage">1</b></div>
+        <div class="lh-row"><span>Δv</span><b id="lh-dv">—</b></div>
+        <div class="lh-row"><span>PHASE</span><b id="lh-phase">—</b></div>
+      </div>
+      <div id="launch-cam" class="launch-cam" hidden>GROUND</div>
+      <div id="launch-event" class="launch-event" hidden></div>
     </div>
     <div class="launch-caption" id="launch-caption">กำลังจุดระเบิด…</div>
   </section>
@@ -191,10 +195,23 @@
   สร้างด้วย Claude · Cool Uncle Lab 2026 · <a href="https://coolunclelab.com/lab.html">โปรเจกต์ทั้งหมด</a>
 </footer>
 
-<script src="js/data.js?v=1"></script>
-<script src="js/law.js?v=1"></script>
-<script src="js/physics.js?v=1"></script>
-<script src="js/launch2d.js?v=1"></script>
-<script src="js/main.js?v=1"></script>
+<!-- Three.js r147 (UMD) + post-processing for the cinematic 3D launch -->
+<script src="vendor/three/three.min.js?v=4"></script>
+<script src="vendor/three/shaders/CopyShader.js?v=4"></script>
+<script src="vendor/three/shaders/LuminosityHighPassShader.js?v=4"></script>
+<script src="vendor/three/shaders/FilmShader.js?v=4"></script>
+<script src="vendor/three/postprocessing/EffectComposer.js?v=4"></script>
+<script src="vendor/three/postprocessing/MaskPass.js?v=4"></script>
+<script src="vendor/three/postprocessing/RenderPass.js?v=4"></script>
+<script src="vendor/three/postprocessing/ShaderPass.js?v=4"></script>
+<script src="vendor/three/postprocessing/UnrealBloomPass.js?v=4"></script>
+<script src="vendor/three/postprocessing/FilmPass.js?v=4"></script>
+
+<script src="js/data.js?v=4"></script>
+<script src="js/law.js?v=4"></script>
+<script src="js/physics.js?v=4"></script>
+<script src="js/launch2d.js?v=4"></script>
+<script src="js/launch3d.js?v=4"></script>
+<script src="js/main.js?v=4"></script>
 </body>
 </html>

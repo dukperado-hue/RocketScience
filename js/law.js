@@ -65,7 +65,7 @@ const LegalFramework = {
     name: "ดาวเทียมวงโคจร (Orbital Payload)",
     lawRefs: ["Outer Space Treaty 1967 (Art. VI, VII)", "Liability Convention 1972", "ITU Radio Regulations"],
     requirements: [
-      { id: "state_sponsor", desc: "รัฐบาลรับรองสถานะการยิง (Outer Space Treaty 1967 - Art. VI)", isChecked: false, isRequired: true, minigame: "permit" },
+      { id: "state_sponsor", desc: "รัฐบาลรับรองสถานะการยิง (Outer Space Treaty 1967 - Art. VI)", isChecked: false, isRequired: true, minigame: "treaty" },
       { id: "liability_insurance", desc: "ซื้อประกันความเสียหายระหว่างประเทศ (Liability Convention 1972)", isChecked: false, isRequired: true, minigame: "insurance" },
       { id: "itu_frequency", desc: "จดทะเบียนคลื่นความถี่ดาวเทียมกับ ITU", isChecked: false, isRequired: true, minigame: "permit" },
       { id: "debris_mitigation", desc: "แผนจัดการขยะอวกาศ (Space Debris Mitigation)", isChecked: false, isRequired: true },

@@ -25,12 +25,22 @@
 
 ## สถานะ
 
-**Phase 1 (ปัจจุบัน):** ลูปหลักครบทั้ง 8 ขั้น + เครื่องจำลองการปล่อยแบบ Canvas 2 มิติ สำหรับ Tier 1–2
-เล่นได้จริง (Tier 3–5 มีข้อมูลครบแต่ยังล็อก)
+**Phase 1:** ลูปหลักครบ 8 ขั้น + เครื่องจำลองการปล่อย Canvas 2 มิติ (Tier 1–2)
 
-**Phase 2 (ถัดไป):** เปลี่ยนเฟสปล่อยเป็น Three.js — particle ควัน/ไอพ่นตามชนิดจรวด, EffectComposer (Bloom / Film Grain),
-แสงไดนามิกจากไอพ่น, camera shake ตอนจุดระเบิดและ Max-Q, กล้องสลับมุม ground → chase → orbital;
-เปิด Tier 3–5, staging, การกลับเข้าชั้นบรรยากาศ, กลศาสตร์วงโคจร
+**Phase 2 (ปัจจุบัน):** เล่นได้ครบ Tier 1–5
+- **ฟิสิกส์ยกระดับ** (`physics.js`): หลายท่อน (staging / jettison dry mass), Specific Impulse (Isp) →
+  อัตราการเผาไหม้ (Sutton), สมการจรวด Tsiolkovsky (Δv = ve·ln m0/mf) ตัดสิน "ถึงวงโคจรได้ไหม",
+  กลศาสตร์วงโคจร (vis-viva), payload fraction, ความร้อนตอนกลับเข้าชั้นบรรยากาศ
+- **เฟสปล่อย 3D ภาพยนตร์** (`launch3d.js`, Three.js r147): ระบบอนุภาคควัน+ไอพ่น (สีตามชนิดเชื้อเพลิง
+  แข็ง/เหลว), EffectComposer (UnrealBloomPass + FilmPass), ไอพ่นเป็นแหล่งแสงไดนามิก,
+  camera shake ตอนจุดระเบิด/Max-Q, กล้องสลับมุม Ground → Chase → Orbital ตามความสูง,
+  แยกท่อนเห็นภาพ, โลกโค้งในมุมวงโคจร — fallback อัตโนมัติเป็น 2D ถ้า Three.js โหลดไม่ได้
+- **VAB สำหรับ Tier 3–5:** จรวดมีท่อนสำเร็จ ผู้เล่นเลือกเพย์โหลด (มวลจริงกิน Δv) + อัปเกรด แล้วดู
+  Δv budget เทียบ Δv ที่ต้องใช้ ก่อนปล่อย
+- **มินิเกมกฎหมายอวกาศ:** Outer Space Treaty 1967 Art. VI (รัฐรับรอง), Liability Convention 1972,
+  ITU, แผนขยะอวกาศ
+
+**Phase 3 (ถัดไป):** วงโคจรค้างฟ้า (GEO transfer), rendezvous, การกู้ท่อนกลับมาใช้ซ้ำ, เศรษฐศาสตร์ของภารกิจ
 
 ## โครงสร้างไฟล์
 
@@ -39,10 +49,11 @@ index.html          หน้าเดียว (single-page) ทุกหน้
 css/style.css        โทเคนธีม Cool Uncle Lab (light/dark/horror) + สำเนียงอาร์เคด + UI พิมพ์เขียว VAB
 js/data.js           TIERS, ROCKETS (10 ชนิด), MISSIONS, PARTS
 js/law.js            LegalFramework (ครบ 5 tier) + checkClearance()
-js/physics.js        เครื่องจำลองการบิน 2 มิติ
-js/launch2d.js       ตัวเรนเดอร์ Canvas + HUD (Altitude / Velocity / Dynamic Pressure)
-js/main.js           สเตตแมชชีน, drag-and-drop VAB, โมดัลกฎหมาย, คิดคะแนน, ปลดล็อก (localStorage)
-vendor/              ว่างใน Phase 1 (Three.js จะมาลงที่นี่ใน Phase 2)
+js/physics.js        เครื่องจำลองการบิน: Tier 1–4 บูรณาการแรงจริง / Tier 5 orbital ใช้ Δv budget + วิถีสคริปต์
+js/launch2d.js       ตัวเรนเดอร์ Canvas 2 มิติ (fallback)
+js/launch3d.js       ตัวเรนเดอร์ Three.js ภาพยนตร์ (ค่าเริ่มต้น)
+js/main.js           สเตตแมชชีน, VAB (2 โหมด), โมดัลกฎหมาย + มินิเกม, คิดคะแนนตาม tier, ปลดล็อก (localStorage)
+vendor/three/        Three.js r147 UMD + postprocessing (EffectComposer / UnrealBloomPass / FilmPass)
 ```
 
 ## รันในเครื่อง
