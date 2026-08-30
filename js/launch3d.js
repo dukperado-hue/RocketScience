@@ -13,9 +13,12 @@
   const EV_LABEL = {
     ignition: "จุดระเบิด! 🔥", maxq: "Max-Q — แรงดันอากาศสูงสุด",
     staging: "แยกท่อน", cutoff: "ดับเครื่องยนต์ท่อนสุดท้าย",
+    "guidance-cutoff": "Guidance ตัดเครื่อง — วิถีถึงเป้าแล้ว",
     orbit: "เข้าสู่วงโคจร ✓", "orbit-fail": "Δv ไม่พอ — ไม่ถึงวงโคจร",
     apogee: "จุดสูงสุด (apogee)", reentry: "กลับเข้าชั้นบรรยากาศ 🔥",
-    burnup: "ยานไหม้จากความร้อน!", crash: "ตกกระแทกพื้น", landing: "ลงจอดปลอดภัย"
+    burnup: "ยานไหม้จากความร้อน!", crash: "ตกกระแทกพื้น", landing: "ลงจอดปลอดภัย",
+    "lantern-burnup": "โคมไหม้! กระดาษสาติดไฟ 🔥", "pad-explosion": "ระเบิดคาแท่น (CATO) 💥",
+    unstable: "เสียการทรงตัว — CG เพี้ยน"
   };
   const PHASE_TH = {
     pad: "บนแท่น", boost: "เครื่องยนต์ทำงาน", coast: "ไต่ระดับอิสระ",
@@ -264,6 +267,17 @@
     const evEl = document.getElementById("launch-event");
     if (hud) hud.hidden = false;
     if (camTag) camTag.hidden = false;
+
+    // ---------- FlightHUD (แถบล่าง + ปุ่มควบคุม gravity turn / STAGE) ----------
+    const hudOn = !!window.FlightHUD;
+    if (hudOn) {
+      window.FlightHUD.mount({
+        initialPitch: (flight.control && flight.control.pitchDeg) || 0,
+        onPitch: (d) => flight.setControl && flight.setControl(d, null),
+        onYaw: (dir) => { flight.setControl && flight.setControl(0, dir); shake = Math.max(shake, 0.12); },
+        onStage: () => flight.requestStage && flight.requestStage()
+      });
+    }
     const H = {
       alt: document.getElementById("lh-alt"), vel: document.getElementById("lh-vel"),
       q: document.getElementById("lh-q"), maxq: document.getElementById("lh-maxq"),
@@ -344,13 +358,16 @@
       while (seenEvents < s.events.length) {
         const e = s.events[seenEvents++];
         const lbl = EV_LABEL[e.k];
-        if (lbl) showEvent(e.k === "staging" ? `แยกท่อนที่ ${e.stage}` : lbl);
+        if (lbl) showEvent(e.k === "staging" ? `แยกท่อนที่ ${e.stage}${e.manual ? " (มือ)" : ""}` : lbl);
         if (e.k === "ignition") shake = Math.max(shake, 0.55);
         if (e.k === "maxq") shake = Math.max(shake, 0.4);
         if (e.k === "staging") { shake = Math.max(shake, 0.28); detachStage(e.stage - 1); }
-        if (e.k === "burnup") shake = Math.max(shake, 0.7);
+        if (e.k === "burnup" || e.k === "lantern-burnup") shake = Math.max(shake, 0.7);
+        if (e.k === "pad-explosion") shake = Math.max(shake, 0.9);
         if (e.k === "crash") shake = Math.max(shake, 0.5);
       }
+
+      if (hudOn) window.FlightHUD.update(s, flight);
 
       // world sink
       const u = altU(alt);
@@ -470,6 +487,7 @@
       canceled = true;
       if (raf) cancelAnimationFrame(raf);
       window.removeEventListener("resize", resize);
+      if (hudOn) window.FlightHUD.unmount();
       if (hud) hud.hidden = true;
       if (camTag) camTag.hidden = true;
       if (evEl) evEl.hidden = true;

@@ -16,6 +16,16 @@ function run(canvas, flightConfig, hooks = {}) {
   const flight = window.Physics.createFlight(flightConfig);
   const rocket = flightConfig.rocketMeta || { icon: "🚀", spinStabilized: false };
 
+  const hudOn = !!window.FlightHUD;
+  if (hudOn) {
+    window.FlightHUD.mount({
+      initialPitch: (flight.control && flight.control.pitchDeg) || 0,
+      onPitch: (d) => flight.setControl && flight.setControl(d, null),
+      onYaw: (dir) => flight.setControl && flight.setControl(0, dir),
+      onStage: () => flight.requestStage && flight.requestStage()
+    });
+  }
+
   // DPI
   function fit() {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -162,6 +172,7 @@ function run(canvas, flightConfig, hooks = {}) {
 
     // ---------- HUD ----------
     drawHUD(ctx, W, s, flight, target);
+    if (hudOn) window.FlightHUD.update(s, flight);
 
     // completion
     if (s.phase === "done") {
@@ -179,6 +190,7 @@ function run(canvas, flightConfig, hooks = {}) {
     window.removeEventListener("resize", fit);
     if (LaunchCtl.raf) cancelAnimationFrame(LaunchCtl.raf);
     LaunchCtl.raf = null;
+    if (hudOn) window.FlightHUD.unmount();
   }
 
   LaunchCtl.raf = requestAnimationFrame(frame);

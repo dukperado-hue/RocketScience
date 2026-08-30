@@ -20,6 +20,7 @@ const ROCKETS = [
     id: "khom_loy", tierKey: "tier1", nameTh: "โคมลอย", nameEn: "Sky Lantern", icon: "🏮",
     baseThrust: 45, dryMass: 0.35, baseFuel: 0.15, isp: 55, dragCoef: 0.09,
     spinStabilized: false, maxParts: 3, windSensitivity: 1.8,
+    lantern: true,   // โครงกระดาษสา — มีขีดจำกัดความร้อน (thermal burn-up)
     blurb: "ลูกโป่งอากาศร้อนกระดาษสา แรงยกต่ำ ลอยตามลมง่ายมาก เหมาะเริ่มต้นเรียนรู้เขตปลอดภัยสนามบิน"
   },
   {
@@ -33,6 +34,7 @@ const ROCKETS = [
     id: "bangfai", tierKey: "tier2", nameTh: "บั้งไฟ", nameEn: "Bang Fai", icon: "🚀",
     baseThrust: 900, dryMass: 6, baseFuel: 9, isp: 95, dragCoef: 0.045,
     spinStabilized: false, maxParts: 6, windSensitivity: 1.3, thrustWobble: 0.28,
+    blackPowder: true,   // ดินปืนดำอัดลำ — ปลอกมีพิกัดรับความดัน + ดินมากทำ CG เพี้ยน
     blurb: "จรวดดินปืนอัดลำไม้ไผ่/ท่อ PVC แรงขับสูง เผาไหม้ยาว วิถีเดายาก—แรงขับไม่สม่ำเสมอ"
   },
   {

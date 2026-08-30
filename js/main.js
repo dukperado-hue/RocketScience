@@ -146,7 +146,10 @@
           ${(m.hazards || []).map(h => `<span class="pc-hazard">${h}</span>`).join("")}
           ${locked ? `<span class="pc-hazard">🔒 ${m.locked ? "Phase 2" : "ยังไม่ปลดล็อก"}</span>` : ""}
         </div>`;
-      if (!locked) card.addEventListener("click", () => { newRun(m); goRocket(); });
+      if (!locked) card.addEventListener("click", () => {
+        newRun(m); goRocket();
+        if (window.Narrative) Narrative.missionIntro(m);
+      });
       grid.appendChild(card);
     });
   }
@@ -361,9 +364,14 @@
       let wobble = r.thrustWobble || 0;
       if (spin && !r.spinStabilized) wobble *= 0.5;
 
+      // Phase 3: ความเสี่ยงความร้อนของโคมกระดาษ (ดินขับพลุ + ดินหนัก) — >1 = ไหม้กลางอากาศ
+      const chargeThrust = parts.filter(p => p.type === "engine" && /^charge/.test(p.id))
+        .reduce((s, p) => s + p.thrust, 0);
+      const paperRisk = r.lantern ? (chargeThrust * 1.4 + fuelMass * 8) / (dryMass * 130) : 0;
+
       G.run.stats = {
         staged: false, thrust, fuelMass, dryMass, wetMass, dragCoef, spin, burnTime, twr, deltaV,
-        scoreBonusParts, wobble, partCount: parts.length, hasEngine: engineThrust > 0, hasFuel: fuelMass > 0
+        scoreBonusParts, wobble, paperRisk, partCount: parts.length, hasEngine: engineThrust > 0, hasFuel: fuelMass > 0
       };
 
       renderTelem([
@@ -376,9 +384,23 @@
 
       const s = G.run.stats;
       const ok = s.hasEngine && s.hasFuel && twr > 1 && s.partCount <= r.maxParts;
+
+      // ลางบอกเหตุฟิสิกส์เฉพาะถิ่น (Phase 3) — เตือน ไม่บล็อก ให้ผู้เล่นได้เรียนรู้จากผล
+      let riskHint = null;
+      if (r.lantern && paperRisk > 1)
+        riskHint = "⚠️ ความร้อนเกินพิกัดกระดาษสา — โคมจะติดไฟกลางอากาศ (ใช้หัวเผา ไม่ใช่ดินขับพลุ)";
+      else if (r.lantern && paperRisk > 0.7)
+        riskHint = "⚠️ ความร้อนใกล้พิกัดกระดาษสา — เสี่ยงไหม้";
+      else if (r.blackPowder) {
+        const load = fuelMass / Math.max(0.5, thrust / 100);
+        if (load > 1.0) riskHint = "⚠️ ดินปืนเกินพิกัดปลอกลำ — เสี่ยงระเบิดคาแท่น (CATO)";
+        else if (load > 0.72) riskHint = "⚠️ ดินปืนมาก ศูนย์ถ่วงจะเลื่อนไปท้าย — บั้งไฟอาจส่ายเสียความสูง";
+      }
+
       setVerdict(!s.hasEngine ? ["ยังไม่มีเครื่องยนต์", "bad"]
         : !s.hasFuel ? ["ยังไม่มีเชื้อเพลิง (ดินขับ)", "bad"]
         : twr <= 1 ? ["TWR ≤ 1 — จรวดหนักเกินกว่าจะลอยขึ้น", "bad"]
+        : riskHint ? [riskHint, ""]
         : ["พร้อมปล่อย ✓ TWR > 1", "ok"]);
       $("#vab-proceed").disabled = !ok;
     },
@@ -655,7 +677,7 @@
     if (s.staged) {
       cfg = {
         stages: s.stages, payloadMass: s.payloadMass, dragCoef: s.dragCoef,
-        orbital: s.orbital, targetAltitude: m.targetAltitude,
+        orbital: s.orbital, targetAltitude: m.targetAltitude, tier: tierN(r.tierKey),
         targetOrbitVelocity: m.targetOrbit || 0, launchAngleDeg: s.launchAngleDeg || 0,
         windSpeed: G.run.wind, windSensitivity: 0.35, spinStabilized: true,
         rocketMeta: { icon: r.icon, tier: tierN(r.tierKey), orbital: s.orbital, stageCount: s.stages.length }
@@ -665,6 +687,8 @@
         thrust: s.thrust, burnTime: s.burnTime, wetMass: s.wetMass, dryMass: s.dryMass,
         dragCoef: s.dragCoef, windSpeed: G.run.wind, windSensitivity: r.windSensitivity,
         spinStabilized: s.spin, thrustWobble: s.wobble, targetAltitude: m.targetAltitude,
+        tier: tierN(r.tierKey), fuelMass: s.fuelMass, paperRisk: s.paperRisk,
+        structure: r.lantern ? "paper" : (r.blackPowder ? "blackpowder" : null),
         rocketMeta: { icon: r.icon, tier: tierN(r.tierKey), spinStabilized: s.spin }
       };
     }
@@ -748,8 +772,10 @@
 
     // ความเสียหายของยาน
     let damagePen = 0;
-    if (sum.burnedUp) { damagePen = Math.round(bp * 0.7); rows.push(["ยานไหม้จากความร้อน re-entry", -damagePen, false]); }
-    else if (!expendable && !orbital && sum.crashed) { damagePen = Math.round(bp * 0.6); rows.push(["จรวดตกกระแทกเสียหาย", -damagePen, false]); }
+    if (sum.failReason === "LANTERN_BURNUP") { damagePen = Math.round(bp * 0.7); rows.push(["โคมไหม้กลางอากาศ (ความร้อนเกินพิกัดกระดาษสา)", -damagePen, false]); }
+    else if (sum.failReason === "PAD_CATO") { damagePen = Math.round(bp * 0.8); rows.push(["ระเบิดคาแท่นปล่อย (CATO — อัดดินปืนเกิน)", -damagePen, false]); }
+    else if (sum.burnedUp) { damagePen = Math.round(bp * 0.7); rows.push(["ยานไหม้จากความร้อน re-entry", -damagePen, false]); }
+    else if (!expendable && !orbital && sum.crashed) { damagePen = Math.round(bp * 0.6); rows.push([sum.unstable ? "บั้งไฟส่ายตกเสียหาย (CG เพี้ยน)" : "จรวดตกกระแทกเสียหาย", -damagePen, false]); }
 
     // กฎหมาย
     const legalBonus = lr.bonusEarned || 0;
@@ -772,6 +798,9 @@
     vEl.textContent = success ? "ภารกิจสำเร็จ 🎉"
       : lr.gameOver && !cleared ? "จบเกม — ผลจากการละเมิดกฎหมาย"
       : !cleared ? "ปล่อยได้ แต่ผิดกฎหมาย"
+      : sum.failReason === "LANTERN_BURNUP" ? "โคมลอยไหม้กลางอากาศ 🔥"
+      : sum.failReason === "PAD_CATO" ? "จรวดระเบิดคาแท่นปล่อย 💥"
+      : sum.failReason === "UNSTABLE_COM" ? "บั้งไฟเสียการทรงตัว — ศูนย์ถ่วงเพี้ยน"
       : sum.burnedUp ? "ยานไหม้ตอนกลับเข้าชั้นบรรยากาศ"
       : orbital && !sum.reachedOrbit ? "ไม่ถึงความเร็ววงโคจร"
       : !expendable && sum.crashed ? "จรวดตก — ภารกิจไม่ผ่าน"
@@ -796,6 +825,8 @@
     // next-mission button target
     $("#btn-report-next").onclick = () => { renderMissions(); show("mission"); };
     show("report");
+
+    if (window.Narrative) Narrative.debrief(sum, G.run);
   }
 
   function tryUnlockTiers() {
