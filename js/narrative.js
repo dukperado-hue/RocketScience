@@ -50,7 +50,7 @@
     box.hidden = false;
     const pt = $("capcom-portrait");
     if (pt && !pt.querySelector("img")) {
-      pt.innerHTML = '<img src="assets/images/characters/pchang.png" alt="พี่ช่าง" style="width:100%;height:100%;object-fit:cover;object-position:40% 42%;border-radius:50%">';
+      pt.innerHTML = '<img src="assets/images/characters/pchang.png" alt="พี่ช่าง" style="width:100%;height:100%;object-fit:cover;object-position:50% 8%;border-radius:50%">';
     }
     applyMuteClass();
     if (muteBtn && !muteBtn._wired) {
@@ -142,6 +142,14 @@
         say(`กระแทกพื้น — ยานเสียหาย`); done = true; break;
       case "landing":
         say(`แตะพื้น — จบภารกิจ`); done = true; break;
+      case "chute-deploy":
+        say(`ร่มกาง! แรงต้านพุ่ง ความเร็วแตะพื้นลดฮวบ — terminal velocity ~½ρv²·Cd·A สมดุลกับน้ำหนัก`); break;
+      case "retro-burn":
+        say(`retro-burn! จุดเครื่องเบรก เผาเชื้อเพลิงสำรอง suicide burn แบบ Falcon 9`); break;
+      case "soft-landing":
+        say(`ลงจอดนุ่มนวล — กู้ยานคืนได้ กะปิรอดด้วย`); done = true; break;
+      case "landing-burn-fail":
+        say(`เชื้อเพลิงสำรองหมดก่อนแตะพื้น — ตกกระแทก กะปิยืนอยู่ตรงนั้นพอดี`); done = true; break;
     }
   }
 
@@ -194,9 +202,9 @@
   }
   function event(k) {
     if (k === "ignition") setMood("watch");
-    else if (k === "maxq" || k === "unstable" || k === "guidance-cutoff" || k === "reentry") setMood("sweat");
-    else if (k === "burnup" || k === "lantern-burnup" || k === "pad-explosion" || k === "crash") { set("dead"); locked = true; }
-    else if (k === "orbit" || k === "landing") { set("chill"); locked = true; }
+    else if (k === "maxq" || k === "unstable" || k === "guidance-cutoff" || k === "reentry" || k === "retro-burn") setMood("sweat");
+    else if (k === "burnup" || k === "lantern-burnup" || k === "pad-explosion" || k === "crash" || k === "landing-burn-fail") { set("dead"); locked = true; }
+    else if (k === "orbit" || k === "landing" || k === "soft-landing") { set("chill"); locked = true; }
   }
   function result(sum) {
     locked = false;

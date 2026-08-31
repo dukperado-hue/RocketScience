@@ -112,7 +112,7 @@ function createFlight(config) {
     dragCoef: 0.5, payloadMass: 0,
     windSpeed: 0, windSensitivity: 1, spinStabilized: false, thrustWobble: 0,
     targetAltitude: 100, orbital: false, targetOrbitVelocity: 0, launchAngleDeg: 0,
-    tier: 1, structure: null, fuelMass: 0, weather: null
+    tier: 1, structure: null, fuelMass: 0, weather: null, recovery: null, wanHu: false
   }, config);
 
   const weather = normalizeWeather(c.weather);
@@ -177,6 +177,9 @@ function createFlight(config) {
     apoapsis: 0, periapsis: -R_EARTH, cutoff: null, insT: 0,
     _stagedTo: 1, _mq: false,
     weather,
+    _recFuel: (c.recovery && c.recovery.recFuel) || 0,
+    _recDv: (c.recovery && c.recovery.dvReserve) || 0,
+    chuteDeployed: false, retroBurn: false, recovered: false,
     events: []
   };
 
@@ -276,6 +279,17 @@ function createFlight(config) {
 
   function stepForce(dt) {
     state.t += dt;
+
+    // ---- Easter egg: หวันหู่ — ระเบิดคาแท่นตามตำนานทันที ----
+    if (c.wanHu) {
+      if (!state._lit) { state._lit = true; state.events.push({ t: 0, k: "ignition", stage: 1 }); }
+      if (state.t >= 0.35 && !state.padExplosion) {
+        state.padExplosion = true; state.crashed = true; state.landed = true;
+        state.failReason = "WAN_HU"; state.phase = "done";
+        state.events.push({ t: state.t, k: "pad-explosion" });
+      }
+      return state;
+    }
 
     // ---- Tier 2 บั้งไฟ: ดินปืนเกินพิกัดปลอก → ระเบิดคาแท่น (CATO) ----
     if (padCATO) {
@@ -402,7 +416,22 @@ function createFlight(config) {
 
     const speed = Math.hypot(state.vx, state.vy) || 1e-6;
     state.mach = speed / 300;
-    const cd = c.dragCoef * transonicFactor(state.mach);
+    let cd = c.dragCoef * transonicFactor(state.mach);
+
+    // ---- Phase 5: ระบบกู้คืน ----
+    const rec = c.recovery;
+    const descend = state.vy < 0 && (state.phase === "descent" || state.phase === "coast" || state.phase === "reentry");
+    if (rec && rec.kind === "parachute" && descend && state.y > 1 &&
+        state.y < (rec.deployAlt || 1200) && speed < 400 && !state.burnedUp) {
+      if (!state.chuteDeployed) {
+        state.chuteDeployed = true;
+        state.events.push({ t: state.t, k: "chute-deploy", alt: state.y });
+      }
+      cd *= 1 + (rec.dragAdd || 14);
+    }
+    // propulsive: กางครีบตาราง (grid fins) เบรกอากาศตอนร่อนลง ก่อน suicide burn
+    if (rec && rec.kind === "propulsive" && descend && state.y < 48000) cd *= 11;
+
     const dragMag = 0.5 * rho * speed * speed * cd;
     let dragX = -dragMag * (state.vx / speed), dragY = -dragMag * (state.vy / speed);
 
@@ -425,9 +454,37 @@ function createFlight(config) {
       thrX = thr * Math.sin(phi); thrY = thr * Math.cos(phi);
     }
 
+    // ลงจอดด้วยแรงขับ (propulsive) — suicide burn: จุดเครื่องครั้งเดียวใกล้พื้นให้พอดี
+    if (rec && rec.kind === "propulsive" && descend && !c.orbital && thr <= 0 && !state.burnedUp && state._recDv > 0) {
+      const aMax = rec.aMax || 55;
+      const spd = Math.hypot(state.vx, state.vy) || 1e-6;
+      // ระยะเบรก = ระยะที่ต้องใช้ชะลอจากความเร็วรวมปัจจุบันจนเกือบหยุด ด้วยความหน่วงสุทธิ (aMax−g)
+      // (ครีบตารางเบรกอากาศช่วงบนแล้ว จุดเครื่องจริงเฉพาะช่วง ≤ ~12 กม.)
+      const brakeAlt = Math.max(0, (spd * spd - 16)) / (2 * Math.max(1, aMax - g)) + 25;
+      if (state.y <= brakeAlt && state.y <= 12000 && state.y > 0.2 && spd > 3.5) {
+        if (!state.retroBurn) { state.retroBurn = true; state.events.push({ t: state.t, k: "retro-burn", alt: state.y }); }
+        const dv = Math.min(state._recDv, aMax * dt);
+        state._recDv -= dv;
+        state.vx -= dv * (state.vx / spd);
+        state.vy -= dv * (state.vy / spd);
+      }
+      // flare สุดท้าย: แตะพื้นช้าทั้งแนวดิ่ง/แนวราบ ถ้ายังมี Δv เหลือ
+      if (state.y < 70 && state._recDv > 2) {
+        if (-state.vy > 3) { const c1 = Math.min(state._recDv, -state.vy - 2); state._recDv -= c1; state.vy += c1; }
+        if (Math.abs(state.vx) > 3) { const c2 = Math.min(state._recDv, Math.abs(state.vx) - 2); state._recDv -= c2; state.vx -= Math.sign(state.vx) * c2; }
+      }
+    }
+
     const ax = (thrX + dragX + windForce) / state.mass;
     const ay = (thrY + dragY) / state.mass - g;
     state.vx += ax * dt; state.vy += ay * dt;
+
+    // ร่มชูชีพกาง: บังคับความเร็วร่อนเข้าสู่ terminal velocity ที่ปลอดภัย + ลอยตามลม
+    if (state.chuteDeployed && state.vy < 0 && state.y > 0) {
+      const vTerm = -6.5;
+      state.vy += (vTerm - state.vy) * Math.min(1, dt * 2.6);
+      state.vx += ((c.windSpeed || 0) - state.vx) * Math.min(1, dt * 0.7);
+    }
     state.x += state.vx * dt; state.y += state.vy * dt;
 
     state.q = 0.5 * rho * speed * speed;
@@ -445,6 +502,8 @@ function createFlight(config) {
     // วัตถุลอยช้า (โคมลอย/พลุ) — ตัดจบเมื่อร่อนลงต่ำและช้ามากแล้ว
     if (state.phase === "descent" && state.y < state.apogee * 0.35 && Math.hypot(state.vx, state.vy) < 6 && state.apogee < 5000) {
       state.y = 0; state.landed = true; state.crashed = false; state.phase = "done";
+      state.recoveryDrift = Math.abs(state.x);
+      if (c.recovery && (c.recovery.kind === "parachute" || c.recovery.kind === "propulsive")) state.recovered = true;
       state.events.push({ t: state.t, k: "landing" });
       return state;
     }
@@ -458,9 +517,26 @@ function createFlight(config) {
 
     if (state.y <= 0 && state.phase !== "pad" && state.phase !== "boost") {
       state.y = 0; state.landed = true;
-      state.crashed = speed > 65 || state.reentryFlag;
+      state.recoveryDrift = Math.abs(state.x);
+      const touch = Math.hypot(state.vx, state.vy);
+      if (rec && rec.kind === "propulsive" && !c.orbital) {
+        // ลงจอดด้วยแรงขับ: สำเร็จถ้าเบรกจนแตะพื้นช้า (งบ Δv สำรองต้องพอ)
+        if (state.retroBurn && touch <= 16 && !state.burnedUp) {
+          state.crashed = false; state.recovered = true;
+          state.events.push({ t: state.t, k: "soft-landing" });
+        } else {
+          state.crashed = true; state.failReason = state.failReason || "LANDING_BURN_FAIL";
+          state.events.push({ t: state.t, k: "landing-burn-fail" });
+        }
+      } else if (rec && rec.kind === "parachute" && state.chuteDeployed && !state.reentryFlag) {
+        state.crashed = touch > 24;
+        if (!state.crashed) { state.recovered = true; state.events.push({ t: state.t, k: "landing" }); }
+        else state.events.push({ t: state.t, k: "crash" });
+      } else {
+        state.crashed = touch > 65 || state.reentryFlag;
+        state.events.push({ t: state.t, k: state.crashed ? "crash" : "landing" });
+      }
       state.phase = "done";
-      state.events.push({ t: state.t, k: state.crashed ? "crash" : "landing" });
     }
     return state;
   }
@@ -503,7 +579,13 @@ function createFlight(config) {
       orbitalVelocityTarget: vOrbTarget,
       deltaVBudget, deltaVRequired, deltaVMargin: deltaVBudget - deltaVRequired,
       payloadMass: payload, glow, payloadFraction: glow > 0 ? payload / glow : 0,
-      twr0, stagesUsed: state.stage + 1, stageCount
+      twr0, stagesUsed: state.stage + 1, stageCount,
+      recovery: c.recovery ? c.recovery.kind : "freefall",
+      recovered: !!state.recovered,
+      chuteDeployed: !!state.chuteDeployed,
+      retroBurn: !!state.retroBurn,
+      recoveryDrift: state.recoveryDrift != null ? state.recoveryDrift : Math.abs(state.x),
+      recFuelLeft: state._recFuel
     };
   }
 
