@@ -350,12 +350,19 @@
     const bodyMat = new THREE.MeshStandardMaterial({ color: 0xe8e9ee, roughness: 0.5, metalness: 0.3 });
     const trimMat = new THREE.MeshStandardMaterial({ color: 0x2e4a7a, roughness: 0.6 });
     // Phase 4: เลือกวัสดุพื้นผิวตามชนิดจรวด (ไผ่ / กระดาษสา / โลหะ / โซลาร์)
+    const pvcBody = meta.body === "pvc";
     const baseKind = tier === 1 ? "mat_paper"
       : (tier <= 2 || cfg.structure === "blackpowder") ? "mat_bamboo"
         : "mat_metal";
     function pmat(kind) {
-      if (tmReady()) return window.TextureManager.clone(kind);
-      return (kind === "mat_metal" || kind === "mat_solar" ? trimMat : bodyMat).clone();
+      let m;
+      if (tmReady()) m = window.TextureManager.clone(kind);
+      else m = (kind === "mat_metal" || kind === "mat_solar" ? trimMat : bodyMat).clone();
+      // Phase 5: ลำท่อ PVC = ผิวพลาสติกขาวเทา (จาก texture ไม้ไผ่ย้อมสีใหม่)
+      if (pvcBody && kind === "mat_bamboo" && m.color) {
+        m.color.setHex(0xdcddd6); m.roughness = 0.5; m.metalness = 0.05;
+      }
+      return m;
     }
 
     if (tier === 1) {

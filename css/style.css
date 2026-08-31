@@ -272,46 +272,77 @@ a{color:var(--accent)}
 }
 
 /* ============================================================
-   Phase 3 · "ลี" (Lee) — narrative dialogue (typewriter)
+   Phase 5 · Visual-Novel cast dialogue (ไข่ตุ๋น / พี่ช่าง / สำลี / กะปิ)
    ============================================================ */
-.lee{
+.vn{
+  --vn-accent:var(--accent);
   position:fixed;left:50%;bottom:18px;transform:translateX(-50%);
-  width:min(680px,calc(100vw - 28px));display:flex;gap:14px;
-  background:var(--card);border:1px solid var(--line);border-left:4px solid var(--accent);
-  border-radius:14px;padding:14px 16px;box-shadow:0 18px 50px rgba(0,0,0,.42);
-  z-index:65;animation:leeup .3s ease
+  width:min(720px,calc(100vw - 24px));display:flex;gap:16px;align-items:flex-end;
+  background:var(--card);border:1px solid var(--line);border-left:4px solid var(--vn-accent);
+  border-radius:16px;padding:14px 16px 14px 14px;box-shadow:0 20px 55px rgba(0,0,0,.45);
+  z-index:70;cursor:pointer;animation:vnup .28s ease
 }
-@keyframes leeup{from{opacity:0;transform:translate(-50%,16px)}to{opacity:1;transform:translate(-50%,0)}}
-.lee.mood-ok{border-left-color:var(--ok)}
-.lee.mood-bad{border-left-color:var(--bad)}
-.lee.mood-warn{border-left-color:var(--gold)}
-.lee-portrait{flex:0 0 54px;width:54px;height:54px;border-radius:12px;overflow:hidden;
-  display:flex;align-items:center;justify-content:center;
-  background:radial-gradient(circle at 50% 38%,#2e4a7a,#141824)}
-.lee.mood-ok .lee-portrait{background:radial-gradient(circle at 50% 38%,#1E7A4F,#0c1f16)}
-.lee.mood-bad .lee-portrait{background:radial-gradient(circle at 50% 38%,#8f1f2b,#1f0d10)}
-.lee.mood-warn .lee-portrait{background:radial-gradient(circle at 50% 38%,#B08A3C,#1f1608)}
-.lee-portrait svg{width:46px;height:46px}
-.lee-portrait .lee-eye{filter:drop-shadow(0 0 3px currentColor)}
-.lee.mood-bad .lee-portrait .lee-eye{fill:#ffd1d1}
-.lee.mood-ok .lee-portrait .lee-eye{fill:#c8ffe4}
-.lee-body{flex:1;min-width:0;position:relative}
-.lee-name{font-family:'Noto Serif Thai',serif;font-weight:800;font-size:14px;color:var(--ink)}
-.lee-title{font-family:'JetBrains Mono',monospace;font-weight:500;font-size:9px;color:var(--ink-faint);
-  letter-spacing:.3px;margin-left:6px}
-.lee-text{font-size:13.5px;line-height:1.65;color:var(--ink-soft);margin:5px 0 0;min-height:2.6em;white-space:pre-wrap}
-.lee-cont{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--gold);margin-top:8px;opacity:0;transition:opacity .2s}
-.lee-cont.show{opacity:1;animation:leeblink 1s steps(1) infinite}
-@keyframes leeblink{50%{opacity:.35}}
-.lee-x{position:absolute;top:-4px;right:-4px;background:transparent;border:none;color:var(--ink-faint);
+@keyframes vnup{from{opacity:0;transform:translate(-50%,16px)}to{opacity:1;transform:translate(-50%,0)}}
+.vn-portrait{flex:0 0 96px;width:96px;height:118px;border-radius:12px;overflow:hidden;
+  background:radial-gradient(circle at 50% 30%,color-mix(in srgb,var(--vn-accent) 30%,transparent),#12141d);
+  border:1px solid var(--line);align-self:stretch}
+.vn-portrait-img{width:100%;height:100%;object-fit:cover;display:block}
+.vn.vn-narrator .vn-portrait{display:none}
+.vn-body{flex:1;min-width:0;position:relative;padding-bottom:2px}
+.vn-plate{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.vn-name{font-family:'Noto Serif Thai',serif;font-weight:900;font-size:15px;color:var(--vn-accent)}
+.vn-role{font-family:'JetBrains Mono',monospace;font-weight:500;font-size:9px;color:var(--ink-faint);letter-spacing:.3px}
+.vn-text{font-size:14px;line-height:1.7;color:var(--ink-soft);margin:6px 0 0;min-height:3em;white-space:pre-wrap}
+.vn-stagedir{font-size:13px;line-height:1.6;color:var(--ink-faint);font-style:italic;margin:6px 0 0;min-height:3em}
+.vn.vn-mute{border-left-style:dashed}
+.vn-cont{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--gold);margin-top:8px;opacity:0;transition:opacity .2s}
+.vn-cont.show{opacity:1;animation:vnblink 1s steps(1) infinite}
+@keyframes vnblink{50%{opacity:.35}}
+.vn-x{position:absolute;top:-6px;right:-6px;background:transparent;border:none;color:var(--ink-faint);
   font-size:15px;cursor:pointer;line-height:1;padding:4px}
-.lee-x:hover{color:var(--ink)}
+.vn-x:hover{color:var(--ink)}
 @media(max-width:560px){
-  .lee{bottom:10px;padding:12px;gap:10px}
-  .lee-portrait{flex-basis:42px;width:42px;height:42px}
-  .lee-portrait svg{width:36px;height:36px}
-  .lee-text{font-size:13px}
+  .vn{bottom:8px;padding:12px;gap:11px}
+  .vn-portrait{flex-basis:64px;width:64px;height:84px}
+  .vn-text,.vn-stagedir{font-size:13px}
 }
+
+/* ---------- Phase 5 · VAB extras: โครงสร้าง / พันลวด / เคมีดินขับ ---------- */
+.vab-extras{margin-top:10px;border:1px dashed var(--line);border-radius:12px;padding:10px 11px;background:rgba(127,127,127,.04)}
+.vx-title{font-family:'Noto Serif Thai',serif;font-weight:800;font-size:12.5px;color:var(--ink);margin-bottom:8px}
+.vx-tag{font-family:'JetBrains Mono',monospace;font-size:8.5px;color:var(--gold);border:1px solid var(--gold);border-radius:999px;padding:1px 6px;margin-left:6px}
+.vx-group{margin:9px 0 0}
+.vx-label{font-size:11px;color:var(--ink-soft);margin-bottom:5px}
+.vx-label b{color:var(--gold)}
+.vx-seg{display:flex;gap:5px}
+.vx-seg-btn{flex:1;font-family:inherit;font-size:11px;padding:6px 4px;border-radius:8px;cursor:pointer;
+  border:1px solid var(--line);background:var(--card);color:var(--ink-soft);transition:all .15s}
+.vx-seg-btn.on{border-color:var(--accent);background:var(--accent);color:#fff}
+.vx-hint{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--ink-faint);margin-top:4px}
+.vx-range{width:100%;accent-color:var(--accent);margin:2px 0}
+.vx-slider{display:grid;grid-template-columns:64px 1fr 34px;align-items:center;gap:7px;margin:3px 0}
+.vx-sl-name{font-size:10.5px;color:var(--ink-soft)}
+.vx-sl-val{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--ink);text-align:right}
+.vx-reset{font-family:inherit;font-size:10px;margin-top:4px;padding:4px 9px;border-radius:7px;cursor:pointer;
+  border:1px solid var(--line);background:var(--card);color:var(--ink-soft)}
+.vx-readout{margin-top:8px;border-top:1px solid var(--line);padding-top:7px}
+.vx-quality{display:inline-block;font-family:'Noto Serif Thai',serif;font-weight:800;font-size:12px;
+  padding:2px 9px;border-radius:999px;border:1px solid currentColor}
+.vx-q-good{color:var(--ok)} .vx-q-ok{color:var(--accent)} .vx-q-meh{color:var(--ink-faint)}
+.vx-q-warn{color:var(--gold)} .vx-q-bad{color:var(--bad)}
+.vx-note{font-size:10.5px;color:var(--ink-soft);margin:5px 0 6px}
+.vx-metrics{display:grid;grid-template-columns:1fr 1fr;gap:4px 10px;font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--ink-faint)}
+.vx-metrics>div{display:flex;align-items:center;gap:5px}
+.vx-bar{flex:1;height:5px;border-radius:3px;background:var(--line);overflow:hidden}
+.vx-bar-fill{display:block;height:100%;background:var(--accent)}
+.vx-bar-fill.warn{background:var(--gold)} .vx-bar-fill.bad{background:var(--bad)}
+
+/* ---------- Phase 5 · portrait art in CAPCOM pill / Operator badge ---------- */
+.capcom-portrait{overflow:hidden;background:#F5C518}
+.operator-face{position:relative;overflow:hidden;background:#3a2f24}
+.operator-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:12% 42%}
+.operator-mood{position:absolute;right:-3px;bottom:-3px;font-size:16px;line-height:1;
+  filter:drop-shadow(0 1px 2px rgba(0,0,0,.6))}
 
 /* ============================================================
    Phase 4 · Character Trio — CAPCOM "ดั๊ก" + Operator "คาปิบารา"

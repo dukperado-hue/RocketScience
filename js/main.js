@@ -148,7 +148,6 @@
         </div>`;
       if (!locked) card.addEventListener("click", () => {
         newRun(m); goRocket();
-        if (window.Narrative) Narrative.missionIntro(m);
       });
       grid.appendChild(card);
     });
@@ -250,7 +249,26 @@
         el.addEventListener("click", () => VAB.add(p.id));
         list.appendChild(el);
       });
+      VAB.renderExtras();
       VAB.renderGridClassic();
+    },
+
+    // Phase 5: แผงโครงสร้าง (PVC/ไม้ไผ่) + พันลวด + ผสมเคมีดินขับ
+    renderExtras() {
+      const r = G.run.rocket;
+      if (isStaged(r) || !window.VabExtras) return;
+      let host = $("#vab-extras");
+      if (!host) {
+        host = document.createElement("div");
+        host.id = "vab-extras";
+        host.className = "vab-extras";
+        const anchor = $("#vab-parts");
+        anchor.parentElement.insertBefore(host, anchor.nextSibling);
+      }
+      const t = tierN(r.tierKey);
+      const showBody = t === 2;
+      const showChem = !!r.blackPowder || t === 2 || VAB.slots.some(id => /^charge/.test(id));
+      window.VabExtras.render(host, { showBody, showChem, rocket: r }, () => VAB.computeStats());
     },
     renderGridClassic() {
       const grid = $("#vab-grid");
@@ -265,6 +283,7 @@
         slot.querySelector(".vs-x").addEventListener("click", () => { VAB.slots.splice(idx, 1); VAB.update(); });
         grid.appendChild(slot);
       });
+      VAB.renderExtras();
       VAB.computeStats();
     },
     add(pid) {
@@ -352,45 +371,74 @@
       const engineThrust = parts.filter(p => p.type === "engine").reduce((s, p) => s + p.thrust, 0);
       const fuelMass = parts.filter(p => p.type === "propellant").reduce((s, p) => s + p.fuel, 0);
       const nonFuelMass = parts.filter(p => p.type !== "propellant").reduce((s, p) => s + p.mass, 0);
-      const dryMass = r.dryMass + nonFuelMass;
-      const wetMass = dryMass + fuelMass;
-      let dragCoef = Math.max(0.02, r.dragCoef + parts.reduce((s, p) => s + (p.dragMod || 0), 0));
       const spin = r.spinStabilized || parts.some(p => p.addsSpin);
-      const burnTime = Math.max(0.8, Math.min(20, parts.filter(p => p.type === "propellant").reduce((s, p) => s + p.burn, 0) || 1.2));
-      const thrust = engineThrust;
-      const twr = wetMass > 0 && thrust > 0 ? thrust / (wetMass * 9.81) : 0;
-      const deltaV = fuelMass > 0 ? r.isp * 9.81 * Math.log(wetMass / dryMass) : 0;
-      const scoreBonusParts = parts.reduce((s, p) => s + (p.scoreBonus || 0), 0);
+      let dragCoef = Math.max(0.02, r.dragCoef + parts.reduce((s, p) => s + (p.dragMod || 0), 0));
+      let baseBurn = Math.max(0.8, Math.min(20, parts.filter(p => p.type === "propellant").reduce((s, p) => s + p.burn, 0) || 1.2));
+      let scoreBonusParts = parts.reduce((s, p) => s + (p.scoreBonus || 0), 0);
       let wobble = r.thrustWobble || 0;
       if (spin && !r.spinStabilized) wobble *= 0.5;
 
+      // ---- Phase 5: โครงสร้าง (PVC/ไม้ไผ่) + พันลวด + เคมีดินขับ ----
+      const ex = window.VabExtras ? window.VabExtras.derived(r) : null;
+      let baseThrust = engineThrust;
+      let extraDryMass = 0, casingCapMul = 1, catoRisk = 0, chemIgnitionRisk = 0, chemInfo = null;
+      if (ex) {
+        if (ex.showBody) { extraDryMass = ex.wireMass; casingCapMul = ex.casingCapMul; }
+        if (ex.showChem) {
+          const ch = ex.chem; chemInfo = ch;
+          baseThrust *= ch.thrustMul;
+          // total impulse ∝ ispMul·altitudeMul ; แรงขับ ∝ thrustMul  ⇒  ปรับเวลาเผาไหม้ให้สอดคล้อง
+          baseBurn = Math.max(0.5, baseBurn * (ch.ispMul * ch.altitudeMul) / Math.max(0.3, ch.thrustMul));
+          catoRisk = ch.catoRisk;
+          chemIgnitionRisk = ch.ignitionRisk;
+        }
+      }
+
+      const dryMass = (r.dryMass + nonFuelMass) * (ex && ex.showBody ? ex.dryMassMul : 1) + extraDryMass;
+      const wetMass = dryMass + fuelMass;
+      const thrust = baseThrust;
+      const burnTime = baseBurn;
+      const twr = wetMass > 0 && thrust > 0 ? thrust / (wetMass * 9.81) : 0;
+      const ispEff = r.isp * (chemInfo ? chemInfo.ispMul : 1);
+      const deltaV = fuelMass > 0 ? ispEff * 9.81 * Math.log(wetMass / dryMass) : 0;
+
       // Phase 3: ความเสี่ยงความร้อนของโคมกระดาษ (ดินขับพลุ + ดินหนัก) — >1 = ไหม้กลางอากาศ
       const chargeThrust = parts.filter(p => p.type === "engine" && /^charge/.test(p.id))
-        .reduce((s, p) => s + p.thrust, 0);
+        .reduce((s, p) => s + p.thrust, 0) * (chemInfo ? chemInfo.thrustMul : 1);
       const paperRisk = r.lantern ? (chargeThrust * 1.4 + fuelMass * 8) / (dryMass * 130) : 0;
 
       G.run.stats = {
         staged: false, thrust, fuelMass, dryMass, wetMass, dragCoef, spin, burnTime, twr, deltaV,
-        scoreBonusParts, wobble, paperRisk, partCount: parts.length, hasEngine: engineThrust > 0, hasFuel: fuelMass > 0
+        scoreBonusParts, wobble, paperRisk, partCount: parts.length, hasEngine: engineThrust > 0, hasFuel: fuelMass > 0,
+        casingCapMul, catoRisk, chemIgnitionRisk, chem: chemInfo, body: ex ? ex.body : null
       };
 
-      renderTelem([
+      const telem = [
         ["มวลรวม", fmt(wetMass, 2) + " kg"],
         ["แรงขับรวม", fmt(thrust) + " N"],
         ["อัตราส่วนแรงขับ/น้ำหนัก (TWR)", fmt(twr, 2), twr >= 1.2 ? "ok" : twr >= 1 ? "warn" : "bad"],
         ["Δv โดยประมาณ", fmt(deltaV) + " m/s"],
         ["เวลาเผาไหม้", fmt(burnTime, 1) + " s"]
-      ]);
+      ];
+      if (chemInfo) telem.push(["ดินขับ", chemInfo.quality, catoRisk >= 1 ? "bad" : chemInfo.altitudeMul < 0.6 || chemIgnitionRisk > 0.5 ? "warn" : "ok"]);
+      if (ex && ex.showBody) telem.push(["พิกัดความดันปลอก", "×" + (casingCapMul).toFixed(2), casingCapMul < 0.85 ? "warn" : "ok"]);
+      renderTelem(telem);
 
       const s = G.run.stats;
       const ok = s.hasEngine && s.hasFuel && twr > 1 && s.partCount <= r.maxParts;
 
-      // ลางบอกเหตุฟิสิกส์เฉพาะถิ่น (Phase 3) — เตือน ไม่บล็อก ให้ผู้เล่นได้เรียนรู้จากผล
+      // ลางบอกเหตุฟิสิกส์เฉพาะถิ่น (Phase 3/5) — เตือน ไม่บล็อก ให้ผู้เล่นได้เรียนรู้จากผล
       let riskHint = null;
       if (r.lantern && paperRisk > 1)
         riskHint = "⚠️ ความร้อนเกินพิกัดกระดาษสา — โคมจะติดไฟกลางอากาศ (ใช้หัวเผา ไม่ใช่ดินขับพลุ)";
       else if (r.lantern && paperRisk > 0.7)
         riskHint = "⚠️ ความร้อนใกล้พิกัดกระดาษสา — เสี่ยงไหม้";
+      else if (catoRisk >= 1)
+        riskHint = "⚠️ ดินประสิวเยอะไป — เสี่ยงระเบิดคาแท่น (CATO) ลดดินประสิว เปลี่ยนเป็นไม้ไผ่ หรือพันลวดเพิ่ม";
+      else if (chemInfo && chemInfo.altitudeMul < 0.6)
+        riskHint = "⚠️ ถ่านเยอะไป — ดินขับเผาช้า แรงขับตก จะขึ้นไม่ถึงเป้า";
+      else if (chemIgnitionRisk > 0.5)
+        riskHint = "⚠️ กำมะถัน/ดินประสิวน้อยไป — ดินขับอาจจุดไม่ติด";
       else if (r.blackPowder) {
         const load = fuelMass / Math.max(0.5, thrust / 100);
         if (load > 1.0) riskHint = "⚠️ ดินปืนเกินพิกัดปลอกลำ — เสี่ยงระเบิดคาแท่น (CATO)";
@@ -492,6 +540,7 @@
     VAB.render();
     setupVabDnD();
     show("vab");
+    if (window.VN) VN.atVab(r);
   }
 
   let vabDnDReady = false;
@@ -695,8 +744,10 @@
         dragCoef: s.dragCoef, windSensitivity: r.windSensitivity,
         spinStabilized: s.spin, thrustWobble: s.wobble, targetAltitude: m.targetAltitude,
         tier: tierN(r.tierKey), fuelMass: s.fuelMass, paperRisk: s.paperRisk,
-        structure: r.lantern ? "paper" : (r.blackPowder ? "blackpowder" : null),
-        rocketMeta: { icon: r.icon, tier: tierN(r.tierKey), spinStabilized: s.spin }
+        structure: r.lantern ? "paper"
+          : (r.blackPowder || tierN(r.tierKey) === 2 ? "blackpowder" : null),
+        casingCapMul: s.casingCapMul || 1, catoRisk: s.catoRisk || 0, chemIgnitionRisk: s.chemIgnitionRisk || 0,
+        rocketMeta: { icon: r.icon, tier: tierN(r.tierKey), spinStabilized: s.spin, body: s.body || null }
       }, wxCommon);
     }
 

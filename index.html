@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+Thai:wght@500;600;700;900&family=Sarabun:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=7">
+<link rel="stylesheet" href="css/style.css?v=8">
 </head>
 <body>
 <script>
@@ -143,18 +143,17 @@
       <div id="launch-cam" class="launch-cam" hidden>GROUND</div>
       <div id="launch-event" class="launch-event" hidden></div>
 
-      <!-- Phase 4 · CAPCOM "ดั๊ก" (real-time technical narrator) -->
+      <!-- Phase 4/5 · CAPCOM "พี่ช่าง" (real-time technical narrator) -->
       <div id="capcom" class="capcom" hidden>
-        <div class="capcom-portrait" data-state="idle" aria-hidden="true">🦆</div>
+        <div class="capcom-portrait" id="capcom-portrait" data-state="idle" aria-hidden="true">🦆</div>
         <div class="capcom-line" id="capcom-line"></div>
-        <button class="capcom-mute" id="capcom-mute" type="button" title="ปิดเสียงดั๊ก (CAPCOM)">🦆</button>
+        <button class="capcom-mute" id="capcom-mute" type="button" title="ปิดเสียงพี่ช่าง (CAPCOM)">🦆</button>
       </div>
 
-      <!-- Phase 4 · Operator "คาปิบารา" (silent — reacts via mood only) -->
+      <!-- Phase 4/5 · Operator "กะปิ" (silent — reacts via mood only) -->
       <div id="operator" class="operator" data-mood="idle" hidden>
-        <!-- placeholder: swap for capybara_stare/_sweat/_chill/_dead images via [data-mood] -->
         <div class="operator-face" id="operator-face" aria-hidden="true">😐</div>
-        <span class="operator-label">OPS</span>
+        <span class="operator-label">กะปิ</span>
       </div>
 
       <!-- Advanced bottom HUD (Phase 3) -->
@@ -230,25 +229,17 @@
   </div>
 </div>
 
-<!-- ============ LEE — narrative (Phase 3) ============ -->
-<div id="lee-dialogue" class="lee" hidden>
-  <div class="lee-portrait" id="lee-portrait" aria-hidden="true">
-    <svg viewBox="0 0 48 48" fill="none">
-      <path d="M9 15 L15 4 L21 14 Z M39 15 L33 4 L27 14 Z" fill="#d9c6a5"/>
-      <path d="M24 11 c-9 0 -15 7 -15 15 c0 8 7 15 15 15 c8 0 15-7 15-15 c0-8-6-15-15-15Z" fill="#efe6d2"/>
-      <path d="M15 22 q3.5 -3.5 7 0" stroke="#7a4b1e" stroke-width="2" stroke-linecap="round"/>
-      <path d="M26 22 q3.5 -3.5 7 0" stroke="#7a4b1e" stroke-width="2" stroke-linecap="round"/>
-      <circle class="lee-eye" cx="19" cy="27" r="2.7" fill="#2e4a7a"/>
-      <circle class="lee-eye" cx="29" cy="27" r="2.7" fill="#2e4a7a"/>
-      <path d="M22.5 32 q1.5 2 3 0" stroke="#7a4b1e" stroke-width="1.6" stroke-linecap="round"/>
-      <path d="M24 2.5 l1.5 3.2 3.3 .3 -2.5 2.2 .8 3.3 -3.1-1.8 -3.1 1.8 .8-3.3 -2.5-2.2 3.3-.3Z" fill="#B08A3C"/>
-    </svg>
+<!-- ============ VISUAL NOVEL — cast dialogue (Phase 5) ============ -->
+<div id="vn" class="vn" hidden>
+  <div class="vn-portrait" aria-hidden="true">
+    <img id="vn-portrait-img" class="vn-portrait-img" alt="">
   </div>
-  <div class="lee-body">
-    <button class="lee-x" id="lee-x" type="button" title="ปิด">✕</button>
-    <div class="lee-name">น้องลี <span class="lee-title">ผู้บัญชาการ · ที่ปรึกษากฎหมายและความปลอดภัย</span></div>
-    <p class="lee-text" id="lee-text"></p>
-    <div class="lee-cont" id="lee-cont">▶ คลิกเพื่อไปต่อ</div>
+  <div class="vn-body">
+    <button class="vn-x" id="vn-x" type="button" title="ข้าม">✕</button>
+    <div class="vn-plate"><span class="vn-name" id="vn-name"></span><span class="vn-role" id="vn-role"></span></div>
+    <p class="vn-text" id="vn-text"></p>
+    <p class="vn-stagedir" id="vn-stagedir" hidden></p>
+    <div class="vn-cont" id="vn-cont">▶ คลิกเพื่อไปต่อ</div>
   </div>
 </div>
 
@@ -259,25 +250,28 @@
 </footer>
 
 <!-- Three.js r147 (UMD) + post-processing for the cinematic 3D launch -->
-<script src="vendor/three/three.min.js?v=7"></script>
-<script src="vendor/three/shaders/CopyShader.js?v=7"></script>
-<script src="vendor/three/shaders/LuminosityHighPassShader.js?v=7"></script>
-<script src="vendor/three/shaders/FilmShader.js?v=7"></script>
-<script src="vendor/three/postprocessing/EffectComposer.js?v=7"></script>
-<script src="vendor/three/postprocessing/MaskPass.js?v=7"></script>
-<script src="vendor/three/postprocessing/RenderPass.js?v=7"></script>
-<script src="vendor/three/postprocessing/ShaderPass.js?v=7"></script>
-<script src="vendor/three/postprocessing/UnrealBloomPass.js?v=7"></script>
-<script src="vendor/three/postprocessing/FilmPass.js?v=7"></script>
+<script src="vendor/three/three.min.js?v=8"></script>
+<script src="vendor/three/shaders/CopyShader.js?v=8"></script>
+<script src="vendor/three/shaders/LuminosityHighPassShader.js?v=8"></script>
+<script src="vendor/three/shaders/FilmShader.js?v=8"></script>
+<script src="vendor/three/postprocessing/EffectComposer.js?v=8"></script>
+<script src="vendor/three/postprocessing/MaskPass.js?v=8"></script>
+<script src="vendor/three/postprocessing/RenderPass.js?v=8"></script>
+<script src="vendor/three/postprocessing/ShaderPass.js?v=8"></script>
+<script src="vendor/three/postprocessing/UnrealBloomPass.js?v=8"></script>
+<script src="vendor/three/postprocessing/FilmPass.js?v=8"></script>
 
-<script src="js/data.js?v=7"></script>
-<script src="js/law.js?v=7"></script>
-<script src="js/physics.js?v=7"></script>
-<script src="js/ui.js?v=7"></script>
-<script src="js/narrative.js?v=7"></script>
-<script src="js/textureManager.js?v=7"></script>
-<script src="js/launch2d.js?v=7"></script>
-<script src="js/launch3d.js?v=7"></script>
-<script src="js/main.js?v=7"></script>
+<script src="js/data.js?v=8"></script>
+<script src="js/law.js?v=8"></script>
+<script src="js/chemistry.js?v=8"></script>
+<script src="js/physics.js?v=8"></script>
+<script src="js/ui.js?v=8"></script>
+<script src="js/vn.js?v=8"></script>
+<script src="js/narrative.js?v=8"></script>
+<script src="js/vab.js?v=8"></script>
+<script src="js/textureManager.js?v=8"></script>
+<script src="js/launch2d.js?v=8"></script>
+<script src="js/launch3d.js?v=8"></script>
+<script src="js/main.js?v=8"></script>
 </body>
 </html>

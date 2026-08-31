@@ -131,12 +131,18 @@ function createFlight(config) {
   const thermal = c.structure === "paper"
     ? { ignite: 233, ambient: 30, tau: 1.4, risk: c.paperRisk || 0 }  // 233°C ≈ Fahrenheit 451
     : null;
-  let padCATO = false, comInstab = 0;
+  let padCATO = false, comInstab = 0, dudFire = 0;
   if (c.structure === "blackpowder") {
-    const casingCap = Math.max(0.5, (c.thrust || stages[0].thrust || 100) / 85); // 700N→8.2kg, 1100N→12.9kg
+    // Phase 5: ลำไม้ไผ่/พันลวด เพิ่มพิกัดความดัน (casingCapMul); เคมีดินขับให้ catoRisk มาโดยตรง
+    const capMul = c.casingCapMul || 1;
+    const casingCap = Math.max(0.5, (c.thrust || stages[0].thrust || 100) / 85) * capMul;
     const load = preFuel / casingCap;
-    if (load > 1.0) padCATO = true;                       // ความดันเกินกำลังปลอก → CATO
-    else if (load > 0.6) comInstab = Math.min(1, (load - 0.6) / 0.25); // CG เลื่อนไปท้าย → static instability
+    if (load > 1.0 || (c.catoRisk || 0) >= 1) padCATO = true;   // ความดันเกินกำลังปลอก / ดินประสิวเยอะไป → CATO
+    else {
+      if (load > 0.6) comInstab = Math.min(1, (load - 0.6) / 0.25); // CG เลื่อนไปท้าย → static instability
+      if ((c.catoRisk || 0) > 0.5) comInstab = Math.max(comInstab, ((c.catoRisk || 0) - 0.5) * 1.4);
+    }
+    dudFire = Math.min(0.9, c.chemIgnitionRisk || 0);            // ดินขับจุดไม่ติดสม่ำเสมอ → แรงขับหาย
   }
   const glow = payload + stages.reduce((s, st) => s + st.dryMass + st.propMass, 0);
   const dv = stackDeltaV(stages, payload);
@@ -347,7 +353,13 @@ function createFlight(config) {
         }
       }
       const vacBoost = 1 + 0.12 * (1 - Math.min(1, rho / RHO0));
-      thr = st.thrust * vacBoost * Math.max(0.15, w) * comLoss;
+      // Phase 5: ดินขับผสมไม่ดี → จุดติดไม่สม่ำเสมอ แรงขับกระตุกและตกเป็นช่วง ๆ
+      let dud = 1;
+      if (dudFire > 0) {
+        const flick = wobbleNoise(seed + 17, state.t * 3.1);
+        dud = flick < (dudFire - 0.5) * 2 ? 0.15 + Math.random() * 0.2 : 1 - dudFire * 0.35;
+      }
+      thr = st.thrust * vacBoost * Math.max(0.15, w) * comLoss * dud;
       const burn = Math.min(state.stageProp, st.mdot * dt);
       state.stageProp -= burn; state.mass -= burn;
       if (state.phase === "pad") { state.phase = "boost"; state.events.push({ t: state.t, k: "ignition", stage: 1 }); }
