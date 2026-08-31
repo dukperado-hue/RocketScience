@@ -112,7 +112,8 @@ function createFlight(config) {
     dragCoef: 0.5, payloadMass: 0,
     windSpeed: 0, windSensitivity: 1, spinStabilized: false, thrustWobble: 0,
     targetAltitude: 100, orbital: false, targetOrbitVelocity: 0, launchAngleDeg: 0,
-    tier: 1, structure: null, fuelMass: 0, weather: null, recovery: null, wanHu: false, talai: null, bangfai: null
+    tier: 1, structure: null, fuelMass: 0, weather: null, recovery: null, wanHu: false, talai: null, bangfai: null,
+    lantern: false, lanternBurnSec: 0, buoyPower: 0
   }, config);
 
   // กราฟแรงขับของบั้งไฟ (จากรูปทรงรูแกน + ดินหัวเลี้ยงท้าย) — f = ความคืบหน้าการเผาไหม้ 0..1
@@ -653,9 +654,88 @@ function createFlight(config) {
     return state;
   }
 
+  // ============ โคมลอย — แรงลอยตัวความร้อน (ไม่ใช่แรงขับจรวด) ============
+  //  ไต่ช้า นุ่ม จนถึงจุดลอยตัวสมดุล แล้วลอยไปกับมวลอากาศ (ลมพัดไปไหนไปนั่น)
+  //  เปลวไฟดับ → เย็นลง → ค่อย ๆ ร่อนลง; กระดาษสายังติดไฟได้ที่ ~233°C
+  function stepLantern(dt) {
+    state.t += dt;
+    if (state.phase === "pad") { state.phase = "boost"; state.events.push({ t: 0, k: "ignition", stage: 1 }); }
+
+    const g = gravity(state.y);
+    const rho = airDensity(state.y);
+    const burnSec = c.lanternBurnSec || (tCutoff * 4) || 10;
+    const lit = state.t < burnSec;
+
+    // อุณหพลศาสตร์กระดาษสา (ติดไฟ ~233°C) — ใช้ค่าเดียวกับ thermal เดิม
+    if (thermal) {
+      const targetT = lit ? thermal.ambient + (thermal.risk || 0) * 260 : thermal.ambient;
+      state.skinTemp += (targetT - state.skinTemp) * Math.min(1, dt / (lit ? thermal.tau : thermal.tau * 3));
+      state.skinTempPeak = Math.max(state.skinTempPeak, state.skinTemp);
+      if (lit && state.skinTemp > thermal.ignite && state.y > 2) {
+        state.burnedUp = true; state.crashed = true; state.landed = true;
+        state.failReason = "LANTERN_BURNUP"; state.phase = "done";
+        state.events.push({ t: state.t, k: "lantern-burnup", alt: state.y });
+        return state;
+      }
+    }
+
+    // แรงลอยตัว: ขณะไฟติด อากาศร้อนเบากว่าอากาศเย็น (อาร์คิมิดีส)
+    //   buoyRatio > 1 = ไต่ขึ้น, = 1 = ลอยตัวสมดุล, < 1 = ร่อนลง
+    //   ยิ่งสูง อากาศเบาลง → แรงลอยลด → เข้าสู่จุดสมดุลเอง
+    const rise = 0.075 + 0.06 * (c.buoyPower || 0);
+    const buoyRatio = lit
+      ? Math.max(0.97, Math.min(1.18, 1 + rise - state.y / 900))
+      : 0.82;
+    const aUp = g * (buoyRatio - 1);
+    // แรงต้านอากาศแนวดิ่ง — โคมพื้นที่หน้าตัดใหญ่/มวลน้อย → ความเร็วอิ่มตัวเร็ว
+    const areaDrag = (c.dragCoef || 0.09) * 2.1 / Math.max(0.3, state.mass);
+    const vDragY = -Math.sign(state.vy || 1e-6) * 0.5 * rho * state.vy * state.vy * areaDrag;
+    state.vy += (aUp + vDragY) * dt;
+    state.vy = Math.max(-4.2, Math.min(6.0, state.vy));   // ไต่/ร่อนแบบ graceful
+
+    // ลอยตามลม: vx เข้าหาความเร็วลม (× ความไวลมของโคม) อย่างรวดเร็ว
+    const gust = weather.windGust
+      ? 1 + weather.windGust * 0.7 * Math.sin(state.t * 1.2 + seed) * Math.sin(state.t * 0.4 + 1.1)
+      : 1;
+    const targetVx = (c.windSpeed || 0) * gust * (c.windSensitivity || 1.8);
+    state.vx += (targetVx - state.vx) * Math.min(1, dt * 0.85);
+
+    state.x += state.vx * dt;
+    state.y += state.vy * dt;
+    if (state.y < 0) state.y = 0;
+
+    // เชื้อเพลิงลด (ให้ HUD มีอะไรแสดง)
+    const md = (stages[0] && stages[0].propMass ? stages[0].propMass / burnSec : 0.02);
+    state.stageProp = Math.max(0, state.stageProp - md * dt);
+    state.mass = Math.max(0.15, state.mass - md * dt * 0.4);
+    state.fuelFrac = lit ? Math.max(0, state.t < burnSec ? 1 - state.t / burnSec : 0) : 0;
+    state.thrustNow = lit ? g * state.mass * buoyRatio : 0;
+
+    state.apogee = Math.max(state.apogee, state.y);
+    const spd = Math.hypot(state.vx, state.vy);
+    state.mach = spd / 300;
+    state.q = 0.5 * rho * spd * spd;
+
+    if (!lit && state.vy < 0 && state.phase === "boost") {
+      state.phase = "descent";
+      state.events.push({ t: state.t, k: "apogee", alt: state.apogee });
+    }
+
+    // จบเที่ยวบิน: แตะพื้น (ร่อนลงเบา ๆ — ไม่ "ตก"), หรือลอยหาย/หมดเวลา
+    const drifted = Math.abs(state.x) > 4500;
+    if ((state.y <= 0 && state.t > 0.6) || state.t > 95 || drifted) {
+      state.landed = true; state.crashed = false;
+      state.recoveryDrift = Math.abs(state.x);
+      state.events.push({ t: state.t, k: "landing" });
+      state.phase = "done";
+    }
+    return state;
+  }
+
   function step(dt) {
     if (state.phase === "done") return state;
     dt = Math.min(dt, 0.05);
+    if (c.lantern) return stepLantern(dt);
     // orbital + ยังอยู่ในช่วงขาขึ้นสคริปต์
     if (c.orbital && state.t < tCutoff && state.phase !== "coast" && state.phase !== "descent" && state.phase !== "reentry") {
       return stepOrbitalScripted(dt);
@@ -703,6 +783,7 @@ function createFlight(config) {
       talai: !!c.talai,
       talaiWobble: +state.talaiWobble.toFixed(2),
       talaiHoriz: !!state.talaiHoriz,
+      lantern: !!c.lantern,
       bangfai: !!c.bangfai,
       bangfaiWobble: +state.bangfaiWobble.toFixed(2),
       bangfaiHoriz: !!state.bangfaiHoriz,

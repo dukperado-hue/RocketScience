@@ -368,14 +368,59 @@
       return m;
     }
 
-    if (tier === 1) {
-      const lm = pmat("mat_paper");
-      lm.color.setHex(0xff7a4c);
-      if (lm.emissive) { lm.emissive.setHex(0xff4020); lm.emissiveIntensity = 0.85; }
-      lm.roughness = 0.8;
-      const lant = new THREE.Mesh(new THREE.SphereGeometry(1.6, 24, 18), lm);
-      lant.position.y = 3.6; lant.scale.y = 1.35;
-      rocket.add(lant); rParts.push({ mesh: lant, stage: 1 });
+    if (tier === 1 && meta.lantern) {
+      // ---- โคมลอย: ทรงกระบอกกระดาษสา เปิดก้น มีไฟเรืองข้างใน ----
+      const CY = 3.6, KH = 3.4;                 // จุดกึ่งกลาง / ความสูงลำโคม
+      const paperMat = pmat("mat_paper");
+      paperMat.color.setHex(0xf3dcae);
+      paperMat.roughness = 0.95; paperMat.metalness = 0;
+      paperMat.side = THREE.DoubleSide; paperMat.transparent = true; paperMat.opacity = 0.8;
+      if (paperMat.emissive) { paperMat.emissive.setHex(0xff9a3c); paperMat.emissiveIntensity = 0.75; }
+      // ลำโคม — ทรงกระบอกเรียวเล็กน้อย เปิดก้น (openEnded)
+      const shell = new THREE.Mesh(
+        new THREE.CylinderGeometry(1.36, 1.5, KH, 24, 1, true), paperMat);
+      shell.position.y = CY;
+      rocket.add(shell); rParts.push({ mesh: shell, stage: 1, baseY: CY });
+      // ยอดโคม — โดมตื้น ๆ ปิดด้านบน (ไม่ใช่ทรงไข่)
+      const topMat = paperMat.clone(); topMat.color.setHex(0xecd0a0);
+      const top = new THREE.Mesh(new THREE.SphereGeometry(1.36, 24, 8, 0, Math.PI * 2, 0, Math.PI / 2), topMat);
+      top.position.y = CY + KH / 2; top.scale.y = 0.42;
+      rocket.add(top); rParts.push({ mesh: top, stage: 1 });
+      // โครงลวดปากโคม + กากบาทลวดยึดเชื้อเพลิง
+      const wireMat = new THREE.MeshStandardMaterial({ color: 0x8a6a3a, roughness: 0.9, metalness: 0.3 });
+      const rim = new THREE.Mesh(new THREE.TorusGeometry(1.5, 0.045, 6, 26), wireMat);
+      rim.rotation.x = Math.PI / 2; rim.position.y = CY - KH / 2;
+      rocket.add(rim);
+      [0, Math.PI / 2].forEach(a => {
+        const w = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 3.0, 5), wireMat);
+        w.rotation.z = Math.PI / 2; w.rotation.y = a; w.position.y = CY - KH / 2;
+        rocket.add(w);
+      });
+      // ไฟข้างใน — เปลว + PointLight (มองเห็นผ่านกระดาษสาโปร่งแสง)
+      const flame = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.7, 10),
+        new THREE.MeshBasicMaterial({ color: 0xffe7a8 }));
+      flame.position.y = CY - KH / 2 + 0.35;
+      rocket.add(flame);
+      const lamp = new THREE.PointLight(0xffab52, 3.6, 18, 2);
+      lamp.position.y = CY - 0.6;
+      rocket.add(lamp);
+      rocket.userData.khomLamp = lamp;
+      rocket.userData.khomFlame = flame;
+    } else if (tier === 1) {
+      // ---- พลุ: ลูกพลุกลม + ชนวน (ไม่ใช่จรวด ไม่มีครีบ) ----
+      const shMat = pmat("mat_bamboo"); if (shMat.color) shMat.color.setHex(0x8a3a2c);
+      shMat.roughness = 0.9;
+      const shell = new THREE.Mesh(new THREE.SphereGeometry(0.95, 22, 16), shMat);
+      shell.position.y = 2.5; shell.scale.y = 1.12;
+      rocket.add(shell); rParts.push({ mesh: shell, stage: 1, baseY: 2.5 });
+      const band = new THREE.Mesh(new THREE.TorusGeometry(0.95, 0.06, 6, 22),
+        new THREE.MeshStandardMaterial({ color: 0xcaa24a, roughness: 0.8 }));
+      band.rotation.x = Math.PI / 2; band.position.y = 2.5;
+      rocket.add(band);
+      const fuse = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.8, 6),
+        new THREE.MeshStandardMaterial({ color: 0x2b2b2b, roughness: 1 }));
+      fuse.position.set(0.18, 3.7, 0); fuse.rotation.z = 0.35;
+      rocket.add(fuse);
     } else if (meta.bangfai) {
       // ---- บั้งไฟ: ลำสั้นเรียว (ไม้ไผ่/PVC) + หางไม้ไผ่ยาวกว่าลำมาก · ไม่มีครีบเลย ----
       const BR = 0.32, BH = 4.0;
@@ -775,8 +820,11 @@
       while (seenEvents < s.events.length) {
         const e = s.events[seenEvents++];
         const lbl = EV_LABEL[e.k];
-        if (lbl) showEvent(e.k === "staging" ? `แยกท่อนที่ ${e.stage}${e.manual ? " (มือ)" : ""}` : lbl);
-        if (e.k === "ignition") shake = Math.max(shake, 0.55);
+        if (lbl) showEvent(
+          meta.lantern && e.k === "ignition" ? "จุดไฟ — โคมเริ่มลอย 🏮"
+          : e.k === "staging" ? `แยกท่อนที่ ${e.stage}${e.manual ? " (มือ)" : ""}`
+          : lbl);
+        if (e.k === "ignition") shake = Math.max(shake, meta.lantern ? 0.04 : 0.55);
         if (e.k === "maxq") shake = Math.max(shake, 0.4);
         if (e.k === "bangfai-wobble") shake = Math.max(shake, 0.35);
         if (e.k === "staging") { shake = Math.max(shake, 0.28); detachStage(e.stage - 1); }
@@ -809,14 +857,23 @@
         rocket.rotation.z += Math.sin(s.t * 8.5) * wob * 0.09;
         rocket.rotation.x = Math.sin(s.t * 6.3 + 1) * wob * 0.30;
       }
+      // โคมลอย — หมุนเอื่อย ๆ + แกว่งเบา ๆ ตามลม (ลอยไปกับมวลอากาศ)
+      if (meta.lantern) {
+        rocket.rotation.y += dt * 0.3;
+        rocket.rotation.z = -rocket.position.x * 0.02 + Math.sin(s.t * 0.8) * 0.03;
+        const lamp = rocket.userData.khomLamp, fl = rocket.userData.khomFlame;
+        const litK = s.thrustNow > 0;
+        if (lamp) lamp.intensity = litK ? 2.4 + Math.random() * 1.6 : Math.max(0, lamp.intensity * 0.92);
+        if (fl) { fl.visible = litK; fl.scale.y = 1.4 + Math.random() * 0.7; fl.scale.x = fl.scale.z = 0.85 + Math.random() * 0.3; }
+      }
 
       // จุดปลายท่อ (nozzle) = ใต้ท่อนล่างสุดที่ยังติดอยู่
       let nozY = NOZZLE_Y;
       rParts.forEach(rp => { if (!rp.detached && rp.stage) nozY = Math.min(nozY, rp.mesh.position.y - (rp.h ? rp.h / 2 : 0)); });
       exhaustLight.position.set(rocket.position.x, nozY, 0);
 
-      // exhaust / smoke
-      const burning = s.thrustNow > 0;
+      // exhaust / smoke  (โคมลอยไม่มีไอพ่น — ใช้ไฟในโคมแทน)
+      const burning = s.thrustNow > 0 && !meta.lantern;
       const inAtmo = alt < 45000;
       if (burning) {
         const stThr = (cfg.stages && cfg.stages[Math.min(s.stage, stageCount - 1)] && cfg.stages[Math.min(s.stage, stageCount - 1)].thrust) || cfg.thrust || 100;

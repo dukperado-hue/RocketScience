@@ -123,24 +123,34 @@
   function renderHome() {
     renderScoreBadge();
     const hasProgress = G.progress.totalScore > 0 || G.progress.unlockedTiers.length > 1;
-    $("#btn-continue").hidden = !hasProgress;
     $("#btn-reset-progress").hidden = !hasProgress;
 
     const ladder = $("#tier-ladder");
     ladder.innerHTML = "";
     Object.values(TIERS).forEach(t => {
       const unlocked = tierUnlocked(t.key);
-      const row = document.createElement("div");
-      row.className = "tier-row" + (unlocked ? "" : " locked");
+      const canPlay = unlocked && t.playable;
+      const missionCount = MISSIONS.filter(m => m.tierKey === t.key && !m.locked).length;
+      const row = document.createElement(canPlay ? "button" : "div");
+      row.className = "tier-row" + (canPlay ? " tier-row--go" : " locked");
+      if (canPlay) row.type = "button";
       row.innerHTML = `
         <span class="tn">TIER ${t.n}</span>
-        <span>
-          <span class="tt">${t.nameTh}</span><br>
+        <span class="tier-row-mid">
+          <span class="tt">${t.nameTh}</span>
           <span class="ts">${t.sub}</span>
         </span>
-        <span class="tlock">${unlocked
-          ? (t.playable ? "ปลดล็อกแล้ว" : "Phase 2 · เร็ว ๆ นี้")
-          : "🔒 ต้องมี " + fmt(t.unlockScore) + " แต้ม"}</span>`;
+        <span class="tlock">${canPlay
+          ? `<span class="tier-cta">▶ เล่น (${missionCount} ภารกิจ)</span>`
+          : unlocked
+            ? "Phase 2 · เร็ว ๆ นี้"
+            : `<span class="tier-locked-badge">🔒</span> ต้องมี ${fmt(t.unlockScore)} แต้ม`}</span>`;
+      if (canPlay) row.addEventListener("click", () => {
+        renderMissions();
+        show("mission");
+        const first = $$("#mission-grid .pick-card").find(c => c.dataset.tier === String(t.n));
+        if (first) { first.scrollIntoView({ block: "center", behavior: "smooth" }); first.classList.add("pick-card--flash"); setTimeout(() => first.classList.remove("pick-card--flash"), 1200); }
+      });
       ladder.appendChild(row);
     });
   }
@@ -153,24 +163,31 @@
       const t = TIERS[m.tierKey];
       const locked = m.locked || !tierUnlocked(m.tierKey) || !t.playable;
       const card = document.createElement("button");
-      card.className = "pick-card";
+      card.className = "pick-card" + (locked ? " pick-card--locked" : "");
       card.disabled = locked;
+      card.dataset.tier = String(t.n);
+      const lockReason = m.locked ? "Phase 2 · เร็ว ๆ นี้"
+        : !t.playable ? "Phase 2 · เร็ว ๆ นี้"
+          : `ปลดล็อกที่ ${fmt(TIERS[m.tierKey].unlockScore)} แต้ม`;
       card.innerHTML = `
+        ${locked ? `<span class="pc-lock">🔒</span>` : ""}
         <div class="pc-sub">TIER ${t.n} · ${t.nameTh}</div>
         <div class="pc-title">${m.titleTh}</div>
         <div class="pc-desc">${m.briefTh}</div>
         <div class="pc-meta">
           <span class="pc-tag">เป้าหมาย ${fmt(m.targetAltitude)} m</span>
+          ${m.timeAloftTarget ? `<span class="pc-tag">จับเวลา ${m.timeAloftTarget} วิ</span>` : ""}
           <span class="pc-tag">งบ ${fmt(m.budget)} ฿</span>
           <span class="pc-tag">ฐาน ${fmt(m.basePoints)} แต้ม</span>
           ${(m.hazards || []).map(h => `<span class="pc-hazard">${h}</span>`).join("")}
-          ${locked ? `<span class="pc-hazard">🔒 ${m.locked ? "Phase 2" : "ยังไม่ปลดล็อก"}</span>` : ""}
-        </div>`;
+        </div>
+        ${locked
+          ? `<div class="pc-cta pc-cta--locked">🔒 ${lockReason}</div>`
+          : `<div class="pc-cta">▶ เลือกภารกิจนี้</div>`}`;
       if (!locked) card.addEventListener("click", () => {
         newRun(m);
         rollMissionWeather();
-        if (window.VN && window.VN.brief) window.VN.brief(G.run, { onDone: goRocket });
-        else goRocket();
+        goRocket();
       });
       grid.appendChild(card);
     });
@@ -200,17 +217,20 @@
       // อนุญาตจรวดที่ tier <= tier ภารกิจ และ tier นั้นปลดล็อก+เล่นได้
       const usable = tierN(r.tierKey) <= tierN(m.tierKey) && tierUnlocked(r.tierKey) && rt.playable;
       const card = document.createElement("button");
-      card.className = "pick-card";
+      card.className = "pick-card" + (usable ? "" : " pick-card--locked");
       card.disabled = !usable;
       card.innerHTML = `
+        ${usable ? "" : `<span class="pc-lock">🔒</span>`}
         <div class="pc-icon">${r.icon}</div>
         <div class="pc-sub">TIER ${rt.n}</div>
         <div class="pc-title">${r.nameTh} <span style="font-weight:400;color:var(--ink-faint);font-size:12px">${r.nameEn}</span></div>
         <div class="pc-desc">${r.blurb}</div>
         <div class="pc-meta">
           ${rocketMetaTags(r)}
-          ${usable ? "" : `<span class="pc-hazard">🔒</span>`}
-        </div>`;
+        </div>
+        ${usable
+          ? `<div class="pc-cta">▶ ประกอบจรวดนี้</div>`
+          : `<div class="pc-cta pc-cta--locked">🔒 ปลดล็อก Tier ${rt.n} ก่อน</div>`}`;
       if (usable) card.addEventListener("click", () => { G.run.rocket = r; goName(); });
       grid.appendChild(card);
     });
@@ -312,7 +332,7 @@
     // Phase 5: แผงระบบกู้คืน / ลงจอด (ทุก tier ยกเว้น orbital-only ใช้เป็นการกู้บูสเตอร์)
     renderRecovery() {
       const r = G.run.rocket;
-      if (!window.Recovery || r.id === "talai" || r.id === "bangfai") { const h = $("#vab-recovery"); if (h) { h.hidden = true; h.innerHTML = ""; } return; }
+      if (!window.Recovery || r.id === "talai" || r.id === "bangfai" || r.lantern) { const h = $("#vab-recovery"); if (h) { h.hidden = true; h.innerHTML = ""; } return; }
       let host = $("#vab-recovery");
       if (!host) {
         host = document.createElement("div");
@@ -762,7 +782,9 @@
     VAB.render();
     setupVabDnD();
     show("vab");
-    if (window.VN) VN.atVab(r);
+    // บรีฟ 4 ส่วนของพี่ช่าง — ยิงหลังจอเปลี่ยนเข้าโรงประกอบแล้ว
+    if (window.VN && window.VN.brief) setTimeout(() => VN.brief(G.run), 260);
+    else if (window.VN) VN.atVab(r);
   }
 
   let vabDnDReady = false;
@@ -972,6 +994,7 @@
     } else {
       const isTalai = r.id === "talai" && s.talai;
       const isBangfai = r.id === "bangfai" && s.bangfai;
+      const isLantern = r.lantern === true;
       cfg = Object.assign({
         thrust: s.thrust, burnTime: s.burnTime, wetMass: s.wetMass, dryMass: s.dryMass,
         dragCoef: s.dragCoef, windSensitivity: r.windSensitivity,
@@ -979,13 +1002,17 @@
         tier: tierN(r.tierKey), fuelMass: s.fuelMass, paperRisk: s.paperRisk,
         structure: (isTalai || isBangfai) ? null : (r.lantern ? "paper"
           : (r.blackPowder || tierN(r.tierKey) === 2 ? "blackpowder" : null)),
+        // โคมลอย: ลอยด้วยแรงลอยตัวความร้อน (ไม่ใช่แรงขับจรวด) + ลอยตามลมง่ายมาก
+        lantern: isLantern,
+        lanternBurnSec: isLantern ? (7 + s.fuelMass * 8 + s.thrust * 0.06) : 0,
+        buoyPower: isLantern ? Math.max(0, Math.min(1.5, (s.thrust - 25) / 55)) : 0,
         casingCapMul: s.casingCapMul || 1, catoRisk: isTalai ? 0 : (s.catoRisk || 0), chemIgnitionRisk: s.chemIgnitionRisk || 0,
         talai: isTalai ? s.talai : null,
         bangfai: isBangfai ? { curve: s.bangfai.curve, tailBalance: s.bangfai.tailBalance,
           catoRisk: s.bangfai.catoRisk, ignitionRisk: s.bangfai.ignitionRisk } : null,
-        recovery: (isTalai || isBangfai) ? null : recPhys, wanHu: !!G.run.wanHu,
+        recovery: (isTalai || isBangfai || isLantern) ? null : recPhys, wanHu: !!G.run.wanHu,
         rocketMeta: { icon: r.icon, tier: tierN(r.tierKey), spinStabilized: s.spin, body: s.body || null,
-          talai: isTalai, bangfai: isBangfai,
+          talai: isTalai, bangfai: isBangfai, lantern: isLantern,
           tailLengthCm: isBangfai ? s.bangfai.tailLengthCm : null,
           tailAttachCm: isBangfai ? s.bangfai.tailAttachCm : null,
           boilTail: isBangfai ? s.bangfai.boilTail : null,
@@ -1107,7 +1134,16 @@
     // ---- Phase 5: ระบบกู้คืน / ลงจอด ----
     const recv = (s.recovery && s.recovery.kind) || sum.recovery || "freefall";
     const drift = Math.abs(sum.recoveryDrift != null ? sum.recoveryDrift : sum.horizontalDrift);
-    if (!orbital && sum.failReason == null && !sum.burnedUp && !sum.talai && !sum.bangfai) {
+    // ---- โคมลอย: ลอยตามลม — ลอยเฉไกลเกินเขตปลอดภัยจึงจะมีค่าเสียหาย ----
+    if (r.lantern && !sum.burnedUp && sum.landed) {
+      if (drift > 300) {
+        const dmg = Math.round(Math.min(bp * 0.45, (drift - 300) * 0.35));
+        rows.push([`โคมลอยเฉ ${fmt(drift)} m ออกนอกเขตปลอดภัย — เสี่ยงรบกวนการบิน/ไฟไหม้ (พ.ร.บ.การเดินอากาศ)`, -dmg, false]);
+      } else {
+        rows.push([`โคมลอยเฉ ${fmt(drift)} m — อยู่ในเขตควบคุม`, 0, true]);
+      }
+    }
+    if (!orbital && sum.failReason == null && !sum.burnedUp && !sum.talai && !sum.bangfai && !sum.lantern) {
       if (recv === "propulsive" && sum.recovered) {
         rows.push(["ลงจอดด้วยแรงขับสำเร็จ — กู้ยานคืน (คืนงบ)", Math.round(bp * 0.35), true]);
       } else if (recv === "parachute" && sum.recovered) {
@@ -1228,7 +1264,6 @@
     });
 
     $("#btn-start").addEventListener("click", () => { renderMissions(); show("mission"); });
-    $("#btn-continue").addEventListener("click", () => { renderMissions(); show("mission"); });
     $("#btn-reset-progress").addEventListener("click", () => {
       if (!confirm("ล้างความคืบหน้าทั้งหมด?")) return;
       G.progress = defaultProgress();

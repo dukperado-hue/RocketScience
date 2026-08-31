@@ -7,7 +7,8 @@
   "use strict";
   // Narrative shim → VN
   window.Narrative = {
-    missionIntro(m) { /* ย้ายไป VN.atVab(rocket) ตอนเข้าหน้าประกอบ */ },
+    // บรีฟก่อนภารกิจย้ายไป VN.brief(run) ยิงตอนเข้าโรงประกอบ (main.js goVab)
+    missionIntro(run) { if (window.VN && window.VN.brief && run && run.mission) window.VN.brief(run); },
     debrief(sum, run) { if (window.VN) window.VN.atReport(sum, run); },
     play(lines, opts) {
       if (!window.VN) { opts && opts.onDone && opts.onDone(); return; }
