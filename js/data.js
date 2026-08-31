@@ -38,10 +38,11 @@ const ROCKETS = [
     blurb: "จรวดดินปืนอัดลำไม้ไผ่/ท่อ PVC แรงขับสูง เผาไหม้ยาว วิถีเดายาก—แรงขับไม่สม่ำเสมอ"
   },
   {
-    id: "talai", tierKey: "tier2", nameTh: "ตะไล", nameEn: "Talai (spin rocket)", icon: "💫",
-    baseThrust: 500, dryMass: 3, baseFuel: 5, isp: 90, dragCoef: 0.04,
-    spinStabilized: true, maxParts: 6, windSensitivity: 1.3, thrustWobble: 0.12,
-    blurb: "จรวดวงกลมหมุนรอบตัวเอง การหมุนช่วยรักษาทิศทาง (spin-stabilization) ต้านลมได้ดีกว่าบั้งไฟ"
+    id: "talai", tierKey: "tier2", nameTh: "ตะไล", nameEn: "Talai (spinning disc)", icon: "💫",
+    baseThrust: 620, dryMass: 3, baseFuel: 5, isp: 90, dragCoef: 0.04,
+    spinStabilized: true, maxParts: 4, windSensitivity: 1.1, thrustWobble: 0,
+    talai: true,   // ภูมิปัญญาบ้านตาลิน: แกนไม้รวกสด + ปีกวงกลมไผ่ตง + รูประทุเฉียง 15° → เกลียวสว่าน
+    blurb: "พลุจานหมุนภูมิปัญญาบ้านตาลิน หนองบัว — จุดแล้วสะบัดมือขว้างแบบจานบิน พุ่งขึ้นเป็นเกลียวสว่าน (แกนไม้รวกสดเท่านั้น · สูตรดินบาท มาดเฟื้อง ถ่านสลึง)"
   },
 
   // ---------- Tier 3 : จรวดสมัครเล่น (ท่อนเดียว ยิงตรงขึ้น) ----------
@@ -113,8 +114,9 @@ const MISSIONS = [
     briefTh: "จุดพลุฉลองปีใหม่ให้ขึ้นสูงพอโดยไม่รบกวนน่านฟ้า", hazards: ["ทัศนวิสัยกลางคืน", "เขตปลอดภัย 9 กม."] },
   { id: "m3_rocketfest",tierKey: "tier2", titleTh: "ประเพณีบุญบั้งไฟ",      targetAltitude: 1200, budget: 12000,  basePoints: 2200,
     briefTh: "แข่งบั้งไฟขึ้นสูง ต้องผ่านการอนุญาตจากจังหวัดและคณะทำงาน Sky Hazard", hazards: ["แรงขับไม่สม่ำเสมอ", "ใบอนุญาตจังหวัด"] },
-  { id: "m4_talai",     tierKey: "tier2", titleTh: "ชิงแชมป์ตะไล",          targetAltitude: 650,  budget: 9000,   basePoints: 1800,
-    briefTh: "ตะไลต้องหมุนนิ่งและต้านลมให้ได้ วิถีตรงจะได้แต้มสูง", hazards: ["ลมขวาง", "ใบอนุญาตจังหวัด"] },
+  { id: "m4_talai",     tierKey: "tier2", titleTh: "ชิงแชมป์ตะไล บ้านตาลิน",  targetAltitude: 320,  budget: 9000,   basePoints: 1800,
+    briefTh: "ทำตะไลตามภูมิปัญญาบ้านตาลิน: แกนไม้รวกสด ปีกวงกลม = 2×เส้นรอบวงรูบ้อง รูประทุเฉียง 15° สูตรดินบาท-มาดเฟื้อง-ถ่านสลึง แล้วจุด-สะบัดมือขว้างให้ควงเป็นเกลียวสว่านสูงที่สุด",
+    hazards: ["บ้องไม้รวกปริแตกคามือ", "ปีกไม่ได้สัดส่วน = ส่ายร่วงแนวราบ", "ใบอนุญาตจังหวัด"] },
 
   { id: "m5_sounding",  tierKey: "tier3", titleTh: "ตรวจชั้นบรรยากาศชั้นสตราโตสเฟียร์", targetAltitude: 45000, budget: 60000, basePoints: 9000,
     briefTh: "ส่งเครื่องมือขึ้นไปเก็บข้อมูลชั้นบรรยากาศที่ ~45 กม. ต้องขออนุญาต CAAT และออก NOTAM ปิดห้วงอากาศชั่วคราว",
@@ -141,7 +143,7 @@ const PARTS = [
   { id: "charge_l",   type: "engine",    nameTh: "ดินขับพลุใหญ่",       icon: "✨", mass: 0.3,  thrust: 260,  tierMin: 1 },
   { id: "motor_bamboo", type: "engine",  nameTh: "มอเตอร์ลำไม้ไผ่",     icon: "🧨", mass: 2.5,  thrust: 700,  tierMin: 2 },
   { id: "motor_pvc",  type: "engine",    nameTh: "มอเตอร์ท่อ PVC",      icon: "🧨", mass: 3.5,  thrust: 1100, tierMin: 2 },
-  { id: "motor_ring", type: "engine",    nameTh: "มอเตอร์วงตะไล",       icon: "💫", mass: 2.0,  thrust: 620,  tierMin: 2, addsSpin: true },
+  { id: "motor_ring", type: "engine",    nameTh: "แกนตะไล + ปีกวงกลม",   icon: "💫", mass: 2.0,  thrust: 620,  tierMin: 2, addsSpin: true, talaiOnly: true },
   { id: "prop_s",     type: "propellant", nameTh: "ดินขับ 1 หน่วย",     icon: "🟫", mass: 1.0,  fuel: 1.0,   burn: 2.6, tierMin: 1 },
   { id: "prop_m",     type: "propellant", nameTh: "ดินขับ 3 หน่วย",     icon: "🟫", mass: 3.0,  fuel: 3.0,   burn: 7.0, tierMin: 1 },
   { id: "prop_l",     type: "propellant", nameTh: "ดินขับ 6 หน่วย",     icon: "🟫", mass: 6.0,  fuel: 6.0,   burn: 8.0, tierMin: 2 },
