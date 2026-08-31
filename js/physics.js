@@ -682,16 +682,18 @@ function createFlight(config) {
     // แรงลอยตัว: ขณะไฟติด อากาศร้อนเบากว่าอากาศเย็น (อาร์คิมิดีส)
     //   buoyRatio > 1 = ไต่ขึ้น, = 1 = ลอยตัวสมดุล, < 1 = ร่อนลง
     //   ยิ่งสูง อากาศเบาลง → แรงลอยลด → เข้าสู่จุดสมดุลเอง
-    const rise = 0.075 + 0.06 * (c.buoyPower || 0);
+    const rise = 0.085 + 0.065 * (c.buoyPower || 0);
     const buoyRatio = lit
-      ? Math.max(0.97, Math.min(1.18, 1 + rise - state.y / 900))
+      ? Math.max(0.97, Math.min(1.20, 1 + rise - state.y / 900))
       : 0.82;
-    const aUp = g * (buoyRatio - 1);
+    // แรงยกพิเศษช่วงออกตัว — ให้โคมลอยพ้นพื้นอย่างสง่างาม แล้วจางหายภายใน ~40 ม.
+    const liftOff = lit ? 3.4 * Math.exp(-state.y / 15) : 0;
+    const aUp = g * (buoyRatio - 1) + liftOff;
     // แรงต้านอากาศแนวดิ่ง — โคมพื้นที่หน้าตัดใหญ่/มวลน้อย → ความเร็วอิ่มตัวเร็ว
     const areaDrag = (c.dragCoef || 0.09) * 2.1 / Math.max(0.3, state.mass);
     const vDragY = -Math.sign(state.vy || 1e-6) * 0.5 * rho * state.vy * state.vy * areaDrag;
     state.vy += (aUp + vDragY) * dt;
-    state.vy = Math.max(-4.2, Math.min(6.0, state.vy));   // ไต่/ร่อนแบบ graceful
+    state.vy = Math.max(-4.2, Math.min(7.5, state.vy));   // ไต่/ร่อนแบบ graceful
 
     // ลอยตามลม: vx เข้าหาความเร็วลม (× ความไวลมของโคม) อย่างรวดเร็ว
     const gust = weather.windGust

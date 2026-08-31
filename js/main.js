@@ -116,6 +116,21 @@
   }
   const fmt = (n, d = 0) => Number(n).toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
 
+  // Phase 8: หัวพลุเฉลิมฉลอง (Tier 1–3) — โบนัสแต้มเมื่อจุดพลุกลางอากาศ
+  function fwActive() {
+    return !!(window.Fireworks && window.Fireworks.state.enabled
+      && G.run && G.run.rocket && tierN(G.run.rocket.tierKey) <= 3);
+  }
+  function fwBonus() {
+    try { return fwActive() ? (window.Fireworks.derived().scoreBonus || 0) : 0; }
+    catch (e) { return 0; }
+  }
+  function fireworkMeta() {
+    if (!fwActive()) return null;
+    const d = window.Fireworks.derived();
+    return { color: d.color, spark: d.spark, flame: d.flame, colorant: d.colorant };
+  }
+
   function tierUnlocked(k) { return G.progress.unlockedTiers.includes(k); }
 
   // ---------------- HOME ----------------
@@ -345,6 +360,24 @@
       window.Recovery.render(host, { rocket: r, tier: tierN(r.tierKey), ascent: recoveryAscent(r) },
         () => VAB.computeStats());
     },
+
+    // Phase 8: แผงหัวพลุ (Tier 1–3) — เลือกสารให้สี flame test
+    renderFirework() {
+      const r = G.run.rocket;
+      let host = $("#vab-firework");
+      if (!window.Fireworks || !r || tierN(r.tierKey) > 3) {
+        if (host) { host.hidden = true; host.innerHTML = ""; }
+        return;
+      }
+      if (!host) {
+        host = document.createElement("div");
+        host.id = "vab-firework";
+        host.className = "vab-extras";
+        const anchor = $("#vab-recovery") || $("#vab-extras") || $("#vab-parts");
+        anchor.parentElement.insertBefore(host, anchor.nextSibling);
+      }
+      window.Fireworks.render(host, () => VAB.computeStats());
+    },
     renderGridClassic() {
       const grid = $("#vab-grid");
       grid.querySelectorAll(".vab-slot, .vab-stage").forEach(n => n.remove());
@@ -360,6 +393,7 @@
       });
       VAB.renderExtras();
       VAB.renderRecovery();
+      VAB.renderFirework();
       VAB.computeStats();
       VAB.sync3d();
     },
@@ -369,6 +403,7 @@
       const r = G.run.rocket;
       if (!window.VAB3D || !r) return;
       window.__vabSlots = VAB.slots.slice();
+      window.__vabPayloadId = VAB.payloadId || null;
       if (isStaged(r)) {
         window.__vabStages = effectiveStages(r);
         window.__vabPayloadMass = VAB.payloadId ? (partById(VAB.payloadId).mass || 0) : (r.defaultPayload || 0);
@@ -453,6 +488,7 @@
         grid.appendChild(d);
       });
       VAB.renderRecovery();
+      VAB.renderFirework();
       VAB.computeStats();
       VAB.sync3d();
     },
@@ -475,7 +511,7 @@
       const spin = r.spinStabilized || parts.some(p => p.addsSpin);
       let dragCoef = Math.max(0.02, r.dragCoef + parts.reduce((s, p) => s + (p.dragMod || 0), 0));
       let baseBurn = Math.max(0.8, Math.min(20, parts.filter(p => p.type === "propellant").reduce((s, p) => s + p.burn, 0) || 1.2));
-      let scoreBonusParts = parts.reduce((s, p) => s + (p.scoreBonus || 0), 0);
+      let scoreBonusParts = parts.reduce((s, p) => s + (p.scoreBonus || 0), 0) + fwBonus();
       let wobble = r.thrustWobble || 0;
       if (spin && !r.spinStabilized) wobble *= 0.5;
 
@@ -588,7 +624,7 @@
         staged: false, talai: d, thrust: baseThrust, fuelMass, dryMass, wetMass,
         dragCoef: r.dragCoef, spin: true, burnTime, twr,
         deltaV: r.isp * 9.81 * Math.log(wetMass / dryMass),
-        scoreBonusParts: parts.reduce((s, p) => s + (p.scoreBonus || 0), 0),
+        scoreBonusParts: parts.reduce((s, p) => s + (p.scoreBonus || 0), 0) + fwBonus(),
         wobble: 0, paperRisk: 0, partCount: parts.length,
         hasEngine: true, hasFuel: fuelMass > 0,
         casingCapMul: 1, catoRisk: cato, chemIgnitionRisk: 0, chem: null, body: null, recovery: null
@@ -622,7 +658,7 @@
       const r = G.run.rocket;
       const parts = VAB.slots.map(partById);
       const payloadMass = parts.reduce((s, p) => s + (p.mass || 0), 0);
-      const scoreBonusParts = parts.reduce((s, p) => s + (p.scoreBonus || 0), 0);
+      const scoreBonusParts = parts.reduce((s, p) => s + (p.scoreBonus || 0), 0) + fwBonus();
       const d = window.Bangfai.derived(r);
       const a = d.analysis;
 
@@ -697,7 +733,7 @@
         orbital: !!r.orbital, launchAngleDeg: r.launchAngleDeg || 0,
         deltaVBudget: dvB, deltaVRequired: dvR, deltaVMargin: dvB - dvR,
         glow, twr1, payloadFrac,
-        scoreBonusParts: pl ? pl.scoreBonus : 0,
+        scoreBonusParts: (pl ? pl.scoreBonus : 0) + fwBonus(),
         stageDeltaV: f.stageDeltaV, orbitOK,
         payloadName: pl ? pl.nameTh : "—",
         recovery: rec ? { kind: rec.kind, massAdd: rec.massAdd, dragAdd: rec.dragAdd, dvReserve: rec.dvReserve, recFuel: rec.recFuel, deployAlt: rec.deployAlt, aMax: rec.aMax } : null,
@@ -1012,7 +1048,8 @@
         orbital: s.orbital, targetAltitude: m.targetAltitude, tier: tierN(r.tierKey),
         targetOrbitVelocity: m.targetOrbit || 0, launchAngleDeg: s.launchAngleDeg || 0,
         windSensitivity: 0.35, spinStabilized: true, recovery: recPhys, wanHu: !!G.run.wanHu,
-        rocketMeta: { icon: r.icon, tier: tierN(r.tierKey), orbital: s.orbital, stageCount: s.stages.length }
+        rocketMeta: { icon: r.icon, tier: tierN(r.tierKey), orbital: s.orbital, stageCount: s.stages.length,
+          payloadId: VAB.payloadId || null, firework: fireworkMeta() }
       }, wxCommon);
     } else {
       const isTalai = r.id === "talai" && s.talai;
@@ -1035,7 +1072,8 @@
           catoRisk: s.bangfai.catoRisk, ignitionRisk: s.bangfai.ignitionRisk } : null,
         recovery: (isTalai || isBangfai || isLantern) ? null : recPhys, wanHu: !!G.run.wanHu,
         rocketMeta: { icon: r.icon, tier: tierN(r.tierKey), spinStabilized: s.spin, body: s.body || null,
-          talai: isTalai, bangfai: isBangfai, lantern: isLantern,
+          talai: isTalai, bangfai: isBangfai, lantern: isLantern, firework: fireworkMeta(),
+          payloadId: VAB.payloadId || null,
           tailLengthCm: isBangfai ? s.bangfai.tailLengthCm : null,
           tailAttachCm: isBangfai ? s.bangfai.tailAttachCm : null,
           boilTail: isBangfai ? s.bangfai.boilTail : null,

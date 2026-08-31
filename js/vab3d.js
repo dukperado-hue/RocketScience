@@ -586,8 +586,45 @@
     tag(nose, r.orbital ? "แฟริ่ง + ดาวเทียม" : "จมูกจรวด (fairing)",
       plMass ? `เพย์โหลด ${Math.round(plMass)} kg` : "", V3(0, eff.length * 1.6 + 1.4, 0), { ghost: true });
 
+    // Phase 8: เพย์โหลด Tier 4–5 = โมเดล .glb จริง (โผล่ตอนแยกชิ้นส่วน)
+    const plId = window.__vabPayloadId || null;
+    if (window.ModelManager && plId && window.ModelManager.isModelPayload(plId)) {
+      const holder = new (T().Group)();
+      holder.position.set(0, y + topRad * 0.4, 0);
+      holder.userData.isInternal = true;
+      internals.add(holder);
+      const buildKey = curKey;
+      window.ModelManager.forPayload(plId, { size: topRad * 1.8, emissive: 0x2f5fae, emissiveIntensity: 0.3 })
+        .then(m => {
+          if (!m || curKey !== buildKey || !holder.parent) return;
+          holder.add(m);
+          tagModel(m, "เพย์โหลด (โมเดล 3 มิติ)",
+            plMass ? `${Math.round(plMass)} kg` : "", V3(0, 3.2, 0));
+        })
+        .catch(e => console.warn("[VAB3D] payload model", e));
+    }
+
     cam.tgt.set(0, y * 0.45, 0);
     cam.distGoal = y * 2.2;
+  }
+
+  // ผูกทุก mesh ในโมเดล .glb เข้าระบบไฮไลต์/ทูลทิป/แยกชิ้นส่วน
+  function tagModel(wrap, name, stat, exOff) {
+    let first = true;
+    wrap.traverse(o => {
+      if (!o.isMesh || !o.material) return;
+      o.userData.tip = { name, stat };
+      parts.push({
+        mesh: o, name, stat,
+        home: o.position.clone(),
+        ex: exOff && first ? exOff.clone() : V3(0, 0, 0),
+        mat: o.material,
+        baseEmis: o.material.emissive ? o.material.emissive.getHex() : 0,
+        baseOpacity: o.material.opacity != null ? o.material.opacity : 1,
+        ghost: false
+      });
+      first = false;
+    });
   }
 
   // ---------- parametric refresh ----------
@@ -662,7 +699,8 @@
     if (!mounted || webglFailed || !T()) return;
     resize();
     const key = r.id + "|" + (r.id === "bangfai" && window.Bangfai ? window.Bangfai.state.body : "")
-      + "|" + (r.id === "talai" && window.Talai ? window.Talai.state.casing : "");
+      + "|" + (r.id === "talai" && window.Talai ? window.Talai.state.casing : "")
+      + "|" + (window.__vabPayloadId || "");
     if (key !== curKey) { curKey = key; build(r); }
     else applyParams(r);
   }

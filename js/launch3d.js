@@ -368,44 +368,62 @@
       return m;
     }
 
+    if (tier === 1) { tower.visible = false; }   // โคม/พลุ ไม่ได้ยิงจากร้านบั้งไฟ/เสาปล่อย
+
     if (tier === 1 && meta.lantern) {
-      // ---- โคมลอย: ทรงกระบอกกระดาษสา เปิดก้น มีไฟเรืองข้างใน ----
-      const CY = 3.6, KH = 3.4;                 // จุดกึ่งกลาง / ความสูงลำโคม
+      // ---- โคมลอย: ทรงกระบอกกระดาษสา เปิดก้น มีไฟเรืองข้างใน ยืนใกล้พื้น ----
+      pad.visible = false;                        // โคมลอยปล่อยจากมือ/พื้น ไม่มีแท่นเหล็ก
+      const KR = 1.55, KH = 3.8;                  // รัศมี / ความสูงลำโคม (โตขึ้นให้เห็นชัดบนจอ)
+      const CY = 0.35 + KH / 2;                   // ก้นโคมอยู่เหนือพื้นเล็กน้อย
       const paperMat = pmat("mat_paper");
       paperMat.color.setHex(0xf3dcae);
       paperMat.roughness = 0.95; paperMat.metalness = 0;
-      paperMat.side = THREE.DoubleSide; paperMat.transparent = true; paperMat.opacity = 0.8;
-      if (paperMat.emissive) { paperMat.emissive.setHex(0xff9a3c); paperMat.emissiveIntensity = 0.75; }
+      paperMat.side = THREE.DoubleSide;
+      paperMat.transparent = true; paperMat.opacity = 0.72;   // โปร่งพอให้แสงไฟด้านในทะลุออกมา
+      if (paperMat.emissive) { paperMat.emissive.setHex(0xff7b2e); paperMat.emissiveIntensity = 0.9; }
       // ลำโคม — ทรงกระบอกเรียวเล็กน้อย เปิดก้น (openEnded)
       const shell = new THREE.Mesh(
-        new THREE.CylinderGeometry(1.36, 1.5, KH, 24, 1, true), paperMat);
+        new THREE.CylinderGeometry(KR * 1.04, KR, KH, 28, 1, true), paperMat);
       shell.position.y = CY;
       rocket.add(shell); rParts.push({ mesh: shell, stage: 1, baseY: CY });
       // ยอดโคม — โดมตื้น ๆ ปิดด้านบน (ไม่ใช่ทรงไข่)
       const topMat = paperMat.clone(); topMat.color.setHex(0xecd0a0);
-      const top = new THREE.Mesh(new THREE.SphereGeometry(1.36, 24, 8, 0, Math.PI * 2, 0, Math.PI / 2), topMat);
-      top.position.y = CY + KH / 2; top.scale.y = 0.42;
+      const top = new THREE.Mesh(new THREE.SphereGeometry(KR * 1.04, 28, 10, 0, Math.PI * 2, 0, Math.PI / 2), topMat);
+      top.position.y = CY + KH / 2; top.scale.y = 0.44;
       rocket.add(top); rParts.push({ mesh: top, stage: 1 });
       // โครงลวดปากโคม + กากบาทลวดยึดเชื้อเพลิง
       const wireMat = new THREE.MeshStandardMaterial({ color: 0x8a6a3a, roughness: 0.9, metalness: 0.3 });
-      const rim = new THREE.Mesh(new THREE.TorusGeometry(1.5, 0.045, 6, 26), wireMat);
+      const rim = new THREE.Mesh(new THREE.TorusGeometry(KR * 1.03, 0.05, 6, 28), wireMat);
       rim.rotation.x = Math.PI / 2; rim.position.y = CY - KH / 2;
       rocket.add(rim);
       [0, Math.PI / 2].forEach(a => {
-        const w = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 3.0, 5), wireMat);
+        const w = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, KR * 2.1, 5), wireMat);
         w.rotation.z = Math.PI / 2; w.rotation.y = a; w.position.y = CY - KH / 2;
         rocket.add(w);
       });
-      // ไฟข้างใน — เปลว + PointLight (มองเห็นผ่านกระดาษสาโปร่งแสง)
-      const flame = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.7, 10),
-        new THREE.MeshBasicMaterial({ color: 0xffe7a8 }));
-      flame.position.y = CY - KH / 2 + 0.35;
+      // ---- ไฟข้างใน: fire core (over-bright → ติด UnrealBloomPass แน่นอน) + PointLight + เปลว ----
+      const coreY = CY - KH / 2 + 0.55;
+      const coreMat = new THREE.MeshBasicMaterial({ color: 0xffaa00, toneMapped: false });
+      coreMat.color.setRGB(3.0, 1.35, 0.32);       // ค่าทะลุ 1.0 = สว่างเกินขีด bloom (threshold 0.85)
+      const fireCore = new THREE.Mesh(new THREE.SphereGeometry(0.30, 16, 12), coreMat);
+      fireCore.position.y = coreY;
+      rocket.add(fireCore);
+      const flameMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.92, toneMapped: false });
+      flameMat.color.setRGB(2.1, 1.1, 0.33);
+      const flame = new THREE.Mesh(new THREE.ConeGeometry(0.28, 0.95, 12), flameMat);
+      flame.position.y = coreY + 0.55;
       rocket.add(flame);
-      const lamp = new THREE.PointLight(0xffab52, 3.6, 18, 2);
-      lamp.position.y = CY - 0.6;
+      const lamp = new THREE.PointLight(0xff7700, 4.5, 15, 2);
+      lamp.position.y = coreY;
       rocket.add(lamp);
+      // แสงเสริมกลางลำ ให้กระดาษสาทั้งใบเรืองอุ่น
+      const glow = new THREE.PointLight(0xffb45a, 3.0, 17, 2);
+      glow.position.y = CY;
+      rocket.add(glow);
       rocket.userData.khomLamp = lamp;
+      rocket.userData.khomGlow = glow;
       rocket.userData.khomFlame = flame;
+      rocket.userData.khomCore = fireCore;
     } else if (tier === 1) {
       // ---- พลุ: ลูกพลุกลม + ชนวน (ไม่ใช่จรวด ไม่มีครีบ) ----
       const shMat = pmat("mat_bamboo"); if (shMat.color) shMat.color.setHex(0x8a3a2c);
@@ -507,6 +525,17 @@
       const nose = new THREE.Mesh(new THREE.ConeGeometry(topRad, topRad * 2.6, 24), pmat(baseKind));
       nose.position.y = y + topRad * 1.3;
       rocket.add(nose); rParts.push({ mesh: nose, stage: nStack, baseY: nose.position.y });
+
+      // Phase 8: เพย์โหลด Tier 4–5 เป็นโมเดล .glb จริง (NASA) แทนก้อนทึบ
+      if (window.ModelManager && meta.payloadId && window.ModelManager.isModelPayload(meta.payloadId)) {
+        const plHolder = new THREE.Group();
+        plHolder.position.y = y + topRad * 0.5;
+        rocket.add(plHolder);
+        rParts.push({ mesh: plHolder, stage: nStack, baseY: plHolder.position.y });
+        window.ModelManager.forPayload(meta.payloadId, { size: topRad * 1.7, emissive: 0x1b3a66, emissiveIntensity: 0.28 })
+          .then(m => { if (m && !canceled) { plHolder.add(m); plHolder.userData.spin = 0.4; } })
+          .catch(e => console.warn("[Launch3D] payload model", e));
+      }
       // fins on stage 1 (บริเวณฐาน)
       const finMat = new THREE.MeshStandardMaterial({ color: 0xb23a3a, roughness: 0.6 });
       for (let k = 0; k < 4; k++) {
@@ -535,6 +564,10 @@
     }
     const flame = makePoints(260, 0.9, true);
     const smoke = makePoints(420, 2.6, false);
+
+    // Phase 8: หัวพลุเฉลิมฉลอง — จุดระเบิดเป็นอนุภาคสีตอนถึง apogee (vy ≤ 0)
+    const fx = [];
+    let fwFired = false;
 
     // ---------- ระบบสภาพอากาศ (Phase 4): เมฆ / ฝน / ฟ้าผ่า ----------
     const wxActive = weather.cloudCover > 0.12 || weather.rainRate > 0.02 || weather.skyDark > 0.05;
@@ -722,7 +755,8 @@
     if (camTag) camTag.hidden = false;
 
     // ---------- FlightHUD (แถบล่าง + ปุ่มควบคุม gravity turn / STAGE) ----------
-    const hudOn = !!window.FlightHUD;
+    //   โคมลอยบังคับทิศไม่ได้ (ลอยตามลม) — ซ่อนแผงควบคุมล่าง ไม่ให้บังตัวโคม
+    const hudOn = !!window.FlightHUD && !meta.lantern;
     if (hudOn) {
       window.FlightHUD.mount({
         initialPitch: (flight.control && flight.control.pitchDeg) || 0,
@@ -779,7 +813,10 @@
 
       // จรวดพื้นบ้านลำเล็ก (บั้งไฟ/ตะไล/โคม) — ดึงกล้องเข้าใกล้ให้เห็นลำ+หางชัด
       const sm = meta.bangfai || meta.talai || tier === 1;
-      if (camState === "pad") { camGoalPos.set(sm ? 5 : 7, sm ? 3 : 2.5, sm ? 8 : 11); camGoalLook.set(0, sm ? 3.5 : 5, 0); }
+      if (camState === "pad") {
+        camGoalPos.set(meta.lantern ? 4.2 : sm ? 5 : 7, meta.lantern ? 2.4 : sm ? 3 : 2.5, meta.lantern ? 6.5 : sm ? 8 : 11);
+        camGoalLook.set(0, meta.lantern ? 2.3 : sm ? 3.5 : 5, 0);
+      }
       else if (camState === "ground") {
         camGoalPos.set(sm ? 8.5 : 16, (sm ? 4.5 : 8) + ry * 0.15, sm ? 13 : 24);
         camGoalLook.set(0, ry + (sm ? 1.5 : 4), 0);
@@ -839,6 +876,22 @@
       if (hudOn) window.FlightHUD.update(s, flight);
       if (window.Capcom) window.Capcom.feed(s, flight);
 
+      // หัวพลุ: จุดครั้งเดียวเมื่อความเร็วแนวดิ่ง ≤ 0 (apogee) และพ้นแท่นแล้ว
+      if (!fwFired && meta.firework && window.Fireworks && s.vy <= 0 && s.t > 1 && alt > 20
+        && s.phase !== "pad" && !s.landed) {
+        fwFired = true;
+        const my = vehicleMidY();
+        try {
+          fx.push(window.Fireworks.detonate(THREE, scene,
+            new THREE.Vector3(rocket.position.x, my, 0), meta.firework));
+          shake = Math.max(shake, 0.22);
+          showEvent("หัวพลุแตก! เปลว" + (meta.firework.flame || "สี") + " 🎆");
+        } catch (e) { console.warn("[Launch3D] firework", e); }
+      }
+      for (let i = fx.length - 1; i >= 0; i--) {
+        if (!fx[i].update(dt * Math.min(simSpeed, 3))) { fx[i].dispose(); fx.splice(i, 1); }
+      }
+
       // world sink
       const u = altU(alt);
       worldGroup.position.y = -u;
@@ -861,10 +914,14 @@
       if (meta.lantern) {
         rocket.rotation.y += dt * 0.3;
         rocket.rotation.z = -rocket.position.x * 0.02 + Math.sin(s.t * 0.8) * 0.03;
-        const lamp = rocket.userData.khomLamp, fl = rocket.userData.khomFlame;
+        const lamp = rocket.userData.khomLamp, glowL = rocket.userData.khomGlow;
+        const fl = rocket.userData.khomFlame, core = rocket.userData.khomCore;
         const litK = s.thrustNow > 0;
-        if (lamp) lamp.intensity = litK ? 2.4 + Math.random() * 1.6 : Math.max(0, lamp.intensity * 0.92);
-        if (fl) { fl.visible = litK; fl.scale.y = 1.4 + Math.random() * 0.7; fl.scale.x = fl.scale.z = 0.85 + Math.random() * 0.3; }
+        const flick = 0.8 + Math.random() * 0.45;
+        if (lamp) lamp.intensity = litK ? 4.5 * flick + 0.8 : Math.max(0, lamp.intensity * 0.92);
+        if (glowL) glowL.intensity = litK ? 3.0 * flick : Math.max(0, glowL.intensity * 0.93);
+        if (fl) { fl.visible = litK; fl.scale.y = 1.3 + Math.random() * 0.8; fl.scale.x = fl.scale.z = 0.8 + Math.random() * 0.35; }
+        if (core) { core.visible = litK; core.scale.setScalar(0.85 + Math.random() * 0.4); }
       }
 
       // จุดปลายท่อ (nozzle) = ใต้ท่อนล่างสุดที่ยังติดอยู่
@@ -910,8 +967,10 @@
         gb + (0.05 - gb) * spaceT + flash * 0.6);
       scene.fog.density = (0.0016 + 0.0032 * weather.cloudCover * (1 - spaceT)) * (1 - spaceT);
       setStarOpacity(spaceT * 1.4 - 0.15);
-      hemi.intensity = 0.5 * (1 - spaceT * 0.7) * (1 - 0.55 * dark) + flash * 2.2;
-      sun.intensity = 1.15 * (1 - 0.6 * dark) + flash * 1.6;
+      // โคมลอย: หรี่แสงกลางวันลงหน่อย ให้ไฟในโคมเรืองเด่น (เหมือนปล่อยตอนพลบค่ำ)
+      const ambDim = meta.lantern ? 0.6 : 1;
+      hemi.intensity = (0.5 * (1 - spaceT * 0.7) * (1 - 0.55 * dark)) * ambDim + flash * 2.2;
+      sun.intensity = (1.15 * (1 - 0.6 * dark)) * (meta.lantern ? 0.72 : 1) + flash * 1.6;
       const orbitalView = alt > 60000;
       earth.visible = orbitalView;
       ground.material.opacity = 1;
@@ -990,6 +1049,8 @@
     function cleanup() {
       canceled = true;
       if (raf) cancelAnimationFrame(raf);
+      fx.forEach(f => { try { f.dispose(); } catch (e) {} });
+      fx.length = 0;
       window.removeEventListener("resize", resize);
       if (hudOn) window.FlightHUD.unmount();
       if (window.Capcom) window.Capcom.unmount();
