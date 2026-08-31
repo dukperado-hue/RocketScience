@@ -671,32 +671,40 @@
     G.run.legalResult = checkClearance(TIERS[r.tierKey].legalTier, G.run.legalChecks);
     closeLegal();
 
-    G.run.wind = +((Math.random() * 2 - 1) * (2 + Math.min(3, tierN(r.tierKey)) * 1.5)).toFixed(1);
+    G.run.weather = window.Physics.makeWeather({
+      // จรวดเล็ก (tier ต่ำ) เจอพายุบ่อยกว่าเล็กน้อย เพื่อสอนเรื่องเขตปลอดภัย/หน้าต่างปล่อย
+      stormChance: 0.12 + (4 - Math.min(4, tierN(r.tierKey))) * 0.02
+    });
+    // ลมกระโชกวันพายุแรงกว่า
+    G.run.wind = +((Math.random() * 2 - 1) *
+      (2 + Math.min(3, tierN(r.tierKey)) * 1.5) * (1 + G.run.weather.windGust * 0.8)).toFixed(1);
+    const wxCommon = { windSpeed: G.run.wind, weather: G.run.weather };
 
     let cfg;
     if (s.staged) {
-      cfg = {
+      cfg = Object.assign({
         stages: s.stages, payloadMass: s.payloadMass, dragCoef: s.dragCoef,
         orbital: s.orbital, targetAltitude: m.targetAltitude, tier: tierN(r.tierKey),
         targetOrbitVelocity: m.targetOrbit || 0, launchAngleDeg: s.launchAngleDeg || 0,
-        windSpeed: G.run.wind, windSensitivity: 0.35, spinStabilized: true,
+        windSensitivity: 0.35, spinStabilized: true,
         rocketMeta: { icon: r.icon, tier: tierN(r.tierKey), orbital: s.orbital, stageCount: s.stages.length }
-      };
+      }, wxCommon);
     } else {
-      cfg = {
+      cfg = Object.assign({
         thrust: s.thrust, burnTime: s.burnTime, wetMass: s.wetMass, dryMass: s.dryMass,
-        dragCoef: s.dragCoef, windSpeed: G.run.wind, windSensitivity: r.windSensitivity,
+        dragCoef: s.dragCoef, windSensitivity: r.windSensitivity,
         spinStabilized: s.spin, thrustWobble: s.wobble, targetAltitude: m.targetAltitude,
         tier: tierN(r.tierKey), fuelMass: s.fuelMass, paperRisk: s.paperRisk,
         structure: r.lantern ? "paper" : (r.blackPowder ? "blackpowder" : null),
         rocketMeta: { icon: r.icon, tier: tierN(r.tierKey), spinStabilized: s.spin }
-      };
+      }, wxCommon);
     }
 
     show("launch");
     const use3d = !!(window.Launch3D && window.THREE);
+    const WX_TH = { clear: "ฟ้าใส ☀️", cloudy: "เมฆมาก ⛅", rain: "ฝนตก 🌧️", thunderstorm: "พายุฝนฟ้าคะนอง ⛈️" };
     $("#launch-caption").textContent =
-      `${G.run.name} · ${use3d ? "3D cinematic" : "2D"} · ลม ${G.run.wind >= 0 ? "→" : "←"} ${Math.abs(G.run.wind)} m/s`;
+      `${G.run.name} · ${use3d ? "3D cinematic" : "2D"} · ลม ${G.run.wind >= 0 ? "→" : "←"} ${Math.abs(G.run.wind)} m/s · ${WX_TH[G.run.weather.type] || ""}`;
 
     const hooks = { onComplete: summary => { G.run.flightSummary = summary; showReport(summary); } };
     try {

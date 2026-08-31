@@ -29,6 +29,42 @@ function orbitalVelocity(alt) {
   return Math.sqrt(MU / (R_EARTH + Math.max(0, alt)));
 }
 function smoothstep(x) { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); }
+function clamp01(x) { return x < 0 ? 0 : x > 1 ? 1 : x; }
+
+// ===== ระบบสภาพอากาศ (Phase 4) =====
+//  ใช้ทั้งฝั่งฟิสิกส์ (แรงลมกระโชก) และฝั่งภาพ (ฝน/เมฆ/ฟ้าผ่า ใน launch3d.js)
+//  type: "clear" | "cloudy" | "rain" | "thunderstorm"
+const WEATHER_PRESETS = {
+  clear:        { cloudCover: 0.05, rainRate: 0.00, skyDark: 0.00, lightning: false, windGust: 0.0 },
+  cloudy:       { cloudCover: 0.55, rainRate: 0.00, skyDark: 0.22, lightning: false, windGust: 0.35 },
+  rain:         { cloudCover: 0.82, rainRate: 0.55, skyDark: 0.50, lightning: false, windGust: 0.6 },
+  thunderstorm: { cloudCover: 1.00, rainRate: 0.92, skyDark: 0.85, lightning: true,  windGust: 1.0 }
+};
+function normalizeWeather(w) {
+  w = w || {};
+  const type = WEATHER_PRESETS[w.type] ? w.type : "clear";
+  const d = WEATHER_PRESETS[type];
+  return {
+    type,
+    cloudCover: clamp01(w.cloudCover != null ? w.cloudCover : d.cloudCover),
+    rainRate:   clamp01(w.rainRate   != null ? w.rainRate   : d.rainRate),
+    skyDark:    clamp01(w.skyDark     != null ? w.skyDark    : d.skyDark),
+    lightning:  w.lightning != null ? !!w.lightning : d.lightning,
+    windGust:   Math.max(0, w.windGust != null ? w.windGust : d.windGust)
+  };
+}
+function makeWeather(opts) {
+  opts = opts || {};
+  const r = typeof opts.rng === "function" ? opts.rng : Math.random;
+  if (opts.type) return normalizeWeather({ type: opts.type });
+  const roll = r();
+  const storm = opts.stormChance != null ? opts.stormChance : 0.14;
+  let type = "clear";
+  if (roll < storm) type = "thunderstorm";
+  else if (roll < storm + 0.20) type = "rain";
+  else if (roll < storm + 0.46) type = "cloudy";
+  return normalizeWeather({ type });
+}
 
 function wobbleNoise(seed, t) {
   return Math.sin(t * 6.1 + seed) * 0.6 + Math.sin(t * 13.7 + seed * 2.3) * 0.3 + Math.sin(t * 27.3 + seed * 4.7) * 0.1;
@@ -76,9 +112,10 @@ function createFlight(config) {
     dragCoef: 0.5, payloadMass: 0,
     windSpeed: 0, windSensitivity: 1, spinStabilized: false, thrustWobble: 0,
     targetAltitude: 100, orbital: false, targetOrbitVelocity: 0, launchAngleDeg: 0,
-    tier: 1, structure: null, fuelMass: 0
+    tier: 1, structure: null, fuelMass: 0, weather: null
   }, config);
 
+  const weather = normalizeWeather(c.weather);
   const stages = buildStages(c);
   const stageCount = stages.length;
   const payload = c.payloadMass || 0;
@@ -133,6 +170,7 @@ function createFlight(config) {
     padExplosion: false, unstable: false, failReason: null,
     apoapsis: 0, periapsis: -R_EARTH, cutoff: null, insT: 0,
     _stagedTo: 1, _mq: false,
+    weather,
     events: []
   };
 
@@ -360,7 +398,11 @@ function createFlight(config) {
     if (rho > 1e-4) {
       const spinFactor = c.spinStabilized ? 0.3 : 1;
       const lowSpeedVuln = 1 + Math.max(0, (40 - speed) / 40) * 1.5;
-      const relWind = c.windSpeed - state.vx;
+      // ลมกระโชกตามสภาพอากาศ (windGust=0 ในวันฟ้าใส → ไม่เปลี่ยนพฤติกรรมเดิม)
+      const gust = weather.windGust
+        ? 1 + weather.windGust * 0.6 * Math.sin(state.t * 1.7 + seed) * Math.sin(state.t * 0.5 + 1.3)
+        : 1;
+      const relWind = (c.windSpeed - state.vx) * gust;
       windForce = 0.5 * rho * relWind * Math.abs(relWind) * cd * 1.4 * c.windSensitivity * spinFactor * lowSpeedVuln;
     }
 
@@ -454,7 +496,7 @@ function createFlight(config) {
   }
 
   return {
-    state, step, runToEnd, summary, config: c, stages,
+    state, step, runToEnd, summary, config: c, stages, weather,
     deltaVBudget, deltaVRequired, glow, stageDeltaV: dv.per, tCutoff, stageEnd,
     control, setControl, requestStage,
     preFlight: { padCATO, comInstab, paperStructure: !!thermal }
@@ -463,6 +505,7 @@ function createFlight(config) {
 
 window.Physics = {
   createFlight, airDensity, gravity, orbitalVelocity, stackDeltaV,
+  normalizeWeather, makeWeather, WEATHER_PRESETS,
   G: G0, MU, R_EARTH, KARMAN,
   deltaV(stages, payloadMass) { return stackDeltaV(stages, payloadMass).total; }
 };

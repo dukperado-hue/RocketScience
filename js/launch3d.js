@@ -45,6 +45,66 @@
     return tex;
   }
 
+  // ก้อนเมฆฟู ๆ (soft puff) สำหรับชั้นเมฆ
+  function cloudSprite() {
+    const c = document.createElement("canvas");
+    c.width = c.height = 128;
+    const x = c.getContext("2d");
+    for (let i = 0; i < 26; i++) {
+      const px = 64 + (Math.random() - 0.5) * 70;
+      const py = 64 + (Math.random() - 0.5) * 50;
+      const r = 12 + Math.random() * 34;
+      const g = x.createRadialGradient(px, py, 0, px, py, r);
+      g.addColorStop(0, "rgba(255,255,255,0.5)");
+      g.addColorStop(1, "rgba(255,255,255,0)");
+      x.fillStyle = g;
+      x.beginPath(); x.arc(px, py, r, 0, 7); x.fill();
+    }
+    return new (T().CanvasTexture)(c);
+  }
+
+  // พื้นผิวโลกแบบ procedural: มหาสมุทร + ทวีป + น้ำแข็งขั้วโลก + เมฆบาง
+  function earthSurfaceTexture() {
+    const w = 1024, h = 512;
+    const c = document.createElement("canvas");
+    c.width = w; c.height = h;
+    const x = c.getContext("2d");
+    const oc = x.createLinearGradient(0, 0, 0, h);
+    oc.addColorStop(0, "#0c3f7e"); oc.addColorStop(0.5, "#155ba8"); oc.addColorStop(1, "#0c3f7e");
+    x.fillStyle = oc; x.fillRect(0, 0, w, h);
+    // ทวีป — blob สุ่ม (เล็กลง เว้นมหาสมุทรให้เห็นน้ำเงินมากขึ้น)
+    const land = ["#3f6b3a", "#57813f", "#7c8a4b", "#9a8a55"];
+    for (let i = 0; i < 15; i++) {
+      const cx = Math.random() * w, cy = 60 + Math.random() * (h - 120);
+      const rad = 24 + Math.random() * 78;
+      x.fillStyle = land[i % land.length];
+      x.globalAlpha = 0.92;
+      x.beginPath();
+      for (let a = 0; a < Math.PI * 2; a += 0.3) {
+        const rr = rad * (0.5 + Math.random() * 0.7);
+        const px = cx + Math.cos(a) * rr, py = cy + Math.sin(a) * rr * 0.66;
+        a === 0 ? x.moveTo(px, py) : x.lineTo(px, py);
+      }
+      x.closePath(); x.fill();
+      // ชายฝั่งเขียวอ่อน
+      x.strokeStyle = "rgba(120,150,90,0.5)"; x.lineWidth = 3; x.stroke();
+    }
+    x.globalAlpha = 1;
+    // ขั้วโลก
+    const cap = x.createLinearGradient(0, 0, 0, 60);
+    x.fillStyle = "rgba(240,248,255,0.92)";
+    x.fillRect(0, 0, w, 26 + Math.random() * 14);
+    x.fillRect(0, h - (26 + Math.random() * 14), w, 40);
+    // เมฆบาง
+    x.fillStyle = "rgba(255,255,255,0.16)";
+    for (let i = 0; i < 90; i++) {
+      x.beginPath();
+      x.ellipse(Math.random() * w, Math.random() * h, 20 + Math.random() * 90, 8 + Math.random() * 24, Math.random() * 3, 0, 7);
+      x.fill();
+    }
+    return new (T().CanvasTexture)(c);
+  }
+
   function run(canvas, cfg, hooks) {
     const THREE = T();
     if (!THREE) throw new Error("THREE not available");
@@ -55,6 +115,15 @@
     const propType = (cfg.stages && cfg.stages[0] && cfg.stages[0].propType) || "solid";
     const liquid = propType === "liquid";
     const stageCount = (cfg.stages && cfg.stages.length) || 1;
+
+    // ---------- Phase 4: สภาพอากาศ + ตัวจัดการพื้นผิว ----------
+    const weather = (window.Physics && window.Physics.normalizeWeather)
+      ? window.Physics.normalizeWeather(cfg.weather)
+      : Object.assign({ type: "clear", cloudCover: 0.05, rainRate: 0, skyDark: 0, lightning: false, windGust: 0 }, cfg.weather || {});
+    const TM = window.TextureManager ? window.TextureManager.init() : null;
+    const tmReady = () => !!(TM && window.TextureManager.ready());
+    const disposables = [];   // เทกซ์เจอร์ที่ต้อง dispose ตอนจบ
+    function track(tex) { if (tex) disposables.push(tex); return tex; }
 
     // ---------- renderer / scene ----------
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
@@ -109,28 +178,170 @@
     horizon.rotation.x = -Math.PI / 2;
     worldGroup.add(horizon);
 
-    // stars
-    const starGeo = new THREE.BufferGeometry();
-    const starN = 900, sp = new Float32Array(starN * 3);
-    for (let i = 0; i < starN; i++) {
-      const r = 2200 + Math.random() * 1500;
-      const th = Math.random() * Math.PI * 2, ph = Math.acos(2 * Math.random() - 1);
-      sp[i * 3] = r * Math.sin(ph) * Math.cos(th);
-      sp[i * 3 + 1] = Math.abs(r * Math.cos(ph)) * 0.6;
-      sp[i * 3 + 2] = r * Math.sin(ph) * Math.sin(th);
+    // ---------- starfield + ทางช้างเผือก (Phase 4) ----------
+    const starPtsTex = track(softSprite());
+    function starPoints(n, radius, sizeMul, opts) {
+      const geo = new THREE.BufferGeometry();
+      const pos = new Float32Array(n * 3), col = new Float32Array(n * 3), sz = new Float32Array(n);
+      const tint = new THREE.Color();
+      // ทางช้างเผือก: ระนาบวงกลมใหญ่เอียง ~28° หนาแบบเกาส์เซียน
+      const tilt = 0.48, ct = Math.cos(tilt), st = Math.sin(tilt);
+      for (let i = 0; i < n; i++) {
+        let dx, dy, dz;
+        if (opts && opts.band) {
+          const ang = Math.random() * Math.PI * 2;
+          const thick = (Math.random() + Math.random() + Math.random() - 1.5) * (opts.bandThick || 0.16);
+          dx = Math.cos(ang); dy = thick; dz = Math.sin(ang);
+          const L = Math.hypot(dx, dy, dz); dx /= L; dy /= L; dz /= L;
+          const ny = dy * ct - dz * st, nz = dy * st + dz * ct; dy = ny; dz = nz;
+        } else {
+          const u = Math.random() * 2 - 1, th = Math.random() * Math.PI * 2, sq = Math.sqrt(1 - u * u);
+          dx = sq * Math.cos(th); dy = Math.abs(u) * 0.85 + 0.05; dz = sq * Math.sin(th);
+        }
+        const r = radius * (0.9 + Math.random() * 0.2);
+        pos[i * 3] = dx * r; pos[i * 3 + 1] = dy * r; pos[i * 3 + 2] = dz * r;
+        // สีดาว: ขาว-ฟ้า-ส้มอ่อน + dust lane มืดสำหรับแถบทางช้างเผือก
+        const t = Math.random();
+        if (opts && opts.band) {
+          const dust = Math.random() < 0.22 ? 0.25 : 1;
+          tint.setRGB(0.62 * dust, 0.66 * dust, 0.85 * dust);
+        } else {
+          tint.setHSL(0.55 + (t - 0.5) * 0.22, 0.55, 0.72 + Math.random() * 0.28);
+        }
+        col[i * 3] = tint.r; col[i * 3 + 1] = tint.g; col[i * 3 + 2] = tint.b;
+        sz[i] = (opts && opts.band ? 1.4 : (Math.random() < 0.05 ? 3.2 : 1)) * sizeMul;
+      }
+      geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+      geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+      const mat = new THREE.PointsMaterial({
+        map: starPtsTex, size: 3 * sizeMul, sizeAttenuation: false, vertexColors: true,
+        transparent: true, opacity: 0, depthWrite: false,
+        blending: opts && opts.band ? THREE.AdditiveBlending : THREE.NormalBlending
+      });
+      const pts = new THREE.Points(geo, mat);
+      pts.frustumCulled = false;
+      pts.renderOrder = -2;
+      scene.add(pts);
+      return pts;
     }
-    starGeo.setAttribute("position", new THREE.BufferAttribute(sp, 3));
-    const stars = new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 3, sizeAttenuation: false, transparent: true, opacity: 0 }));
-    scene.add(stars);
+    const stars = starPoints(4200, 3400, 1);
+    const milkyWay = starPoints(2600, 3200, 0.9, { band: true, bandThick: 0.14 });
+    const starLayers = [stars, milkyWay];
+    function setStarOpacity(v) {
+      stars.material.opacity = Math.max(0, v);
+      milkyWay.material.opacity = Math.max(0, v * 0.7);
+    }
 
-    // curved earth for orbital view
-    const earth = new THREE.Mesh(
-      new THREE.SphereGeometry(900, 48, 32),
-      new THREE.MeshStandardMaterial({ color: 0x1b4a86, emissive: 0x0a1f3a, roughness: 1 })
+    // ---------- โลกโค้ง + ชั้นบรรยากาศเรืองแสง (Fresnel) สำหรับมุมวงโคจร ----------
+    const earthGroup = new THREE.Group();
+    earthGroup.position.set(0, -960, 0);
+    earthGroup.visible = false;
+    scene.add(earthGroup);
+    const earthSurf = new THREE.Mesh(
+      new THREE.SphereGeometry(900, 72, 48),
+      new THREE.MeshStandardMaterial({
+        map: track(earthSurfaceTexture()), roughness: 1, metalness: 0,
+        emissive: 0x0a1830, emissiveIntensity: 0.22
+      })
     );
-    earth.position.set(0, -960, 0);
-    earth.visible = false;
-    scene.add(earth);
+    earthGroup.add(earthSurf);
+    const atmoUniforms = {
+      uDay: { value: new THREE.Color(0x2360d8) },
+      uTerm: { value: new THREE.Color(0xff6a1e) },
+      uSun: { value: new THREE.Vector3(-30, 40, 20).normalize() },
+      uCenter: { value: new THREE.Vector3(0, -960, 0) }
+    };
+    const atmoMat = new THREE.ShaderMaterial({
+      uniforms: atmoUniforms,
+      transparent: true, depthWrite: false,
+      side: THREE.BackSide, blending: THREE.AdditiveBlending,
+      vertexShader:
+        "varying vec3 vWorld;\n" +
+        "void main(){ vec4 wp = modelMatrix * vec4(position,1.0); vWorld = wp.xyz; gl_Position = projectionMatrix * viewMatrix * wp; }",
+      fragmentShader:
+        "precision highp float;\n" +
+        "uniform vec3 uDay; uniform vec3 uTerm; uniform vec3 uSun; uniform vec3 uCenter;\n" +
+        "varying vec3 vWorld;\n" +
+        "void main(){\n" +
+        "  vec3 radial = normalize(vWorld - uCenter);\n" +
+        "  vec3 V = normalize(cameraPosition - vWorld);\n" +
+        "  float rim = pow(1.0 - abs(dot(V, radial)), 3.4);\n" +
+        "  float sd = dot(radial, normalize(uSun));\n" +
+        "  float day = smoothstep(-0.1, 0.55, sd);\n" +
+        "  float term = smoothstep(-0.5, -0.02, sd) * (1.0 - smoothstep(-0.02, 0.42, sd));\n" +
+        "  vec3 col = mix(uDay, uTerm, term * 0.85);\n" +
+        "  float a = rim * (0.12 + 0.5 * day) + term * rim * 0.55;\n" +
+        "  gl_FragColor = vec4(col, clamp(a, 0.0, 0.8));\n" +
+        "}"
+    });
+    const atmo = new THREE.Mesh(new THREE.SphereGeometry(900 * 1.055, 72, 48), atmoMat);
+    earthGroup.add(atmo);
+    const earth = earthGroup;   // alias เดิม
+
+    // ---------- ขยะอวกาศ + CubeSat (Phase 4) — โผล่เมื่อ alt > 100 km ----------
+    const traffic = (function buildTraffic() {
+      const g = new THREE.Group();
+      g.visible = false;
+      scene.add(g);
+      const metalM = tmReady() ? window.TextureManager.clone("mat_metal")
+        : new THREE.MeshStandardMaterial({ color: 0x9aa1ab, roughness: 0.5, metalness: 0.7 });
+      const solarM = tmReady() ? window.TextureManager.clone("mat_solar")
+        : new THREE.MeshStandardMaterial({ color: 0x1e49aa, roughness: 0.3, metalness: 0.5, emissive: 0x0a1a44 });
+      if (metalM.emissive) { metalM.emissive.setHex(0x1c2330); metalM.emissiveIntensity = 0.35; }
+      const bodyGeo = new THREE.BoxGeometry(1, 1, 1.4);
+      const panelGeo = new THREE.PlaneGeometry(3.4, 1.15);
+      const items = [];
+      for (let i = 0; i < 32; i++) {
+        const sat = new THREE.Group();
+        const sz = 1.1 + Math.random() * 2.4;
+        const body = new THREE.Mesh(bodyGeo, metalM); body.scale.setScalar(sz); sat.add(body);
+        if (Math.random() > 0.22) {
+          const p1 = new THREE.Mesh(panelGeo, solarM); p1.position.x = sz * 2.0; sat.add(p1);
+          const p2 = new THREE.Mesh(panelGeo, solarM); p2.position.x = -sz * 2.0; sat.add(p2);
+        }
+        const a = Math.random() * Math.PI * 2, rr = 34 + Math.random() * 190;
+        sat.position.set(Math.cos(a) * rr, 4 + (Math.random() - 0.5) * 150, Math.sin(a) * rr - 30);
+        sat.rotation.set(Math.random() * 6, Math.random() * 6, Math.random() * 6);
+        g.add(sat);
+        items.push({
+          sat,
+          drift: new THREE.Vector3((Math.random() - 0.5) * 1.5, (Math.random() - 0.5) * 0.4, (Math.random() - 0.5) * 1.5),
+          spin: new THREE.Vector3((Math.random() - 0.5) * 0.6, (Math.random() - 0.5) * 0.6, (Math.random() - 0.5) * 0.6)
+        });
+      }
+      // เศษชิ้นเล็ก
+      const dN = 160, dp = new Float32Array(dN * 3);
+      for (let i = 0; i < dN; i++) {
+        const a = Math.random() * Math.PI * 2, rr = 36 + Math.random() * 300;
+        dp[i * 3] = Math.cos(a) * rr; dp[i * 3 + 1] = (Math.random() - 0.5) * 260; dp[i * 3 + 2] = Math.sin(a) * rr - 26;
+      }
+      const dgeo = new THREE.BufferGeometry();
+      dgeo.setAttribute("position", new THREE.BufferAttribute(dp, 3));
+      const debris = new THREE.Points(dgeo, new THREE.PointsMaterial({
+        map: track(softSprite()), color: 0xd6dce6, size: 1.4, sizeAttenuation: true, transparent: true, opacity: 0.95, depthWrite: false
+      }));
+      debris.frustumCulled = false;
+      g.add(debris);
+      return { group: g, items, debris };
+    })();
+    function updateTraffic(dt, alt) {
+      const on = alt > 100000;
+      traffic.group.visible = on;
+      if (!on) return;
+      traffic.group.rotation.y += dt * 0.015;      // ล่องไปตามวงโคจรช้า ๆ
+      traffic.debris.rotation.y -= dt * 0.008;
+      const B = 320;
+      traffic.items.forEach(it => {
+        const p = it.sat.position;
+        p.addScaledVector(it.drift, dt);
+        if (p.x > B) p.x -= 2 * B; else if (p.x < -B) p.x += 2 * B;
+        if (p.z > B - 26) p.z -= 2 * B; else if (p.z < -B - 26) p.z += 2 * B;
+        if (p.y > 170) p.y -= 340; else if (p.y < -170) p.y += 340;
+        it.sat.rotation.x += it.spin.x * dt;
+        it.sat.rotation.y += it.spin.y * dt;
+        it.sat.rotation.z += it.spin.z * dt;
+      });
+    }
 
     // ---------- rocket ----------
     const rocket = new THREE.Group();
@@ -138,10 +349,21 @@
     const rParts = [];
     const bodyMat = new THREE.MeshStandardMaterial({ color: 0xe8e9ee, roughness: 0.5, metalness: 0.3 });
     const trimMat = new THREE.MeshStandardMaterial({ color: 0x2e4a7a, roughness: 0.6 });
+    // Phase 4: เลือกวัสดุพื้นผิวตามชนิดจรวด (ไผ่ / กระดาษสา / โลหะ / โซลาร์)
+    const baseKind = tier === 1 ? "mat_paper"
+      : (tier <= 2 || cfg.structure === "blackpowder") ? "mat_bamboo"
+        : "mat_metal";
+    function pmat(kind) {
+      if (tmReady()) return window.TextureManager.clone(kind);
+      return (kind === "mat_metal" || kind === "mat_solar" ? trimMat : bodyMat).clone();
+    }
 
     if (tier === 1) {
-      const lant = new THREE.Mesh(new THREE.SphereGeometry(1.6, 20, 16),
-        new THREE.MeshStandardMaterial({ color: 0xff5a3c, emissive: 0xff4020, emissiveIntensity: 0.8, roughness: 0.7 }));
+      const lm = pmat("mat_paper");
+      lm.color.setHex(0xff7a4c);
+      if (lm.emissive) { lm.emissive.setHex(0xff4020); lm.emissiveIntensity = 0.85; }
+      lm.roughness = 0.8;
+      const lant = new THREE.Mesh(new THREE.SphereGeometry(1.6, 24, 18), lm);
       lant.position.y = 3.6; lant.scale.y = 1.35;
       rocket.add(lant); rParts.push({ mesh: lant, stage: 1 });
     } else {
@@ -151,15 +373,19 @@
       for (let i = 0; i < nStack; i++) {                // stage 1 (i=0) = ท่อนล่างสุด
         const h = tier <= 2 ? 4.5 : (nStack === 1 ? 5.5 : (i === 0 ? 5.2 : 3.4));
         const segRad = rad * (1 - i * 0.13);
+        let segKind = baseKind;
+        if (cfg.orbital && i === nStack - 1) segKind = "mat_solar";
+        const segMat = pmat(segKind);
+        if (i % 2 && segKind !== "mat_solar") segMat.color.multiplyScalar(0.72);
         const seg = new THREE.Mesh(new THREE.CylinderGeometry(segRad, rad * (1 - Math.max(0, i - 1) * 0.13), h, 24),
-          i % 2 ? trimMat.clone() : bodyMat.clone());
+          segMat);
         seg.position.y = y + h / 2;
         rocket.add(seg);
         rParts.push({ mesh: seg, stage: i + 1, baseY: seg.position.y, h });
         y += h;
       }
       const topRad = rad * (1 - (nStack - 1) * 0.13);
-      const nose = new THREE.Mesh(new THREE.ConeGeometry(topRad, topRad * 2.6, 24), bodyMat.clone());
+      const nose = new THREE.Mesh(new THREE.ConeGeometry(topRad, topRad * 2.6, 24), pmat(baseKind));
       nose.position.y = y + topRad * 1.3;
       rocket.add(nose); rParts.push({ mesh: nose, stage: nStack, baseY: nose.position.y });
       // fins on stage 1 (บริเวณฐาน)
@@ -190,6 +416,116 @@
     }
     const flame = makePoints(260, 0.9, true);
     const smoke = makePoints(420, 2.6, false);
+
+    // ---------- ระบบสภาพอากาศ (Phase 4): เมฆ / ฝน / ฟ้าผ่า ----------
+    const wxActive = weather.cloudCover > 0.12 || weather.rainRate > 0.02 || weather.skyDark > 0.05;
+    const wx = (function buildWeather() {
+      // --- ชั้นเมฆ: แผ่นบิลบอร์ดฟู ๆ อยู่ที่ระดับ ~2 กม. (จมไปกับ worldGroup) ---
+      const cloudTex = track(cloudSprite());
+      const cloudGrp = new THREE.Group();
+      cloudGrp.position.y = 42;                 // ≈ altU(2000)
+      worldGroup.add(cloudGrp);
+      const clouds = [];
+      const nC = Math.round(6 + weather.cloudCover * 20);
+      for (let i = 0; i < nC; i++) {
+        const m = new THREE.MeshBasicMaterial({
+          map: cloudTex, transparent: true, depthWrite: false, opacity: 0, side: THREE.DoubleSide
+        });
+        const pl = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), m);
+        const s = 26 + Math.random() * 60;
+        pl.scale.set(s, s * (0.5 + Math.random() * 0.3), 1);
+        pl.position.set((Math.random() - 0.5) * 260, (Math.random() - 0.5) * 26, (Math.random() - 0.5) * 260);
+        pl.userData.spin = (Math.random() - 0.5) * 0.02;
+        cloudGrp.add(pl); clouds.push(pl);
+      }
+
+      // --- ฝน: เส้นสายฝนตกลงแนวดิ่ง (LineSegments) ตามกล้อง ---
+      const rainN = 1100;
+      const rpos = new Float32Array(rainN * 6);
+      const RBOX = 110, RH = 90;
+      for (let i = 0; i < rainN; i++) {
+        const x = (Math.random() - 0.5) * RBOX, yy = Math.random() * RH, z = (Math.random() - 0.5) * RBOX;
+        const len = 1.4 + Math.random() * 2.2;
+        rpos[i * 6] = x; rpos[i * 6 + 1] = yy; rpos[i * 6 + 2] = z;
+        rpos[i * 6 + 3] = x; rpos[i * 6 + 4] = yy - len; rpos[i * 6 + 5] = z;
+      }
+      const rgeo = new THREE.BufferGeometry();
+      rgeo.setAttribute("position", new THREE.BufferAttribute(rpos, 3));
+      const rain = new THREE.LineSegments(rgeo, new THREE.LineBasicMaterial({
+        color: 0xaec2de, transparent: true, opacity: 0, depthWrite: false
+      }));
+      rain.frustumCulled = false;
+      scene.add(rain);
+
+      // --- ฟ้าผ่า: PointLight กะพริบเหนือชั้นเมฆ ---
+      const bolt1 = new THREE.PointLight(0xcfe0ff, 0, 500, 2);
+      const bolt2 = new THREE.PointLight(0xe8f0ff, 0, 500, 2);
+      scene.add(bolt1); scene.add(bolt2);
+
+      return {
+        cloudGrp, clouds, rain, RH, bolt1, bolt2,
+        boltNext: 1.5 + Math.random() * 4, flash: 0
+      };
+    })();
+
+    // เรียกทุกเฟรม — คืนค่าความสว่างแฟลชฟ้าผ่า (0..1) ให้โค้ดท้องฟ้าเอาไปใช้
+    function updateWeather(dt, alt, spaceT) {
+      if (!wxActive) return 0;
+      const atmoFade = Math.max(0, 1 - spaceT * 1.4);
+      const windSpd = cfg.windSpeed || 0;
+
+      // เมฆ — บิลบอร์ดหันเข้ากล้อง, เลื่อนตามลม, มืดลงตาม skyDark
+      const cloudTone = 0.85 - weather.skyDark * 0.62;
+      const cloudOp = Math.min(0.92, (0.12 + weather.cloudCover * 0.8)) * atmoFade;
+      wx.cloudGrp.children.forEach(pl => {
+        pl.lookAt(camera.position);
+        pl.position.x += (2.2 + windSpd * 0.15) * dt;
+        pl.rotation.z += pl.userData.spin;
+        if (pl.position.x > 150) pl.position.x -= 300;
+        pl.material.opacity += (cloudOp - pl.material.opacity) * Math.min(1, dt * 2);
+        pl.material.color.setRGB(cloudTone, cloudTone, cloudTone * 1.05);
+      });
+
+      // ฝน — กล่องฝนเกาะตามจรวด/กล้อง, ตกลงพร้อมความเอียงตามลม
+      const rainOp = weather.rainRate * 0.5 * atmoFade;
+      const rm = wx.rain;
+      rm.material.opacity += (rainOp - rm.material.opacity) * Math.min(1, dt * 3);
+      rm.visible = rm.material.opacity > 0.01;
+      if (rm.visible) {
+        rm.position.x = rocket.position.x;
+        rm.position.y = lookTarget.y - wx.RH * 0.5 + 6;
+        rm.rotation.z = Math.max(-0.5, Math.min(0.5, -windSpd * 0.03));
+        const arr = rm.geometry.attributes.position.array;
+        const vy = (52 + weather.rainRate * 40) * dt;
+        for (let i = 0; i < arr.length; i += 6) {
+          arr[i + 1] -= vy; arr[i + 4] -= vy;
+          if (arr[i + 1] < 0) { arr[i + 1] += wx.RH; arr[i + 4] += wx.RH; }
+        }
+        rm.geometry.attributes.position.needsUpdate = true;
+      }
+
+      // ฟ้าผ่า
+      wx.flash *= Math.pow(0.015, dt);
+      if (weather.lightning && alt < 14000) {
+        wx.boltNext -= dt;
+        if (wx.boltNext <= 0) {
+          wx.boltNext = 1.6 + Math.random() * 5.5;
+          const L = Math.random() > 0.5 ? wx.bolt1 : wx.bolt2;
+          L.position.set((Math.random() - 0.5) * 150, 50 + Math.random() * 46, (Math.random() - 0.5) * 150);
+          L.intensity = 10 + Math.random() * 16;
+          wx.flash = 0.55 + Math.random() * 0.45;
+          shake = Math.max(shake, 0.05);
+          if (window.Operator && Math.random() > 0.6) window.Operator.event && window.Operator.event("maxq");
+        }
+      }
+      [wx.bolt1, wx.bolt2].forEach(L => {
+        if (L.intensity > 0.02) {
+          L.intensity *= Math.pow(0.0009, dt);
+          if (L.intensity > 3 && Math.random() < dt * 14) L.intensity *= 2.1;   // re-strike flicker
+        } else L.intensity = 0;
+      });
+      return wx.flash * atmoFade;
+    }
 
     function emitFlame(px, py, pz, power) {
       let c = 0;
@@ -414,18 +750,30 @@
       updatePoints(flame, dt * Math.min(simSpeed, 4), 4);
       updatePoints(smoke, dt * Math.min(simSpeed, 3), 1.5);
 
-      // sky / space blend
+      // weather (เมฆ/ฝน/ฟ้าผ่า) — คืนความสว่างแฟลชฟ้าผ่า
       const spaceT = Math.min(1, alt / 75000);
+      const flash = updateWeather(dt * Math.min(simSpeed, 3), alt, spaceT);
+      updateTraffic(dt * Math.min(simSpeed, 4), alt);
+
+      // sky / space blend (พื้น → อวกาศ) + สภาพอากาศทำให้ฟ้ามืด
+      const dark = weather.skyDark * (1 - spaceT);
+      const gr = 0.04 + (0.011 - 0.04) * dark, gg = 0.09 + (0.016 - 0.09) * dark, gb = 0.19 + (0.03 - 0.19) * dark;
       scene.background.setRGB(
-        0.04 + (0.02 - 0.04) * spaceT, 0.09 + (0.02 - 0.09) * spaceT, 0.19 + (0.05 - 0.19) * spaceT);
-      scene.fog.density = 0.0016 * (1 - spaceT);
-      stars.material.opacity = Math.max(0, spaceT * 1.4 - 0.15);
-      hemi.intensity = 0.5 * (1 - spaceT * 0.7);
+        gr + (0.02 - gr) * spaceT + flash * 0.5,
+        gg + (0.02 - gg) * spaceT + flash * 0.55,
+        gb + (0.05 - gb) * spaceT + flash * 0.6);
+      scene.fog.density = (0.0016 + 0.0032 * weather.cloudCover * (1 - spaceT)) * (1 - spaceT);
+      setStarOpacity(spaceT * 1.4 - 0.15);
+      hemi.intensity = 0.5 * (1 - spaceT * 0.7) * (1 - 0.55 * dark) + flash * 2.2;
+      sun.intensity = 1.15 * (1 - 0.6 * dark) + flash * 1.6;
       const orbitalView = alt > 60000;
       earth.visible = orbitalView;
       ground.material.opacity = 1;
       worldGroup.visible = alt < 120000;
-      if (orbitalView) earth.position.y = -960 - u * 0.02;
+      if (orbitalView) {
+        earthGroup.position.y = -960 - u * 0.02;
+        atmoUniforms.uCenter.value.set(0, earthGroup.position.y, 0);
+      }
 
       // camera
       updateCameraGoal(alt);
@@ -509,6 +857,7 @@
           if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => m.dispose());
         });
         sprite.dispose();
+        disposables.forEach(t => { try { t.dispose(); } catch (e) {} });
         renderer.dispose();
       } catch (e) {}
     }
