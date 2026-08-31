@@ -283,10 +283,10 @@ a{color:var(--accent)}
   z-index:70;cursor:pointer;animation:vnup .28s ease
 }
 @keyframes vnup{from{opacity:0;transform:translate(-50%,16px)}to{opacity:1;transform:translate(-50%,0)}}
-.vn-portrait{flex:0 0 96px;width:96px;height:118px;border-radius:12px;overflow:hidden;
-  background:radial-gradient(circle at 50% 30%,color-mix(in srgb,var(--vn-accent) 30%,transparent),#12141d);
-  border:1px solid var(--line);align-self:stretch}
-.vn-portrait-img{width:100%;height:100%;object-fit:cover;display:block}
+.vn-portrait{flex:0 0 104px;width:104px;height:128px;border-radius:12px;overflow:hidden;
+  background:linear-gradient(180deg,color-mix(in srgb,var(--vn-accent) 22%,var(--card)),var(--card));
+  border:1px solid var(--line);align-self:stretch;display:flex;align-items:flex-end;justify-content:center}
+.vn-portrait-img{max-width:100%;max-height:100%;width:auto;height:100%;object-fit:contain;object-position:bottom center;display:block}
 .vn.vn-narrator .vn-portrait{display:none}
 .vn-body{flex:1;min-width:0;position:relative;padding-bottom:2px}
 .vn-plate{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
@@ -337,10 +337,21 @@ a{color:var(--accent)}
 .vx-bar-fill{display:block;height:100%;background:var(--accent)}
 .vx-bar-fill.warn{background:var(--gold)} .vx-bar-fill.bad{background:var(--bad)}
 
+/* recovery-system picker */
+.rc-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin:4px 0 6px}
+.rc-opt{display:flex;flex-direction:column;gap:1px;text-align:left;font-family:inherit;
+  padding:6px 8px;border-radius:8px;cursor:pointer;border:1px solid var(--line);
+  background:var(--card);color:var(--ink-soft);transition:all .15s}
+.rc-opt b{font-size:11px;color:var(--ink)}
+.rc-opt span{font-family:'JetBrains Mono',monospace;font-size:8.5px;color:var(--ink-faint)}
+.rc-opt.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,var(--card))}
+.rc-opt.on b{color:var(--accent)}
+
 /* ---------- Phase 5 · portrait art in CAPCOM pill / Operator badge ---------- */
 .capcom-portrait{overflow:hidden;background:#F5C518}
+.capcom-portrait img{object-position:50% 8%!important}
 .operator-face{position:relative;overflow:hidden;background:#3a2f24}
-.operator-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:12% 42%}
+.operator-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 6%}
 .operator-mood{position:absolute;right:-3px;bottom:-3px;font-size:16px;line-height:1;
   filter:drop-shadow(0 1px 2px rgba(0,0,0,.6))}
 

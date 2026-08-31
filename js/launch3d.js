@@ -18,7 +18,9 @@
     apogee: "จุดสูงสุด (apogee)", reentry: "กลับเข้าชั้นบรรยากาศ 🔥",
     burnup: "ยานไหม้จากความร้อน!", crash: "ตกกระแทกพื้น", landing: "ลงจอดปลอดภัย",
     "lantern-burnup": "โคมไหม้! กระดาษสาติดไฟ 🔥", "pad-explosion": "ระเบิดคาแท่น (CATO) 💥",
-    unstable: "เสียการทรงตัว — CG เพี้ยน"
+    unstable: "เสียการทรงตัว — CG เพี้ยน",
+    "chute-deploy": "กางร่มชูชีพ 🪂", "retro-burn": "จุดเครื่องเบรกลงจอด 🔥",
+    "soft-landing": "ลงจอดนุ่มนวล ✓", "landing-burn-fail": "เบรกไม่ทัน — ตกกระแทก 💥"
   };
   const PHASE_TH = {
     pad: "บนแท่น", boost: "เครื่องยนต์ทำงาน", coast: "ไต่ระดับอิสระ",
@@ -711,7 +713,8 @@
         if (e.k === "staging") { shake = Math.max(shake, 0.28); detachStage(e.stage - 1); }
         if (e.k === "burnup" || e.k === "lantern-burnup") shake = Math.max(shake, 0.7);
         if (e.k === "pad-explosion") shake = Math.max(shake, 0.9);
-        if (e.k === "crash") shake = Math.max(shake, 0.5);
+        if (e.k === "crash" || e.k === "landing-burn-fail") shake = Math.max(shake, 0.55);
+        if (e.k === "retro-burn") shake = Math.max(shake, 0.22);
         if (window.Capcom) window.Capcom.event(e, flight);
         if (window.Operator) window.Operator.event(e.k);
       }

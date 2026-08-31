@@ -10,7 +10,7 @@
   const SCREENS = ["home", "mission", "rocket", "name", "vab", "launch", "report"];
 
   // ---------------- progress / state ----------------
-  const defaultProgress = () => ({ unlockedTiers: ["tier1"], totalScore: 0, missionsPassed: [] });
+  const defaultProgress = () => ({ unlockedTiers: ["tier1"], totalScore: 0, missionsPassed: [], achievements: [] });
 
   function loadProgress() {
     try {
@@ -23,11 +23,19 @@
     try { localStorage.setItem(PROGRESS_KEY, JSON.stringify(G.progress)); } catch (e) {}
     renderScoreBadge();
   }
+  function awardAchievement(id, name) {
+    if (!G.progress.achievements) G.progress.achievements = [];
+    if (G.progress.achievements.includes(id)) return false;
+    G.progress.achievements.push(id);
+    toast("🏅 " + name);
+    return true;
+  }
 
   const G = {
     progress: loadProgress(),
     run: null,
-    launchInstance: null
+    launchInstance: null,
+    wanHu: { unlocked: false }   // ปลดล็อกเก้าอี้หวันหู่ด้วยการพิมพ์ "wanhu"
   };
 
   function newRun(mission) {
@@ -40,7 +48,8 @@
       legalChecks: [],       // requirement ids completed
       legalResult: null,
       wind: 0,
-      flightSummary: null
+      flightSummary: null,
+      wanHu: false
     };
   }
 
@@ -230,7 +239,8 @@
       const r = G.run.rocket;
       const list = $("#vab-parts");
       list.innerHTML = "";
-      PARTS.filter(p => p.tierMin <= tierN(r.tierKey) && ["engine", "propellant", "fin", "nosecone", "payload"].includes(p.type) && p.tierMin <= 2).forEach(p => {
+      PARTS.filter(p => p.tierMin <= tierN(r.tierKey) && ["engine", "propellant", "fin", "nosecone", "payload"].includes(p.type) && p.tierMin <= 2
+        && (!p.secret || (p.wanhu && G.wanHu.unlocked))).forEach(p => {
         const el = document.createElement("div");
         el.className = "vab-part";
         el.draggable = true;
@@ -250,6 +260,7 @@
         list.appendChild(el);
       });
       VAB.renderExtras();
+      VAB.renderRecovery();
       VAB.renderGridClassic();
     },
 
@@ -270,6 +281,22 @@
       const showChem = !!r.blackPowder || t === 2 || VAB.slots.some(id => /^charge/.test(id));
       window.VabExtras.render(host, { showBody, showChem, rocket: r }, () => VAB.computeStats());
     },
+
+    // Phase 5: แผงระบบกู้คืน / ลงจอด (ทุก tier ยกเว้น orbital-only ใช้เป็นการกู้บูสเตอร์)
+    renderRecovery() {
+      const r = G.run.rocket;
+      if (!window.Recovery) return;
+      let host = $("#vab-recovery");
+      if (!host) {
+        host = document.createElement("div");
+        host.id = "vab-recovery";
+        host.className = "vab-extras";
+        const anchor = $("#vab-extras") || $("#vab-parts");
+        anchor.parentElement.insertBefore(host, anchor.nextSibling);
+      }
+      window.Recovery.render(host, { rocket: r, tier: tierN(r.tierKey), ascent: recoveryAscent(r) },
+        () => VAB.computeStats());
+    },
     renderGridClassic() {
       const grid = $("#vab-grid");
       grid.querySelectorAll(".vab-slot, .vab-stage").forEach(n => n.remove());
@@ -284,6 +311,7 @@
         grid.appendChild(slot);
       });
       VAB.renderExtras();
+      VAB.renderRecovery();
       VAB.computeStats();
     },
     add(pid) {
@@ -356,6 +384,7 @@
           <br><span class="vst-sub">เชื้อเพลิง ${fmt(st.propMass)} kg · โครงสร้าง ${fmt(st.dryMass)} kg · ${st.propType === "liquid" ? "เหลว" : "แข็ง"}</span>`;
         grid.appendChild(d);
       });
+      VAB.renderRecovery();
       VAB.computeStats();
     },
 
@@ -369,7 +398,7 @@
       const r = G.run.rocket;
       const parts = VAB.slots.map(partById);
       const engineThrust = parts.filter(p => p.type === "engine").reduce((s, p) => s + p.thrust, 0);
-      const fuelMass = parts.filter(p => p.type === "propellant").reduce((s, p) => s + p.fuel, 0);
+      let fuelMass = parts.filter(p => p.type === "propellant").reduce((s, p) => s + p.fuel, 0);
       const nonFuelMass = parts.filter(p => p.type !== "propellant").reduce((s, p) => s + p.mass, 0);
       const spin = r.spinStabilized || parts.some(p => p.addsSpin);
       let dragCoef = Math.max(0.02, r.dragCoef + parts.reduce((s, p) => s + (p.dragMod || 0), 0));
@@ -394,7 +423,13 @@
         }
       }
 
-      const dryMass = (r.dryMass + nonFuelMass) * (ex && ex.showBody ? ex.dryMassMul : 1) + extraDryMass;
+      // ---- Phase 5: ระบบกู้คืน ----
+      const rec = window.Recovery ? window.Recovery.derived(r, recoveryAscent(r)) : null;
+      const recMass = rec ? rec.massAdd : 0;
+      const recFuel = rec ? Math.min(fuelMass * 0.6, rec.recFuel || 0) : 0;   // กันเชื้อเพลิงขาขึ้น
+      fuelMass = Math.max(0.05, fuelMass - recFuel);
+
+      const dryMass = (r.dryMass + nonFuelMass) * (ex && ex.showBody ? ex.dryMassMul : 1) + extraDryMass + recMass;
       const wetMass = dryMass + fuelMass;
       const thrust = baseThrust;
       const burnTime = baseBurn;
@@ -409,8 +444,10 @@
 
       G.run.stats = {
         staged: false, thrust, fuelMass, dryMass, wetMass, dragCoef, spin, burnTime, twr, deltaV,
-        scoreBonusParts, wobble, paperRisk, partCount: parts.length, hasEngine: engineThrust > 0, hasFuel: fuelMass > 0,
-        casingCapMul, catoRisk, chemIgnitionRisk, chem: chemInfo, body: ex ? ex.body : null
+        scoreBonusParts, wobble, paperRisk, partCount: parts.length, hasEngine: engineThrust > 0,
+        hasFuel: (fuelMass + recFuel) > 0.06,
+        casingCapMul, catoRisk, chemIgnitionRisk, chem: chemInfo, body: ex ? ex.body : null,
+        recovery: rec ? { kind: rec.kind, massAdd: recMass, dragAdd: rec.dragAdd, dvReserve: rec.dvReserve, recFuel, deployAlt: rec.deployAlt, aMax: rec.aMax } : null
       };
 
       const telem = [
@@ -422,6 +459,11 @@
       ];
       if (chemInfo) telem.push(["ดินขับ", chemInfo.quality, catoRisk >= 1 ? "bad" : chemInfo.altitudeMul < 0.6 || chemIgnitionRisk > 0.5 ? "warn" : "ok"]);
       if (ex && ex.showBody) telem.push(["พิกัดความดันปลอก", "×" + (casingCapMul).toFixed(2), casingCapMul < 0.85 ? "warn" : "ok"]);
+      if (rec && rec.kind !== "freefall") {
+        const rn = ((window.Recovery.SYSTEMS[rec.kind] || {}).th || rec.kind) +
+          (recFuel > 0.05 ? " · −" + fmt(recFuel, 1) + " kg" : "");
+        telem.push(["ระบบกู้คืน", rn, "ok"]);
+      }
       renderTelem(telem);
 
       const s = G.run.stats;
@@ -457,18 +499,23 @@
       const r = G.run.rocket, m = G.run.mission;
       const eff = effectiveStages(r);
       const pl = VAB.payloadId ? partById(VAB.payloadId) : null;
-      const payloadMass = pl ? pl.mass : (r.defaultPayload || 0);
+      let payloadMass = pl ? pl.mass : (r.defaultPayload || 0);
 
-      const cfg = {
+      // ---- Phase 5: ระบบกู้คืน (บวกมวล; propulsive กัน Δv จาก margin) ----
+      const rec = window.Recovery ? window.Recovery.derived(r, recoveryAscent(r)) : null;
+      if (rec) payloadMass += rec.massAdd;
+
+      const cfg0 = {
         stages: eff, payloadMass, dragCoef: r.dragCoef,
         orbital: !!r.orbital, targetAltitude: m.targetAltitude,
         targetOrbitVelocity: m.targetOrbit || 0, launchAngleDeg: r.launchAngleDeg || 0
       };
-      const f = window.Physics.createFlight(cfg);
+      const f = window.Physics.createFlight(cfg0);
       const glow = f.glow, dvB = f.deltaVBudget, dvR = f.deltaVRequired;
       const twr1 = eff[0].thrust / (glow * 9.80665);
       const payloadFrac = glow > 0 ? payloadMass / glow : 0;
       const orbitOK = !r.orbital || dvB >= dvR;
+      const recOK = !rec || rec.kind !== "propulsive" || dvB - dvR >= rec.dvReserve;
 
       G.run.stats = {
         staged: true, stages: eff, payloadMass, dragCoef: r.dragCoef,
@@ -477,7 +524,9 @@
         glow, twr1, payloadFrac,
         scoreBonusParts: pl ? pl.scoreBonus : 0,
         stageDeltaV: f.stageDeltaV, orbitOK,
-        payloadName: pl ? pl.nameTh : "—"
+        payloadName: pl ? pl.nameTh : "—",
+        recovery: rec ? { kind: rec.kind, massAdd: rec.massAdd, dragAdd: rec.dragAdd, dvReserve: rec.dvReserve, recFuel: rec.recFuel, deployAlt: rec.deployAlt, aMax: rec.aMax } : null,
+        recOK
       };
 
       const rows = [
@@ -488,17 +537,52 @@
         [r.orbital ? "Δv ที่ต้องใช้ (วงโคจร + loss)" : "Δv ที่ต้องใช้ (โดยประมาณ)", fmt(dvR) + " m/s",
           dvB >= dvR ? "ok" : "bad"]
       ];
+      if (rec && rec.kind !== "freefall") {
+        rows.push(["ระบบกู้คืน", (window.Recovery.SYSTEMS[rec.kind] || {}).th || rec.kind, "ok"]);
+        if (rec.kind === "propulsive")
+          rows.push(["Δv สำรองลงจอด", fmt(rec.dvReserve) + " m/s · เหลือ " + fmt(dvB - dvR - rec.dvReserve) + " m/s", recOK ? "ok" : "bad"]);
+      }
       renderTelem(rows);
+
+      const recWarn = rec && rec.kind === "propulsive" && !recOK
+        ? (r.orbital ? "Δv สำรองไม่พอ — บูสเตอร์จะตก (ภารกิจหลักยังไปได้)"
+                     : "Δv สำรองไม่พอ — ยานจะตกกระแทกตอนลงจอด (กะปิซวย)")
+        : null;
 
       if (!pl) setVerdict(["เลือกเพย์โหลดก่อน", "bad"]);
       else if (twr1 < 1.02) setVerdict(["TWR ท่อน 1 ต่ำเกินไป — ยกตัวไม่ขึ้น", "bad"]);
       else if (r.orbital && !orbitOK) setVerdict([`Δv ขาดอีก ${fmt(dvR - dvB)} m/s — จะขึ้นได้แต่ไม่ถึงวงโคจร`, "bad"]);
-      else if (r.orbital) setVerdict([`Δv พอถึงวงโคจร เหลือ margin ${fmt(dvB - dvR)} m/s ✓`, "ok"]);
+      else if (recWarn && !r.orbital) setVerdict(["⚠️ " + recWarn, ""]);
+      else if (r.orbital) setVerdict([`Δv พอถึงวงโคจร เหลือ margin ${fmt(dvB - dvR)} m/s ✓` + (recWarn ? " · " + recWarn : ""), recWarn ? "warn" : "ok"]);
       else setVerdict(["พร้อมปล่อย ✓", "ok"]);
 
       $("#vab-proceed").disabled = !pl || twr1 < 1.02;
     }
   };
+
+  // Easter egg: ตรวจว่านี่คือจรวด "หวันหู่" ไหม
+  function isWanHu(r, s) {
+    if (!r || isStaged(r) || !s) return false;
+    if (VAB.slots.includes("payload_chair")) return true;
+    const hasFin = VAB.slots.some(id => { const p = partById(id); return p && p.type === "fin"; });
+    const powder = !!r.blackPowder || VAB.slots.some(id => /^charge/.test(id));
+    return (s.twr || 0) > 15 && !hasFin && powder;
+  }
+
+  // ประมาณมวล/Isp ตอนลงจอด สำหรับ Recovery.derived (คำนวณเชื้อเพลิงสำรอง propulsive)
+  function recoveryAscent(r) {
+    if (!isStaged(r)) {
+      const parts = VAB.slots.map(partById);
+      const nonFuel = parts.filter(p => p.type !== "propellant").reduce((s, p) => s + p.mass, 0);
+      return { landMass: (r.dryMass || 0.6) + nonFuel, isp: r.isp || 110 };
+    }
+    const eff = effectiveStages(r);
+    const pl = VAB.payloadId ? partById(VAB.payloadId) : null;
+    const plMass = pl ? pl.mass : (r.defaultPayload || 0);
+    if (r.orbital) return { landMass: eff[0].dryMass, isp: eff[0].isp };   // กู้บูสเตอร์ท่อน 1
+    const last = eff[eff.length - 1];
+    return { landMass: last.dryMass + plMass, isp: last.isp };
+  }
 
   // clone rocket.stages and apply chosen upgrade mods
   function effectiveStages(r) {
@@ -715,10 +799,18 @@
   }
 
   // ---------------- LAUNCH ----------------
-  function doLaunch() {
+  function doLaunch(opts) {
+    opts = opts || {};
     const r = G.run.rocket, s = G.run.stats, m = G.run.mission;
-    G.run.legalResult = checkClearance(TIERS[r.tierKey].legalTier, G.run.legalChecks);
-    closeLegal();
+    if (!opts.skipIntro) {
+      G.run.legalResult = checkClearance(TIERS[r.tierKey].legalTier, G.run.legalChecks);
+      closeLegal();
+      if (isWanHu(r, s) && window.VN) {
+        G.run.wanHu = true;
+        window.VN.wanHu(() => doLaunch({ skipIntro: true }));
+        return;
+      }
+    }
 
     G.run.weather = window.Physics.makeWeather({
       // จรวดเล็ก (tier ต่ำ) เจอพายุบ่อยกว่าเล็กน้อย เพื่อสอนเรื่องเขตปลอดภัย/หน้าต่างปล่อย
@@ -729,13 +821,19 @@
       (2 + Math.min(3, tierN(r.tierKey)) * 1.5) * (1 + G.run.weather.windGust * 0.8)).toFixed(1);
     const wxCommon = { windSpeed: G.run.wind, weather: G.run.weather };
 
+    // ระบบกู้คืนสำหรับฟิสิกส์ (staged propulsive: Δv สำรองจริง = ไม่เกิน margin ที่มี → ถ้าน้อยไปยานจะตก)
+    let recPhys = s.recovery ? Object.assign({}, s.recovery) : null;
+    if (recPhys && recPhys.kind === "propulsive" && s.staged) {
+      recPhys.dvReserve = Math.max(0, Math.min(recPhys.dvReserve || 0, (s.deltaVMargin || 0)));
+    }
+
     let cfg;
     if (s.staged) {
       cfg = Object.assign({
         stages: s.stages, payloadMass: s.payloadMass, dragCoef: s.dragCoef,
         orbital: s.orbital, targetAltitude: m.targetAltitude, tier: tierN(r.tierKey),
         targetOrbitVelocity: m.targetOrbit || 0, launchAngleDeg: s.launchAngleDeg || 0,
-        windSensitivity: 0.35, spinStabilized: true,
+        windSensitivity: 0.35, spinStabilized: true, recovery: recPhys, wanHu: !!G.run.wanHu,
         rocketMeta: { icon: r.icon, tier: tierN(r.tierKey), orbital: s.orbital, stageCount: s.stages.length }
       }, wxCommon);
     } else {
@@ -747,6 +845,7 @@
         structure: r.lantern ? "paper"
           : (r.blackPowder || tierN(r.tierKey) === 2 ? "blackpowder" : null),
         casingCapMul: s.casingCapMul || 1, catoRisk: s.catoRisk || 0, chemIgnitionRisk: s.chemIgnitionRisk || 0,
+        recovery: recPhys, wanHu: !!G.run.wanHu,
         rocketMeta: { icon: r.icon, tier: tierN(r.tierKey), spinStabilized: s.spin, body: s.body || null }
       }, wxCommon);
     }
@@ -836,6 +935,30 @@
     else if (sum.burnedUp) { damagePen = Math.round(bp * 0.7); rows.push(["ยานไหม้จากความร้อน re-entry", -damagePen, false]); }
     else if (!expendable && !orbital && sum.crashed) { damagePen = Math.round(bp * 0.6); rows.push([sum.unstable ? "บั้งไฟส่ายตกเสียหาย (CG เพี้ยน)" : "จรวดตกกระแทกเสียหาย", -damagePen, false]); }
 
+    // ---- Phase 5: ระบบกู้คืน / ลงจอด ----
+    const recv = (s.recovery && s.recovery.kind) || sum.recovery || "freefall";
+    const drift = Math.abs(sum.recoveryDrift != null ? sum.recoveryDrift : sum.horizontalDrift);
+    if (!orbital && sum.failReason == null && !sum.burnedUp) {
+      if (recv === "propulsive" && sum.recovered) {
+        rows.push(["ลงจอดด้วยแรงขับสำเร็จ — กู้ยานคืน (คืนงบ)", Math.round(bp * 0.35), true]);
+      } else if (recv === "parachute" && sum.recovered) {
+        rows.push(["ร่มชูชีพ — กู้ชิ้นส่วนกลับมาใช้ได้ (คืนงบ + ผ่านมาตรฐานความปลอดภัย)", Math.round(bp * 0.28), true]);
+      } else if (recv === "gps" && sum.landed && !sum.crashed) {
+        const sp = Math.round(Math.min(bp * 0.1, drift * 0.35));
+        if (sp) rows.push([`ค้นหาด้วย GPS (ลอยเฉ ${fmt(drift)} m) — ค่าค้นหา`, -sp, false]);
+      } else if (recv === "freefall" && sum.landed && !sum.crashed) {
+        const dmg = Math.round(Math.min(bp * 0.5, bp * 0.05 + drift * 0.55));
+        if (dmg > 0) rows.push([`ตกแบบไม่นำวิถี ${fmt(drift)} m — ค่าเสียหายทรัพย์สิน (Liability Convention)`, -dmg, false]);
+      }
+    }
+    if (!orbital && sum.failReason === "LANDING_BURN_FAIL") {
+      rows.push(["ลงจอดด้วยแรงขับล้มเหลว — Δv สำรองไม่พอ ยานตกกระแทก (กะปิซวย)", -Math.round(bp * 0.5), false]);
+    }
+    if (orbital && recv === "propulsive") {
+      if (s.recOK) rows.push(["กู้บูสเตอร์ท่อน 1 คืน (สไตล์ Falcon 9 — คืนงบ)", Math.round(bp * 0.3), true]);
+      else rows.push(["บูสเตอร์ท่อน 1 ตกทะเล — Δv สำรองไม่พอ", -Math.round(bp * 0.12), false]);
+    }
+
     // กฎหมาย
     const legalBonus = lr.bonusEarned || 0;
     if (legalBonus) rows.push(["ทำเอกสารเสริมครบ", legalBonus, true]);
@@ -860,6 +983,8 @@
       : sum.failReason === "LANTERN_BURNUP" ? "โคมลอยไหม้กลางอากาศ 🔥"
       : sum.failReason === "PAD_CATO" ? "จรวดระเบิดคาแท่นปล่อย 💥"
       : sum.failReason === "UNSTABLE_COM" ? "บั้งไฟเสียการทรงตัว — ศูนย์ถ่วงเพี้ยน"
+      : sum.failReason === "LANDING_BURN_FAIL" ? "ลงจอดด้วยแรงขับล้มเหลว — ยานตกกระแทก 💥"
+      : sum.failReason === "WAN_HU" ? "อนุสรณ์ Wan Hu — ระเบิดคาแท่นตามตำนาน 🪑💥"
       : sum.burnedUp ? "ยานไหม้ตอนกลับเข้าชั้นบรรยากาศ"
       : orbital && !sum.reachedOrbit ? "ไม่ถึงความเร็ววงโคจร"
       : !expendable && sum.crashed ? "จรวดตก — ภารกิจไม่ผ่าน"
@@ -873,12 +998,20 @@
 
     const unlockBox = $("#report-unlock");
     unlockBox.hidden = true;
-    const newlyUnlocked = tryUnlockTiers();
-    if (newlyUnlocked.length) {
-      unlockBox.hidden = false;
-      unlockBox.textContent = "🔓 ปลดล็อก " + newlyUnlocked.map(k => "Tier " + TIERS[k].n + " · " + TIERS[k].nameTh).join(", ");
-      newlyUnlocked.forEach(k => toast("ปลดล็อก Tier " + TIERS[k].n + "!"));
+    const notes = [];
+
+    // Easter egg: เหรียญอนุสรณ์หวันหู่
+    if (sum.failReason === "WAN_HU") {
+      if (awardAchievement("wan_hu", "Wan Hu Memorial Award"))
+        notes.push("🏅 ปลดล็อกเหรียญลับ: <b>Wan Hu Memorial Award</b> — ผูกบั้งไฟกับเก้าอี้แล้วจุด เหมือนตำนานเป๊ะ");
     }
+
+    const newlyUnlocked = tryUnlockTiers();
+    if (newlyUnlocked.length)
+      notes.push("🔓 ปลดล็อก " + newlyUnlocked.map(k => "Tier " + TIERS[k].n + " · " + TIERS[k].nameTh).join(", "));
+    newlyUnlocked.forEach(k => toast("ปลดล็อก Tier " + TIERS[k].n + "!"));
+
+    if (notes.length) { unlockBox.hidden = false; unlockBox.innerHTML = notes.join("<br>"); }
     saveProgress();
 
     // next-mission button target
@@ -907,6 +1040,19 @@
   function init() {
     syncThemeButtons();
     renderHome();
+
+    // Easter egg: พิมพ์ "wanhu" ที่ไหนก็ได้เพื่อปลดล็อกเก้าอี้หวันหู่
+    let _seq = "";
+    document.addEventListener("keydown", (e) => {
+      if (e.key && e.key.length === 1) {
+        _seq = (_seq + e.key.toLowerCase()).slice(-5);
+        if (_seq === "wanhu" && !G.wanHu.unlocked) {
+          G.wanHu.unlocked = true;
+          toast("🪑 ปลดล็อก: เก้าอี้สำนักงานหวันหู่ (อยู่ในคลังชิ้นส่วน Tier 1–2)");
+          if (G.run && G.run.rocket && !isStaged(G.run.rocket)) VAB.render();
+        }
+      }
+    });
 
     $("#btn-start").addEventListener("click", () => { renderMissions(); show("mission"); });
     $("#btn-continue").addEventListener("click", () => { renderMissions(); show("mission"); });

@@ -16,10 +16,10 @@
 
   const IMG = "assets/images/characters/";
   const CAST = {
-    kaitun: { name: "ไข่ตุ๋น", role: "นักข่าวสนามมือใหม่", img: IMG + "kaitun.png", crop: "52% 62%", accent: "#C6843E" },
-    pchang: { name: "พี่ช่าง", role: "หัวหน้าวิศวกร · CAPCOM", img: IMG + "pchang.png", crop: "40% 52%", accent: "#2E6FB8" },
-    samlee: { name: "สำลี", role: "ผู้บัญชาการ · เจ้าของการทดลอง", img: IMG + "samlee.png", crop: "7% 48%", accent: "#8A6D3B" },
-    kapi: { name: "กะปิ", role: "ผู้ช่วยภาคสนาม (ไม่พูด)", img: IMG + "kapi.png", crop: "6% 55%", accent: "#6B7A55" }
+    kaitun: { name: "ไข่ตุ๋น", role: "นักข่าวสนามมือใหม่", img: IMG + "kaitun.png", accent: "#C6843E" },
+    pchang: { name: "พี่ช่าง", role: "หัวหน้าวิศวกร · CAPCOM", img: IMG + "pchang.png", accent: "#2E6FB8" },
+    samlee: { name: "สำลี", role: "ผู้บัญชาการ · เจ้าของการทดลอง", img: IMG + "samlee.png", accent: "#8A6D3B" },
+    kapi: { name: "กะปิ", role: "ผู้ช่วยภาคสนาม (ไม่พูด)", img: IMG + "kapi.png", accent: "#6B7A55" }
   };
 
   let box, portrait, nameEl, roleEl, txt, cont, stage;
@@ -58,7 +58,7 @@
       box.style.setProperty("--vn-accent", c.accent);
       if (portrait) {
         portrait.src = c.img;
-        portrait.style.objectPosition = c.crop;
+        portrait.alt = c.name;
         portrait.parentElement.hidden = false;
       }
       nameEl.textContent = c.name;
@@ -170,6 +170,16 @@
       lines.push({ who: "pchang", text: "CATO — ดินปืนเกินพิกัดปลอกลำ ความดันพุ่งเกินกำลังวัสดุ นิวตันข้อ 3 แรงกิริยา = แรงปฏิกิริยา แต่ถ้าโครงรับไม่อยู่ พลังงานระบายออกทุกทิศ ลดดินปืน เปลี่ยนเป็นไม้ไผ่ หรือพันลวดเพิ่ม" });
       lines.push({ who: "samlee", text: "กะปิเป็นอะไรไหม... ไม่ต้องตอบก็ได้ ลุกไหวก็แปลว่าโอเค" });
       lines.push({ who: "kapi", text: "กะปิโผล่จากกลุ่มควัน หมวกนิรภัยดำเป็นเขม่า ยกนิ้วโป้งให้อย่างเหนื่อยหน่าย" });
+    } else if (fr === "LANDING_BURN_FAIL") {
+      lines.push({ who: "kaitun", text: "ยานลงมาเร็วมาก... เบรกไม่ทัน!" });
+      lines.push({ who: "pchang", text: "Δv ที่กันไว้สำหรับ retro-burn ไม่พอ — เชื้อเพลิงหมดก่อนความเร็วเป็นศูนย์ เหมือน Falcon 9 เที่ยวแรก ๆ ที่ลงกระแทกโดรนชิป ต้องกัน margin ให้มากขึ้น หรือเบา payload ลง" });
+      lines.push({ who: "samlee", text: "ฮ่า ๆ ๆ! ลงจอดสวยมาก — สวยเป็นหลุมเลย" });
+      lines.push({ who: "kapi", text: "กะปิซึ่งยืนถือถังดับเพลิงอยู่ตรงจุดลงจอดพอดี ถูกแรงระเบิดสาดหายไปในกลุ่มควัน แล้วคลานกลับมาช้า ๆ" });
+    } else if (fr === "WAN_HU") {
+      lines.push({ who: "kaitun", text: "บอสสส! ไฟไหม้เก้าอี้ผมแล้ววว—" });
+      lines.push({ who: "pchang", text: "แรงขับมหาศาลใต้จุดศูนย์ถ่วง ไม่มีครีบ = spin แบบสิ้นหวัง โอกาสรอดเป็น outlier ของเกาส์เซียนที่เข้าใกล้ศูนย์... ตามที่ผมบอกไว้เป๊ะ" });
+      lines.push({ who: "samlee", text: "หวันหู่คือมนุษย์อวกาศคนแรก วันนี้เราได้สร้างประวัติศาสตร์ซ้ำ" });
+      lines.push({ who: "kapi", text: "กะปิยืนตรงจุดปล่อย หน้านิ่ง จุดชนวนบั้งไฟทั้ง 47 อันพร้อมกัน" });
     } else if (fr === "UNSTABLE_COM") {
       lines.push({ who: "kaitun", text: "มันส่ายเป็นงูเลยค่ะ!" });
       lines.push({ who: "pchang", text: "ดินปืนหนักเกินจน CG เลื่อนไปท้าย พอ CG อยู่ “หลัง” CP จรวดจะไม่เสถียร มันอยากสลับหัวกับท้าย เพิ่มครีบดึง CP ไปท้าย หรือลดดินปืน" });
@@ -198,5 +208,16 @@
     if (lines.length) play(lines, {});
   }
 
-  window.VN = { play, atVab, atReport, skip: end, CAST };
+  // ---------------- Easter egg: ตำนานหวันหู่ (Wan Hu) ----------------
+  function wanHu(onDone) {
+    play([
+      { who: "samlee", text: "ประวัติศาสตร์บอกว่า หวันหู่คือมนุษย์อวกาศคนแรก วันนี้ เราจะสร้างประวัติศาสตร์ซ้ำอีกครั้ง — ไข่ตุ๋น นั่งนิ่ง ๆ" },
+      { who: "kaitun", text: "เอ๊ะ!? บะ...บอสครับ! ทำไมต้องเอาบั้งไฟ 47 อันมาผูกกับเก้าอี้ทำงานผมด้วยยยย!" },
+      { who: "pchang", text: "ตามหลักอากาศพลศาสตร์ การวางแรงขับมหาศาลไว้ใต้จุดศูนย์ถ่วงโดยไม่มีครีบเลย จะทำให้เกิด terminal spin โอกาสรอดชีวิตเป็น outlier ของการแจกแจงเกาส์เซียนที่เข้าใกล้ศูนย์..." },
+      { who: "samlee", text: "กะปิ จุดไฟ" },
+      { who: "kapi", text: "จุดชนวนด้วยสีหน้าเรียบเฉย" }
+    ], { onDone: onDone });
+  }
+
+  window.VN = { play, atVab, atReport, wanHu, skip: end, CAST };
 })();

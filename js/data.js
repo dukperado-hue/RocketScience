@@ -150,6 +150,8 @@ const PARTS = [
   { id: "nosecone",   type: "nosecone",  nameTh: "จมูกจรวดเพรียวลม",     icon: "🔺", mass: 0.4,  dragMod: -0.015, tierMin: 1 },
   { id: "payload_cam",type: "payload",   nameTh: "กล้องบันทึกภาพ",       icon: "📷", mass: 0.5,  scoreBonus: 200, tierMin: 1 },
   { id: "payload_sensor", type: "payload", nameTh: "เซนเซอร์วัดอากาศ",   icon: "🌡️", mass: 0.8,  scoreBonus: 400, tierMin: 2 },
+  // ความลับ: พิมพ์ "wanhu" ในหน้าประกอบเพื่อปลดล็อก (ตำนานหวันหู่ ผูกบั้งไฟ 47 อันกับเก้าอี้)
+  { id: "payload_chair", type: "payload", nameTh: "เก้าอี้สำนักงาน (นั่งเอง)", icon: "🪑", mass: 14, scoreBonus: 0, tierMin: 1, secret: true, wanhu: true },
 
   // ===== Tier 3–5 payloads (มวลจริงมีผลต่อ Δv) =====
   { id: "pl_altimeter",  type: "payload", nameTh: "อัลติมิเตอร์ + ร่ม",      icon: "📏", mass: 0.4,  scoreBonus: 1200, tierMin: 3 },
