@@ -78,6 +78,17 @@
       const dish = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 8, 0, 6.2832, 0, Math.PI / 2.4),
         std(0xecedf2, { side: THREE.DoubleSide }));
       dish.position.x = 1.7; dish.rotation.z = -Math.PI / 2; g.add(dish);
+    } else if (kind === "asteroid") {
+      const geo = new THREE.IcosahedronGeometry(1, 3);
+      const pos = geo.attributes.position;
+      const v = new THREE.Vector3();
+      for (let i = 0; i < pos.count; i++) {
+        v.fromBufferAttribute(pos, i);
+        const n = 0.72 + 0.28 * Math.abs(Math.sin(v.x * 4.1) * Math.cos(v.y * 3.3) + Math.sin(v.z * 5.2));
+        v.multiplyScalar(n); pos.setXYZ(i, v.x, v.y, v.z);
+      }
+      geo.computeVertexNormals();
+      g.add(new THREE.Mesh(geo, std(0x4a453f, { rough: 0.98, metal: 0.02 })));
     } else {
       g.add(new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), std(0xccccd4)));
     }

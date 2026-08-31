@@ -8,6 +8,65 @@ function fmt(n, d = 0) {
   return n.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
 }
 
+// วาดจรวดแบบเวกเตอร์ (fallback 2 มิติ) — ไม่ใช้ตัวอักษร/อีโมจิ ให้ดูเป็นยานจริง
+function drawRocket(ctx, meta, crashed) {
+  if (crashed) {
+    ctx.fillStyle = "#ff7b2e";
+    for (let i = 0; i < 12; i++) {
+      const a = i / 12 * Math.PI * 2, r = 10 + (i % 3) * 7;
+      ctx.beginPath(); ctx.arc(Math.cos(a) * r, Math.sin(a) * r, 4, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.fillStyle = "#ffd23b";
+    ctx.beginPath(); ctx.arc(0, 0, 9, 0, Math.PI * 2); ctx.fill();
+    return;
+  }
+  const tier = meta.tier || 1;
+  const stages = Math.max(1, meta.stageCount || 1);
+
+  if (meta.lantern) {
+    ctx.fillStyle = "rgba(243,220,174,.92)";
+    ctx.strokeStyle = "#8a6a3a"; ctx.lineWidth = 1.5;
+    ctx.fillRect(-11, -16, 22, 28); ctx.strokeRect(-11, -16, 22, 28);
+    ctx.fillStyle = "#ffb347";
+    ctx.beginPath(); ctx.ellipse(0, 12, 6, 4, 0, 0, Math.PI * 2); ctx.fill();
+    return;
+  }
+  if (meta.talai) {
+    ctx.strokeStyle = "#8a6a3a"; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(0, 0, 16, 0, Math.PI * 2); ctx.stroke();
+    ctx.lineWidth = 2;
+    for (let k = 0; k < 4; k++) {
+      const a = k / 4 * Math.PI * 2;
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(a) * 16, Math.sin(a) * 16); ctx.stroke();
+    }
+    ctx.fillStyle = "#7a5a34";
+    ctx.beginPath(); ctx.arc(0, 0, 4, 0, Math.PI * 2); ctx.fill();
+    return;
+  }
+
+  // จรวดหลายท่อน — กระบอกซ้อน + จมูกกรวย + ครีบฐาน
+  const w = tier <= 2 ? 8 : tier === 3 ? 10 : tier === 4 ? 13 : 15;
+  const segH = 14;
+  const totalH = segH * stages + 16;
+  let y = totalH / 2;
+  ctx.lineWidth = 1;
+  for (let i = 0; i < stages; i++) {
+    ctx.fillStyle = i % 2 ? "#c7ccd6" : "#e8eaef";
+    ctx.fillRect(-w / 2, y - segH, w, segH);
+    ctx.strokeStyle = "rgba(0,0,0,.25)";
+    ctx.strokeRect(-w / 2, y - segH, w, segH);
+    y -= segH;
+  }
+  ctx.fillStyle = tier >= 5 ? "#2e5fae" : "#e8eaef";
+  ctx.beginPath();
+  ctx.moveTo(-w / 2, y); ctx.lineTo(0, y - 16); ctx.lineTo(w / 2, y);
+  ctx.closePath(); ctx.fill();
+  ctx.fillStyle = "#b23a3a";
+  const by = totalH / 2;
+  ctx.beginPath(); ctx.moveTo(-w / 2, by - 8); ctx.lineTo(-w / 2 - 6, by); ctx.lineTo(-w / 2, by); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(w / 2, by - 8); ctx.lineTo(w / 2 + 6, by); ctx.lineTo(w / 2, by); ctx.closePath(); ctx.fill();
+}
+
 function run(canvas, flightConfig, hooks = {}) {
   cancel();
   LaunchCtl.canceled = false;
@@ -176,17 +235,12 @@ function run(canvas, flightConfig, hooks = {}) {
       ctx.fill();
     }
 
-    // rocket body
+    // rocket body — วาดเป็นรูปจรวดจริง (ไม่ใช่ตัวอักษร/อีโมจิ)
     ctx.save();
     ctx.translate(cx, rY);
     if (rocket.spinStabilized && s.phase !== "done") ctx.rotate((s.t * 12) % (Math.PI * 2));
-    ctx.font = "24px serif";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(s.phase === "done" && flight.state.crashed ? "💥" : rocket.icon, 0, 0);
+    drawRocket(ctx, rocket, s.phase === "done" && flight.state.crashed);
     ctx.restore();
-    ctx.textAlign = "left";
-    ctx.textBaseline = "alphabetic";
 
     // ---------- HUD ----------
     drawHUD(ctx, W, s, flight, target);

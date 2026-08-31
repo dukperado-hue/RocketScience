@@ -67,6 +67,7 @@
   // ---------------- screen routing ----------------
   function show(name) {
     if (name !== "vab" && window.VAB3D) window.VAB3D.unmount();   // คืน GL context ก่อนออกจากโรงประกอบ
+    closeCodex();                                                 // ปิดหอจดหมายเหตุ + คืน GL context
     SCREENS.forEach(s => { const el = $("#screen-" + s); if (el) el.hidden = (s !== name); });
     const bar = $("#stepbar");
     if (name === "home") { bar.hidden = true; }
@@ -90,6 +91,69 @@
     t.hidden = false;
     clearTimeout(toast._t);
     toast._t = setTimeout(() => { t.hidden = true; }, 2600);
+  }
+  window.__toast = toast;   // codex.js ใช้แจ้งเตือนตอนปลดล็อก
+
+  // ---------------- Aerospace Codex (Phase 9) ----------------
+  function updateCodexButton() {
+    const b = $("#btn-codex");
+    if (!b || !window.Codex) return;
+    const c = window.Codex.counts();
+    b.textContent = `🏛️ หอจดหมายเหตุ ${c.got}/${c.total}`;
+  }
+
+  function renderCodexGrid() {
+    if (!window.Codex) return;
+    const grid = $("#codex-grid");
+    const c = window.Codex.counts();
+    $("#codex-count").textContent = `${c.got} / ${c.total}`;
+    $("#codex-detail").hidden = true;
+    grid.hidden = false;
+    grid.innerHTML = "";
+    window.Codex.all().forEach(e => {
+      const card = document.createElement(e.unlocked ? "button" : "div");
+      card.className = "codex-card" + (e.unlocked ? "" : " codex-card--locked");
+      if (e.unlocked) card.type = "button";
+      card.innerHTML = `
+        ${e.unlocked ? "" : `<span class="codex-card-lock">🔒</span>`}
+        <div class="codex-card-cat">${(window.Codex.CATS[e.cat] || e.cat)}</div>
+        <div class="codex-card-icon">${e.unlocked ? e.icon : "❔"}</div>
+        <div class="codex-card-title">${e.unlocked ? e.title : "ยังไม่ปลดล็อก"}</div>
+        <div class="codex-card-era">${e.unlocked ? e.era : "เล่นภารกิจต่อเพื่อค้นพบ"}</div>`;
+      if (e.unlocked) card.addEventListener("click", () => openCodexDetail(e.id));
+      grid.appendChild(card);
+    });
+  }
+
+  function openCodexDetail(id) {
+    const e = window.Codex && window.Codex.get(id);
+    if (!e || !e.unlocked) return;
+    $("#codex-grid").hidden = true;
+    $("#codex-detail").hidden = false;
+    $("#codex-info-era").textContent = e.era;
+    $("#codex-info-title").textContent = e.title;
+    $("#codex-info-sub").textContent = e.sub || "";
+    $("#codex-info-desc").textContent = e.desc;
+    const wrap = $("#codex-detail .codex-viewer");
+    // เมานต์เพียงครั้งเดียวต่อการเปิดโมดัล — สลับรายการใช้ show() ซ้ำ (ไม่สร้าง GL context ใหม่)
+    const ok = window.CodexViewer && window.CodexViewer.mount(wrap);
+    wrap.classList.toggle("codex-viewer--nogl", !ok);
+    if (ok) window.CodexViewer.show(e);
+  }
+
+  function openCodex() {
+    if (!window.Codex) return;
+    renderCodexGrid();
+    $("#codex-modal").hidden = false;
+  }
+  function closeCodex() {
+    if (window.CodexViewer) window.CodexViewer.unmount();
+    const m = $("#codex-modal");
+    if (m) m.hidden = true;
+  }
+  function codexBackToGrid() {
+    // เก็บ GL context ไว้ (viewer พักเรนเดอร์เองเมื่อแผงถูกซ่อน) — คืน context ตอนปิดโมดัลเท่านั้น
+    renderCodexGrid();
   }
 
   // ---------------- theme (shared with lab via codex-theme) ----------------
@@ -138,6 +202,7 @@
 
   function renderHome() {
     renderScoreBadge();
+    updateCodexButton();
     const hasProgress = G.progress.totalScore > 0 || G.progress.unlockedTiers.length > 1;
     $("#btn-reset-progress").hidden = !hasProgress;
 
@@ -1281,6 +1346,20 @@
       notes.push("🔓 ปลดล็อก " + newlyUnlocked.map(k => "Tier " + TIERS[k].n + " · " + TIERS[k].nameTh).join(", "));
     newlyUnlocked.forEach(k => toast("ปลดล็อก Tier " + TIERS[k].n + "!"));
 
+    // Aerospace Codex — ปลดล็อกรายการตามบริบทเที่ยวบิน
+    if (window.Codex) {
+      const newCodex = window.Codex.unlockFromFlight({
+        rocket: r, mission: m, tier, summary: sum,
+        missionPassed: success && missionGoalMet,
+        payloadId: VAB.payloadId || null,
+        firework: !!(window.Fireworks && window.Fireworks.state.enabled),
+        totalScore: G.progress.totalScore
+      });
+      if (newCodex.length)
+        notes.push("🏛️ หอจดหมายเหตุ: " + newCodex.map(e => e.title).join(", "));
+      updateCodexButton();
+    }
+
     if (notes.length) { unlockBox.hidden = false; unlockBox.innerHTML = notes.join("<br>"); }
     saveProgress();
 
@@ -1319,6 +1398,7 @@
         if (_seq === "wanhu" && !G.wanHu.unlocked) {
           G.wanHu.unlocked = true;
           toast("🪑 ปลดล็อก: เก้าอี้สำนักงานหวันหู่ (อยู่ในคลังชิ้นส่วน Tier 1–2)");
+          if (window.Codex) window.Codex.unlock("wanhu");
           if (G.run && G.run.rocket && !isStaged(G.run.rocket)) VAB.render();
         }
       }
@@ -1328,10 +1408,22 @@
     $("#btn-reset-progress").addEventListener("click", () => {
       if (!confirm("ล้างความคืบหน้าทั้งหมด?")) return;
       G.progress = defaultProgress();
+      if (window.Codex) window.Codex.reset();
       saveProgress();
       renderHome();
       toast("ล้างความคืบหน้าแล้ว");
     });
+
+    // Aerospace Codex
+    $("#btn-codex").addEventListener("click", openCodex);
+    $("#codex-close").addEventListener("click", closeCodex);
+    $("#codex-back").addEventListener("click", codexBackToGrid);
+    $("#codex-modal").addEventListener("click", (e) => { if (e.target.id === "codex-modal") closeCodex(); });
+    document.addEventListener("codex:unlock", () => {
+      updateCodexButton();
+      if (!$("#codex-modal").hidden && !$("#codex-grid").hidden) renderCodexGrid();
+    });
+    updateCodexButton();
 
     $$("[data-back]").forEach(b => b.addEventListener("click", () => {
       const t = b.dataset.back;

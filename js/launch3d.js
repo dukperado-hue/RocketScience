@@ -485,24 +485,45 @@
       }
       tower.visible = false;
     } else if (meta.talai) {
-      // ---- ตะไล: แกนไม้รวกสั้น + ปีกวงกลมไผ่ตง · ไม่มีครีบ (หมุนควงเป็นเกลียว) ----
-      const core = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.26, 2.4, 14), pmat("mat_bamboo"));
-      core.position.y = 1.6;
-      rocket.add(core); rParts.push({ mesh: core, stage: 1, baseY: 1.6, h: 2.4 });
-      const wd = Math.min(2.4, Math.max(1.05, (meta.talaiWingDia || 24) / 24 * 1.5));
-      const wingMat = pmat("mat_bamboo"); if (wingMat.color) wingMat.color.multiplyScalar(0.85);
-      const wing = new THREE.Mesh(new THREE.TorusGeometry(wd, 0.07, 8, 40), wingMat);
-      wing.rotation.x = Math.PI / 2; wing.position.y = 2.3;
-      rocket.add(wing); rParts.push({ mesh: wing, stage: 1, baseY: 2.3 });
+      // ---- ตะไล: ล้อไผ่กลม (ปีกวงกลม) + ดุมบ้องดินไม้รวก · หมุนควงพ่นไฟเป็นเกลียว ----
+      tower.visible = false; pad.visible = false;
+      const wd = Math.min(2.7, Math.max(1.25, (meta.talaiWingDia || 24) / 24 * 1.7));
+      const HUB_Y = 1.5;
+      const bamboo = pmat("mat_bamboo");
+
+      // ดุมกลาง — บ้องดินไม้รวก (สั้น อ้วน)
+      const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.36, 1.5, 18), bamboo);
+      hub.position.y = HUB_Y;
+      rocket.add(hub); rParts.push({ mesh: hub, stage: 1, baseY: HUB_Y, h: 1.5 });
+      const capT = new THREE.Mesh(new THREE.ConeGeometry(0.36, 0.52, 16),
+        new THREE.MeshStandardMaterial({ color: 0x6b4f2e, roughness: 0.85 }));
+      capT.position.y = HUB_Y + 1.0; rocket.add(capT); rParts.push({ mesh: capT, stage: 1, baseY: capT.position.y });
+
+      // ปีกวงกลม — วงแหวนไผ่หนา วางแนวนอน + วงในเสริม
+      const rimMat = pmat("mat_bamboo"); if (rimMat.color) rimMat.color.multiplyScalar(0.8);
+      const rim = new THREE.Mesh(new THREE.TorusGeometry(wd, 0.13, 14, 60), rimMat);
+      rim.rotation.x = Math.PI / 2; rim.position.y = HUB_Y;
+      rocket.add(rim); rParts.push({ mesh: rim, stage: 1, baseY: HUB_Y });
+      const rimIn = new THREE.Mesh(new THREE.TorusGeometry(wd * 0.56, 0.055, 10, 44), rimMat);
+      rimIn.rotation.x = Math.PI / 2; rimIn.position.y = HUB_Y;
+      rocket.add(rimIn);
+
+      // ซี่ล้อ — ทรงกระบอก 4 ซี่ นอนราบ
       const spokeMat = new THREE.MeshStandardMaterial({ color: 0x7a5a34, roughness: 0.9 });
-      for (let k = 0; k < 3; k++) {
-        const sp = new THREE.Mesh(new THREE.BoxGeometry(wd * 2, 0.04, 0.06), spokeMat);
-        sp.rotation.y = k * Math.PI / 3; sp.position.y = 2.3;
+      for (let k = 0; k < 4; k++) {
+        const sp = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, wd * 2, 8), spokeMat);
+        sp.rotation.z = Math.PI / 2;
+        sp.rotation.y = k * Math.PI / 2;
+        sp.position.y = HUB_Y;
         rocket.add(sp);
       }
-      const capT = new THREE.Mesh(new THREE.ConeGeometry(0.26, 0.5, 14),
-        new THREE.MeshStandardMaterial({ color: 0x6b4f2e, roughness: 0.85 }));
-      capT.position.y = 2.95; rocket.add(capT); rParts.push({ mesh: capT, stage: 1, baseY: 2.95 });
+
+      // ตำแหน่งรูประทุ 3 รู (local offset) — ใช้พ่นไฟเฉียงลง+สัมผัสวง → หางควง
+      rocket.userData.talaiJets = [
+        { a: 0,               r: wd * 0.62, y: HUB_Y - 0.35 },
+        { a: 2 * Math.PI / 3, r: wd * 0.62, y: HUB_Y - 0.35 },
+        { a: 4 * Math.PI / 3, r: wd * 0.62, y: HUB_Y - 0.35 }
+      ];
     } else {
       const rad = tier <= 2 ? 0.5 : tier === 3 ? 0.7 : tier === 4 ? 1.0 : 1.25;
       const nStack = Math.max(1, stageCount);
@@ -696,6 +717,47 @@
         if (++c > 6) break;
       }
     }
+    // ตะไล: พ่นไฟจากรูประทุที่ขอบล้อ — จุดพ่นหมุนตามล้อ → อนุภาคเรียงเป็นเกลียวสว่าน
+    function emitTalaiSpiral(power) {
+      const jets = rocket.userData.talaiJets || [];
+      const spin = rocket.rotation.y;
+      for (const j of jets) {
+        const wa = j.a + spin;
+        const ex = rocket.position.x + Math.cos(wa) * j.r;
+        const ez = Math.sin(wa) * j.r;
+        // แนวสัมผัสการหมุน (พ่นเฉียง ~15° ออกด้านข้าง) + องค์ประกอบลง
+        const tx = -Math.sin(wa), tz = Math.cos(wa);
+        const ox = Math.cos(wa), oz = Math.sin(wa);
+        let c = 0;
+        for (const p of flame.pool) {
+          if (p.life > 0) continue;
+          p.life = p.max = 0.16 + Math.random() * 0.26;
+          p.x = ex + (Math.random() - 0.5) * 0.1;
+          p.y = j.y + (Math.random() - 0.5) * 0.1;
+          p.z = ez + (Math.random() - 0.5) * 0.1;
+          const t = 3.4 + Math.random() * 1.6;
+          p.vx = tx * t + ox * 0.9;
+          p.vy = -2.2 - Math.random() * 2.4 * power;
+          p.vz = tz * t + oz * 0.9;
+          p.grow = 0;
+          p.r = 1; p.g = 0.5 + Math.random() * 0.32; p.b = 0.14;
+          if (++c > 3) break;
+        }
+        let sc = 0;
+        for (const p of smoke.pool) {
+          if (p.life > 0) continue;
+          p.life = p.max = 1.1 + Math.random() * 1.7;
+          p.x = ex; p.y = j.y - 0.08; p.z = ez;
+          p.vx = tx * 2.0 + ox * 0.6;
+          p.vy = -0.5 - Math.random() * 1.1;
+          p.vz = tz * 2.0 + oz * 0.6;
+          p.grow = 1.5 + Math.random() * 2;
+          const g = 0.5 + Math.random() * 0.3;
+          p.r = g; p.g = g * 0.95; p.b = g * 0.88;
+          if (++sc > 2) break;
+        }
+      }
+    }
     function emitSmoke(px, py, pz, dense, dark) {
       let c = 0;
       for (const p of smoke.pool) {
@@ -784,6 +846,7 @@
 
     // ---------- resize ----------
     function resize() {
+      if (!canvas || !canvas.parentElement || !renderer) return;   // teardown/นำทางออก
       const w = canvas.clientWidth || canvas.parentElement.clientWidth || 800;
       const h = canvas.clientHeight || 480;
       renderer.setSize(w, h, false);
@@ -900,9 +963,13 @@
       rocket.position.x = Math.max(-3, Math.min(3, s.x * 0.0006));
       rocket.rotation.z = -rocket.position.x * 0.04;
       rocket.rotation.x = 0;
-      if (s.phase === "boost") {
-        if (meta.talai) rocket.rotation.y += dt * 9;                 // ตะไลควงเร็ว
-        else if (tier >= 2 && !meta.bangfai) rocket.rotation.y += dt * 2.5;
+      if (meta.talai) {
+        // ตะไลควงตลอดเที่ยวบิน (โมเมนตัมเชิงมุม) — เร็วช่วงเครื่องติด แล้วค่อย ๆ ช้าลง
+        rocket.userData.talaiSpin = (rocket.userData.talaiSpin || 9);
+        if (s.phase !== "boost") rocket.userData.talaiSpin *= (1 - dt * 0.25);
+        rocket.rotation.y += dt * Math.max(1.5, rocket.userData.talaiSpin);
+      } else if (s.phase === "boost") {
+        if (tier >= 2 && !meta.bangfai) rocket.rotation.y += dt * 2.5;
       }
       // บั้งไฟ "รำดาบ" — ส่ายเห็นชัดตาม bangfaiWobble
       if (meta.bangfai) {
@@ -935,8 +1002,13 @@
       if (burning) {
         const stThr = (cfg.stages && cfg.stages[Math.min(s.stage, stageCount - 1)] && cfg.stages[Math.min(s.stage, stageCount - 1)].thrust) || cfg.thrust || 100;
         const power = Math.min(1.6, s.thrustNow / stThr + 0.4);
-        emitFlame(rocket.position.x, nozY, 0, power);
-        if (inAtmo) emitSmoke(rocket.position.x, nozY + 0.2, 0, alt < 400, !liquid && alt < 6000);
+        if (meta.talai) {
+          emitTalaiSpiral(power);
+          exhaustLight.position.set(rocket.position.x, (rocket.userData.talaiJets && rocket.userData.talaiJets[0].y) || 1, 0);
+        } else {
+          emitFlame(rocket.position.x, nozY, 0, power);
+          if (inAtmo) emitSmoke(rocket.position.x, nozY + 0.2, 0, alt < 400, !liquid && alt < 6000);
+        }
         exhaustLight.color.setHex(liquid ? 0x8ec4ff : 0xff8a3a);
         exhaustLight.intensity = 2.2 + Math.random() * 2.6 + (alt < 300 ? 2 : 0);
         exhaustLight.distance = 55;
