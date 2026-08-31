@@ -236,6 +236,7 @@
     return {
       bangfai: true, analysis: a,
       body: a.body,
+      tailLengthCm: state.tailLength, tailAttachCm: state.tailAttach, boilTail: state.boilTail,
       fuelMass: a.fuelMass, structKg: a.structKg,
       thrust: a.thrust, burnTime: a.burnTime, isp: a.isp,
       curve: a.curve,

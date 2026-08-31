@@ -1,7 +1,7 @@
 // js/launch3d.js — เฟสปล่อยจรวดแบบภาพยนตร์ 3 มิติ (Phase 2)
-// Three.js r147 (UMD global THREE) + EffectComposer (Bloom + FilmPass)
+// Three.js r147 (UMD global THREE) + EffectComposer (Bloom only — clean modern render)
 //  - ระบบอนุภาค: ควันปริมาตร + ไอพ่นไฟ (สี/ความยาวตามชนิดเชื้อเพลิง)
-//  - post-processing: UnrealBloomPass (แสงเครื่องยนต์เรืองแสง) + FilmPass (ฟิล์มเกรน/สแกนไลน์)
+//  - post-processing: UnrealBloomPass เท่านั้น (ไม่มีฟิล์มเกรน/สแกนไลน์ — ภาพคมสะอาด)
 //  - แสงไดนามิก: ไอพ่นเป็นแหล่งกำเนิดแสงส่องตัวจรวด + แท่นปล่อย
 //  - กล้อง: camera shake ตอนจุดระเบิด/Max-Q + สลับมุม Ground → Chase → Orbital ตามความสูง
 // ถ้า THREE โหลดไม่สำเร็จ main.js จะ fallback ไป Launch2D
@@ -376,6 +376,70 @@
       const lant = new THREE.Mesh(new THREE.SphereGeometry(1.6, 24, 18), lm);
       lant.position.y = 3.6; lant.scale.y = 1.35;
       rocket.add(lant); rParts.push({ mesh: lant, stage: 1 });
+    } else if (meta.bangfai) {
+      // ---- บั้งไฟ: ลำสั้นเรียว (ไม้ไผ่/PVC) + หางไม้ไผ่ยาวกว่าลำมาก · ไม่มีครีบเลย ----
+      const BR = 0.32, BH = 4.0;
+      const bMat = pmat("mat_bamboo");                  // pmat จัดการ recolor PVC เป็นเทาพลาสติกเอง
+      bMat.roughness = pvcBody ? 0.42 : 0.78;
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(BR, BR, BH, 20), bMat);
+      body.position.y = 1.0 + BH / 2;
+      rocket.add(body);
+      rParts.push({ mesh: body, stage: 1, baseY: body.position.y, h: BH });
+      // หัวไม้อุด (nose plug) — กรวยสั้นทู่
+      const cap = new THREE.Mesh(new THREE.ConeGeometry(BR * 1.02, BR * 2.1, 20),
+        new THREE.MeshStandardMaterial({ color: 0x6b4f2e, roughness: 0.85 }));
+      cap.position.y = 1.0 + BH + BR * 0.95;
+      rocket.add(cap); rParts.push({ mesh: cap, stage: 1, baseY: cap.position.y });
+      // หาง (ไม้ไผ่ทั้งลำ ~240–290 ซม.) — กระบอกเรียว ยาวกว่าลำ ~1.8 เท่า ไม่มีครีบ
+      const tailCm = meta.tailLengthCm || 270;
+      const TL = Math.min(9.5, Math.max(5.0, tailCm / 100 * 2.7));
+      const tailMat = new THREE.MeshStandardMaterial({ color: 0xb08a4e, roughness: 0.8 });
+      if (tmReady()) { const tm = window.TextureManager.clone("mat_bamboo"); if (tm.map) tailMat.map = tm.map; }
+      const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.10, 0.15, TL, 8), tailMat);
+      const bindY = 1.0 + (meta.tailAttachCm ? Math.min(1.8, meta.tailAttachCm / 100 * 2.7) : 1.0);
+      tail.position.set(BR + 0.14, bindY - TL * 0.40, 0.05);
+      tail.rotation.x = 0.13;                           // สะบัดไปด้านหลังนิด ๆ
+      rocket.add(tail);
+      // เชือกมัดหาง (มัดเข้าบั้ง) — วงแหวน 3 จุด
+      const lashMat = new THREE.MeshStandardMaterial({ color: 0x3a2c1c, roughness: 1 });
+      for (let i = 0; i < 3; i++) {
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(BR + 0.06, 0.04, 6, 14), lashMat);
+        ring.rotation.y = Math.PI / 2;
+        ring.position.set(BR * 0.4, bindY - 0.1 - i * 0.42, 0);
+        rocket.add(ring);
+      }
+      // ร้านยิงบั้งไฟ (bamboo scaffold) — ส่วนของพื้น จม-ตามเมื่อจรวดขึ้น
+      const railMat = new THREE.MeshStandardMaterial({ color: 0x8a6a3a, roughness: 0.9 });
+      [[-0.7, -0.5], [1.0, 0.55]].forEach(([xo, zo]) => {
+        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.11, 10, 8), railMat);
+        pole.position.set(xo, 4.9, zo);
+        worldGroup.add(pole);
+      });
+      for (let h = 1.8; h < 8; h += 2.2) {
+        const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.9, 6), railMat);
+        bar.rotation.z = Math.PI / 2; bar.position.set(0.15, h, 0.02);
+        worldGroup.add(bar);
+      }
+      tower.visible = false;
+    } else if (meta.talai) {
+      // ---- ตะไล: แกนไม้รวกสั้น + ปีกวงกลมไผ่ตง · ไม่มีครีบ (หมุนควงเป็นเกลียว) ----
+      const core = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.26, 2.4, 14), pmat("mat_bamboo"));
+      core.position.y = 1.6;
+      rocket.add(core); rParts.push({ mesh: core, stage: 1, baseY: 1.6, h: 2.4 });
+      const wd = Math.min(2.4, Math.max(1.05, (meta.talaiWingDia || 24) / 24 * 1.5));
+      const wingMat = pmat("mat_bamboo"); if (wingMat.color) wingMat.color.multiplyScalar(0.85);
+      const wing = new THREE.Mesh(new THREE.TorusGeometry(wd, 0.07, 8, 40), wingMat);
+      wing.rotation.x = Math.PI / 2; wing.position.y = 2.3;
+      rocket.add(wing); rParts.push({ mesh: wing, stage: 1, baseY: 2.3 });
+      const spokeMat = new THREE.MeshStandardMaterial({ color: 0x7a5a34, roughness: 0.9 });
+      for (let k = 0; k < 3; k++) {
+        const sp = new THREE.Mesh(new THREE.BoxGeometry(wd * 2, 0.04, 0.06), spokeMat);
+        sp.rotation.y = k * Math.PI / 3; sp.position.y = 2.3;
+        rocket.add(sp);
+      }
+      const capT = new THREE.Mesh(new THREE.ConeGeometry(0.26, 0.5, 14),
+        new THREE.MeshStandardMaterial({ color: 0x6b4f2e, roughness: 0.85 }));
+      capT.position.y = 2.95; rocket.add(capT); rParts.push({ mesh: capT, stage: 1, baseY: 2.95 });
     } else {
       const rad = tier <= 2 ? 0.5 : tier === 3 ? 0.7 : tier === 4 ? 1.0 : 1.25;
       const nStack = Math.max(1, stageCount);
@@ -592,16 +656,14 @@
       pk.geo.attributes.color.needsUpdate = true;
     }
 
-    // ---------- composer ----------
+    // ---------- composer (clean modern look — Bloom only, no film grain/scanlines) ----------
     let composer = null;
     try {
       composer = new THREE.EffectComposer(renderer);
       composer.addPass(new THREE.RenderPass(scene, camera));
-      const bloom = new THREE.UnrealBloomPass(new THREE.Vector2(256, 256), 1.15, 0.5, 0.82);
+      const bloom = new THREE.UnrealBloomPass(new THREE.Vector2(512, 512), 0.85, 0.42, 0.85);
+      bloom.renderToScreen = true;
       composer.addPass(bloom);
-      const film = new THREE.FilmPass(0.28, 0.28, 648, false);
-      film.renderToScreen = true;
-      composer.addPass(film);
     } catch (e) {
       console.warn("[Launch3D] post-processing unavailable, plain render", e);
       composer = null;
@@ -670,9 +732,14 @@
       else camState = "orbital";
       if (camTag) camTag.textContent = { pad: "PAD", ground: "GROUND", chase: "CHASE", orbital: "ORBITAL" }[camState];
 
-      if (camState === "pad") { camGoalPos.set(7, 2.5, 11); camGoalLook.set(0, 5, 0); }
-      else if (camState === "ground") { camGoalPos.set(16, 8 + ry * 0.15, 24); camGoalLook.set(0, ry + 4, 0); }
-      else if (camState === "chase") { camGoalPos.set(5.5, ry + 5, 15); camGoalLook.set(0, ry + 3, 0); }
+      // จรวดพื้นบ้านลำเล็ก (บั้งไฟ/ตะไล/โคม) — ดึงกล้องเข้าใกล้ให้เห็นลำ+หางชัด
+      const sm = meta.bangfai || meta.talai || tier === 1;
+      if (camState === "pad") { camGoalPos.set(sm ? 5 : 7, sm ? 3 : 2.5, sm ? 8 : 11); camGoalLook.set(0, sm ? 3.5 : 5, 0); }
+      else if (camState === "ground") {
+        camGoalPos.set(sm ? 8.5 : 16, (sm ? 4.5 : 8) + ry * 0.15, sm ? 13 : 24);
+        camGoalLook.set(0, ry + (sm ? 1.5 : 4), 0);
+      }
+      else if (camState === "chase") { camGoalPos.set(sm ? 4 : 5.5, ry + (sm ? 3.5 : 5), sm ? 10 : 15); camGoalLook.set(0, ry + 3, 0); }
       else { camGoalPos.set(2, ry + 14, 46); camGoalLook.set(0, ry + 2, 0); }
     }
 
@@ -731,7 +798,17 @@
       // rocket subtle drift with wind / spin
       rocket.position.x = Math.max(-3, Math.min(3, s.x * 0.0006));
       rocket.rotation.z = -rocket.position.x * 0.04;
-      if (tier >= 2 && s.phase === "boost") rocket.rotation.y += dt * 2.5;
+      rocket.rotation.x = 0;
+      if (s.phase === "boost") {
+        if (meta.talai) rocket.rotation.y += dt * 9;                 // ตะไลควงเร็ว
+        else if (tier >= 2 && !meta.bangfai) rocket.rotation.y += dt * 2.5;
+      }
+      // บั้งไฟ "รำดาบ" — ส่ายเห็นชัดตาม bangfaiWobble
+      if (meta.bangfai) {
+        const wob = s.bangfaiWobble || 0;
+        rocket.rotation.z += Math.sin(s.t * 8.5) * wob * 0.09;
+        rocket.rotation.x = Math.sin(s.t * 6.3 + 1) * wob * 0.30;
+      }
 
       // จุดปลายท่อ (nozzle) = ใต้ท่อนล่างสุดที่ยังติดอยู่
       let nozY = NOZZLE_Y;

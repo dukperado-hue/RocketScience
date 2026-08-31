@@ -48,9 +48,20 @@
       legalChecks: [],       // requirement ids completed
       legalResult: null,
       wind: 0,
+      windDirDeg: 0,
+      weather: null,         // ประจำวันภารกิจ — สุ่มตอนเลือกภารกิจ, ใช้ในบรีฟ + ตอนปล่อย
       flightSummary: null,
       wanHu: false
     };
+  }
+
+  // สุ่ม "สภาพอากาศประจำวัน" ของภารกิจ (ใช้ทั้งบรีฟก่อนภารกิจ และตอนปล่อยจริง)
+  function rollMissionWeather() {
+    const tn = tierN(G.run.mission.tierKey);
+    G.run.weather = window.Physics.makeWeather({ stormChance: 0.12 + (4 - Math.min(4, tn)) * 0.02 });
+    G.run.wind = +((Math.random() * 2 - 1) *
+      (2 + Math.min(3, tn) * 1.5) * (1 + G.run.weather.windGust * 0.8)).toFixed(1);
+    G.run.windDirDeg = Math.floor(Math.random() * 360);
   }
 
   // ---------------- screen routing ----------------
@@ -156,7 +167,10 @@
           ${locked ? `<span class="pc-hazard">🔒 ${m.locked ? "Phase 2" : "ยังไม่ปลดล็อก"}</span>` : ""}
         </div>`;
       if (!locked) card.addEventListener("click", () => {
-        newRun(m); goRocket();
+        newRun(m);
+        rollMissionWeather();
+        if (window.VN && window.VN.brief) window.VN.brief(G.run, { onDone: goRocket });
+        else goRocket();
       });
       grid.appendChild(card);
     });
@@ -936,13 +950,8 @@
       }
     }
 
-    G.run.weather = window.Physics.makeWeather({
-      // จรวดเล็ก (tier ต่ำ) เจอพายุบ่อยกว่าเล็กน้อย เพื่อสอนเรื่องเขตปลอดภัย/หน้าต่างปล่อย
-      stormChance: 0.12 + (4 - Math.min(4, tierN(r.tierKey))) * 0.02
-    });
-    // ลมกระโชกวันพายุแรงกว่า
-    G.run.wind = +((Math.random() * 2 - 1) *
-      (2 + Math.min(3, tierN(r.tierKey)) * 1.5) * (1 + G.run.weather.windGust * 0.8)).toFixed(1);
+    // สภาพอากาศสุ่มตอนเลือกภารกิจแล้ว (บรีฟ) — ใช้ค่าเดิม; สำรองไว้เผื่อยังไม่มี
+    if (!G.run.weather) rollMissionWeather();
     const wxCommon = { windSpeed: G.run.wind, weather: G.run.weather };
 
     // ระบบกู้คืนสำหรับฟิสิกส์ (staged propulsive: Δv สำรองจริง = ไม่เกิน margin ที่มี → ถ้าน้อยไปยานจะตก)
@@ -975,7 +984,12 @@
         bangfai: isBangfai ? { curve: s.bangfai.curve, tailBalance: s.bangfai.tailBalance,
           catoRisk: s.bangfai.catoRisk, ignitionRisk: s.bangfai.ignitionRisk } : null,
         recovery: (isTalai || isBangfai) ? null : recPhys, wanHu: !!G.run.wanHu,
-        rocketMeta: { icon: r.icon, tier: tierN(r.tierKey), spinStabilized: s.spin, body: s.body || null, talai: isTalai, bangfai: isBangfai }
+        rocketMeta: { icon: r.icon, tier: tierN(r.tierKey), spinStabilized: s.spin, body: s.body || null,
+          talai: isTalai, bangfai: isBangfai,
+          tailLengthCm: isBangfai ? s.bangfai.tailLengthCm : null,
+          tailAttachCm: isBangfai ? s.bangfai.tailAttachCm : null,
+          boilTail: isBangfai ? s.bangfai.boilTail : null,
+          talaiWingDia: isTalai ? (s.talai.wingDia || null) : null }
       }, wxCommon);
     }
 

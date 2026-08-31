@@ -109,6 +109,119 @@
   const pick = (a) => a[Math.floor(Math.random() * a.length)];
   const fmtAlt = (a) => (a >= 1000 ? (a / 1000).toFixed(1) + " กม." : Math.round(a) + " ม.");
 
+  // ---------------- Pre-Mission Briefing (พี่ช่าง = Mission CAPCOM) ----------------
+  const COMPASS = ["เหนือ", "ตอน.เฉียงเหนือ", "ตะวันออก", "ตอน.เฉียงใต้", "ใต้", "ตต.เฉียงใต้", "ตะวันตก", "ตต.เฉียงเหนือ"];
+  const WX_TH = { clear: "ฟ้าโปร่ง", cloudy: "เมฆมาก", rain: "ฝนตกปรอย", thunderstorm: "พายุฝนฟ้าคะนอง" };
+
+  function metarLine(run) {
+    const w = run.weather || {};
+    const dir = ((run.windDirDeg || 0) % 360 + 360) % 360;
+    const kt = Math.round(Math.abs(run.wind || 0) * 1.94);
+    const comp = COMPASS[Math.round(dir / 45) % 8];
+    const gust = (w.windGust || 0) > 0.5
+      ? ` gust ${Math.round(kt + (w.windGust) * 14)} kt (ลมเฉือน)` : "";
+    const rainPct = Math.round((w.rainRate || 0) * 100);
+    const cloud = (w.cloudCover || 0) > 0.62 ? "เพดานเมฆต่ำ" : (w.cloudCover || 0) > 0.25 ? "เมฆกระจาย" : "ท้องฟ้าใส";
+    return `ลม ${String(dir).padStart(3, "0")}° (จาก${comp}) ${kt} kt${gust} · ${WX_TH[w.type] || "—"} · โอกาสฝน ${rainPct}% · ${cloud}` +
+      (w.lightning ? " · ⚡ ตรวจพบกิจกรรมฟ้าผ่า" : "");
+  }
+
+  function cautionLines(run) {
+    const w = run.weather || {};
+    const mid = (run.mission && run.mission.id) || "";
+    const out = [];
+    const windy = (w.windGust || 0) > 0.5 || Math.abs(run.wind || 0) > 6;
+    if (w.type === "thunderstorm")
+      out.push("⛈ C&W: พายุฝนฟ้าคะนอง — เสี่ยงฟ้าผ่าที่จุดปล่อย เก็บดินขับในที่แห้งสนิทจนถึงวินาทีจุด ดินชื้น = จุดไม่ติด/แรงขับกระตุก");
+    else if (w.type === "rain")
+      out.push("🌧 C&W: ฝนตก — ดินปืนดำดูดความชื้นเร็วมาก คลุมลำให้มิด ทัศนวิสัยจับเวลาลดลง");
+    if (windy) {
+      if (mid === "m3_rocketfest")
+        out.push("💨 C&W: ตรวจพบลมเฉือนแรงวันนี้! จูนหางบั้งไฟให้สมดุลเป๊ะ — ความยาว ~290 มัดเข้าบั้ง ~37 ถ่วงเสมอที่ปลายนิ้ว ไม่งั้นบั้งไฟ 'รำดาบ' ส่ายเป็นเกลียวเสียความสูง จับเวลาไม่ขึ้น");
+      else if (mid === "m4_talai")
+        out.push("💨 C&W: ลมแรง — ตะไลน้ำหนักเบาเบนออกนอกวงง่าย ปีกต้องได้สัดส่วน 2×รอบวงพอดี สปินถึงจะคุมทิศอยู่");
+      else if (mid === "m1_festival" || mid === "m2_newyear")
+        out.push("💨 C&W: ลมแรง — โคม/พลุลอยตามลมง่ายมาก เช็กทิศลมเทียบรันเวย์ก่อนจุด");
+      else
+        out.push("💨 C&W: ลมเฉือนแรง — เพิ่มความเร็วออกตัว (TWR สูง) หรือครีบ/หาง กันวิถีเบน; แรงลมด้านข้าง ∝ ρv²");
+    }
+    if (!out.length) out.push("✓ สภาพอากาศเหมาะแก่การปล่อย ทัศนวิสัยดี ลมเบา — ไม่มี C&W");
+    return out;
+  }
+
+  // เนื้อหาบรีฟเฉพาะภารกิจ (lore + ข้อควรจำการประกอบ)
+  const BRIEF = {
+    m1_festival: {
+      lore: "งานวัดประจำปี — ปล่อยโคมลอยฉลอง แต่รันเวย์สนามบินอยู่ในระยะ เขตปลอดภัยการบิน 9 กม. ห้ามล้ำ",
+      hints: "โคมสาไหม้ที่ ~233°C — ใช้ 'หัวเผา' เบา ๆ กับดินน้อย ๆ อย่าใส่ดินขับพลุ ความร้อนสะสม ∝ แรงขับ ÷ มวลโครง"
+    },
+    m2_newyear: {
+      lore: "เคาต์ดาวน์ปีใหม่ — จุดพลุให้สูงพอโดยไม่รบกวนน่านฟ้า ทัศนวิสัยกลางคืน",
+      hints: "พลุดินขับเผาเร็ว วิถีตรงแต่คุมเพดานยาก — เลือกดินขับให้พอดีเป้า อย่าเกิน"
+    },
+    m3_rocketfest: {
+      lore: "ประเพณีบุญบั้งไฟ — งานบุญเดือนหก ชาวอีสานจุดบั้งไฟขึ้นฟ้าขอฝนจากพญาแถน สืบมาแต่ก่อนพุทธกาล กรรมการตัดสินที่บั้งไฟ 'ขึ้นสูง' และ 'อยู่กลางอากาศนานที่สุด' (จับเวลา)",
+      hints: "ดินลำตัว: ดินประสิว 1 กก. ต่อถ่านป่นละเอียด 2.3–2.5 ส่วน + พรมน้ำ · อัดด้วยแม่แรง 300–400 PSI เท่านั้น · เจาะรูแกนทรงกรวย ยอด 4/ไฟกิน 14/ตูด 20/เฟื่อง 25 มม. · ดินหัว (ดินเลี้ยง) มาก+เตรียมดี = ค้างฟ้านาน คะแนนพุ่ง"
+    },
+    m4_talai: {
+      lore: "ชิงแชมป์ตะไล บ้านตาลิน หนองบัว — ภูมิปัญญา น้าบุญช่วย มีแสง ตะไลไม่ยิงตรง แต่จุดแล้วสะบัดมือขว้างแบบจานบิน พุ่งเป็นเกลียวสว่าน",
+      hints: "แกน 'ไม้รวกสด' เท่านั้น (แห้ง/PVC = แตกคามือ) · เชือกวัดรอบวงรูบ้อง 'วน 2 รอบ' = ความยาวแกน = เส้นผ่าศูนย์กลางปีก · รูประทุเฉียง ~15° ใต้จุดสมดุล · ดินบาท-มาดเฟื้อง-ถ่านสลึง"
+    },
+    m5_sounding: {
+      lore: "ตรวจชั้นสตราโตสเฟียร์ ~45 กม. — ต้องขออนุญาต CAAT และออก NOTAM ปิดห้วงอากาศชั่วคราว มี RSO คุมจุดปล่อย",
+      hints: "เชื้อเพลิงน้ำตาล+KNO₃ Isp ~130 วิ — เลือกเพย์โหลดเบา บริหารเชื้อเพลิงให้ถึงเป้า ครีบ/CP-CG สำคัญ"
+    },
+    m6_ballistic: {
+      lore: "ทดสอบวิถีโค้ง sub-orbital ~250 กม. — ชิ้นส่วนตกกลับพื้นโลก ต้องประกาศเขตห้วงอากาศหวงห้าม ประเมิน ellipse จุดตกเผื่อ 3σ และต้องได้รับการรับรองความมั่นคง",
+      hints: "guidance ตัดเครื่องเมื่อ projected apogee ถึงเป้า — เล็งมุมปล่อยและ Δv ให้พอดี ไม่งั้น re-entry ร้อนเกินไหม้"
+    },
+    m7_orbit: {
+      lore: "ส่ง CubeSat เข้าวงโคจร LEO 300 กม. — รัฐต้องรับรองสถานะการยิง (OST 1967 ข้อ VI) ซื้อประกัน (Liability Convention 1972) จดคลื่น ITU และเลี่ยงขยะอวกาศ",
+      hints: "Δv = Isp·g₀·ln(m₀/m_f) ต้องแตะ ~7.73 กม./วิ + gravity loss — เพย์โหลดยิ่งหนัก payload fraction ยิ่งต่ำ ใช้ Isp สูงที่ท่อนบน"
+    },
+    m8_geo: {
+      lore: "ส่งดาวเทียมสื่อสารวงโคจรสูง — เพย์โหลดหนัก payload fraction ต่ำมาก ความรับผิดระหว่างประเทศสูงสุด งบประกันวงเงินสูง",
+      hints: "บริหาร Δv ทุกเมตรต่อวินาที — ทุกกรัมของมวลเปล่ากินงบ margin; margin แคบ = ออกแบบเก่ง ได้โบนัส"
+    }
+  };
+
+  function brief(run, opts) {
+    opts = opts || {};
+    if (!ensure()) { opts.onDone && opts.onDone(); return; }
+    const m = run && run.mission;
+    if (!m) { opts.onDone && opts.onDone(); return; }
+    const b = BRIEF[m.id] || {};
+    const tgtU = m.targetAltitude >= 3000
+      ? (m.targetAltitude / 1000).toFixed(0) + " กม." : m.targetAltitude + " ม.";
+    const obj = `เป้าหมาย ${tgtU}` +
+      (m.timeAloftTarget ? ` · จับเวลาให้ถึง ${m.timeAloftTarget} วิ` : "") +
+      (m.targetOrbit ? ` · ความเร็ววงโคจร ~${(m.targetOrbit / 1000).toFixed(2)} กม./วิ` : "") +
+      ` · งบ ${run.mission.budget.toLocaleString("en-US")} ฿`;
+
+    const lines = [
+      { who: "pchang", text: `📋 บรีฟก่อนภารกิจ — “${m.titleTh}”. ${b.lore || m.briefTh}` },
+      { who: "pchang", text: `วัตถุประสงค์: ${obj}` },
+      { who: "pchang", text: `🌦 รายงานตรวจอากาศสนาม (METAR): ${metarLine(run)}` }
+    ];
+    cautionLines(run).forEach(t => lines.push({ who: "pchang", text: t }));
+    if (b.hints) lines.push({ who: "pchang", text: `🔧 ข้อควรจำในการประกอบ: ${b.hints}` });
+
+    // สีสันปิดท้าย
+    const w = run.weather || {};
+    if (w.type === "thunderstorm")
+      lines.push({ who: "kaitun", text: "เอ๊ะ ฟ้าร้องแล้วด้วย... ปล่อยวันนี้ดีเหรอคะพี่ช่าง?" });
+    else if ((w.windGust || 0) > 0.5)
+      lines.push({ who: "kaitun", text: "ลมแรงจังเลยค่ะ ธงสนามปลิวแทบขาด!" });
+    lines.push({ who: "samlee", text: pick([
+      "อากาศเป็นเรื่องของคนขี้กลัว ประกอบจรวดได้แล้ว",
+      "ยิ่งลมแรงยิ่งน่าดู รีบ ๆ เข้าโรงประกอบ",
+      "บรีฟเสร็จยัง ฉันอยากเห็นมันขึ้น (หรือระเบิด) เร็ว ๆ"
+    ]) });
+    lines.push({ who: "pchang", text: "พี่ช่าง (CAPCOM) จะอยู่ในไลน์ตลอดภารกิจ — เข้าโรงประกอบได้" });
+
+    play(lines, { onDone: opts.onDone });
+  }
+
   // ---------------- บทสนทนา: หน้าประกอบ (VAB) ----------------
   function atVab(rocket) {
     const tk = rocket && rocket.tierKey;
@@ -261,5 +374,5 @@
     ], { onDone: onDone });
   }
 
-  window.VN = { play, atVab, atReport, wanHu, skip: end, CAST };
+  window.VN = { play, brief, atVab, atReport, wanHu, skip: end, CAST };
 })();
