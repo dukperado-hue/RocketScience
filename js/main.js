@@ -146,7 +146,9 @@
           ${(m.hazards || []).map(h => `<span class="pc-hazard">${h}</span>`).join("")}
           ${locked ? `<span class="pc-hazard">🔒 ${m.locked ? "Phase 2" : "ยังไม่ปลดล็อก"}</span>` : ""}
         </div>`;
-      if (!locked) card.addEventListener("click", () => { newRun(m); goRocket(); });
+      if (!locked) card.addEventListener("click", () => {
+        newRun(m); goRocket();
+      });
       grid.appendChild(card);
     });
   }
@@ -247,7 +249,26 @@
         el.addEventListener("click", () => VAB.add(p.id));
         list.appendChild(el);
       });
+      VAB.renderExtras();
       VAB.renderGridClassic();
+    },
+
+    // Phase 5: แผงโครงสร้าง (PVC/ไม้ไผ่) + พันลวด + ผสมเคมีดินขับ
+    renderExtras() {
+      const r = G.run.rocket;
+      if (isStaged(r) || !window.VabExtras) return;
+      let host = $("#vab-extras");
+      if (!host) {
+        host = document.createElement("div");
+        host.id = "vab-extras";
+        host.className = "vab-extras";
+        const anchor = $("#vab-parts");
+        anchor.parentElement.insertBefore(host, anchor.nextSibling);
+      }
+      const t = tierN(r.tierKey);
+      const showBody = t === 2;
+      const showChem = !!r.blackPowder || t === 2 || VAB.slots.some(id => /^charge/.test(id));
+      window.VabExtras.render(host, { showBody, showChem, rocket: r }, () => VAB.computeStats());
     },
     renderGridClassic() {
       const grid = $("#vab-grid");
@@ -262,6 +283,7 @@
         slot.querySelector(".vs-x").addEventListener("click", () => { VAB.slots.splice(idx, 1); VAB.update(); });
         grid.appendChild(slot);
       });
+      VAB.renderExtras();
       VAB.computeStats();
     },
     add(pid) {
@@ -349,36 +371,84 @@
       const engineThrust = parts.filter(p => p.type === "engine").reduce((s, p) => s + p.thrust, 0);
       const fuelMass = parts.filter(p => p.type === "propellant").reduce((s, p) => s + p.fuel, 0);
       const nonFuelMass = parts.filter(p => p.type !== "propellant").reduce((s, p) => s + p.mass, 0);
-      const dryMass = r.dryMass + nonFuelMass;
-      const wetMass = dryMass + fuelMass;
-      let dragCoef = Math.max(0.02, r.dragCoef + parts.reduce((s, p) => s + (p.dragMod || 0), 0));
       const spin = r.spinStabilized || parts.some(p => p.addsSpin);
-      const burnTime = Math.max(0.8, Math.min(20, parts.filter(p => p.type === "propellant").reduce((s, p) => s + p.burn, 0) || 1.2));
-      const thrust = engineThrust;
-      const twr = wetMass > 0 && thrust > 0 ? thrust / (wetMass * 9.81) : 0;
-      const deltaV = fuelMass > 0 ? r.isp * 9.81 * Math.log(wetMass / dryMass) : 0;
-      const scoreBonusParts = parts.reduce((s, p) => s + (p.scoreBonus || 0), 0);
+      let dragCoef = Math.max(0.02, r.dragCoef + parts.reduce((s, p) => s + (p.dragMod || 0), 0));
+      let baseBurn = Math.max(0.8, Math.min(20, parts.filter(p => p.type === "propellant").reduce((s, p) => s + p.burn, 0) || 1.2));
+      let scoreBonusParts = parts.reduce((s, p) => s + (p.scoreBonus || 0), 0);
       let wobble = r.thrustWobble || 0;
       if (spin && !r.spinStabilized) wobble *= 0.5;
 
+      // ---- Phase 5: โครงสร้าง (PVC/ไม้ไผ่) + พันลวด + เคมีดินขับ ----
+      const ex = window.VabExtras ? window.VabExtras.derived(r) : null;
+      let baseThrust = engineThrust;
+      let extraDryMass = 0, casingCapMul = 1, catoRisk = 0, chemIgnitionRisk = 0, chemInfo = null;
+      if (ex) {
+        if (ex.showBody) { extraDryMass = ex.wireMass; casingCapMul = ex.casingCapMul; }
+        if (ex.showChem) {
+          const ch = ex.chem; chemInfo = ch;
+          baseThrust *= ch.thrustMul;
+          // total impulse ∝ ispMul·altitudeMul ; แรงขับ ∝ thrustMul  ⇒  ปรับเวลาเผาไหม้ให้สอดคล้อง
+          baseBurn = Math.max(0.5, baseBurn * (ch.ispMul * ch.altitudeMul) / Math.max(0.3, ch.thrustMul));
+          catoRisk = ch.catoRisk;
+          chemIgnitionRisk = ch.ignitionRisk;
+        }
+      }
+
+      const dryMass = (r.dryMass + nonFuelMass) * (ex && ex.showBody ? ex.dryMassMul : 1) + extraDryMass;
+      const wetMass = dryMass + fuelMass;
+      const thrust = baseThrust;
+      const burnTime = baseBurn;
+      const twr = wetMass > 0 && thrust > 0 ? thrust / (wetMass * 9.81) : 0;
+      const ispEff = r.isp * (chemInfo ? chemInfo.ispMul : 1);
+      const deltaV = fuelMass > 0 ? ispEff * 9.81 * Math.log(wetMass / dryMass) : 0;
+
+      // Phase 3: ความเสี่ยงความร้อนของโคมกระดาษ (ดินขับพลุ + ดินหนัก) — >1 = ไหม้กลางอากาศ
+      const chargeThrust = parts.filter(p => p.type === "engine" && /^charge/.test(p.id))
+        .reduce((s, p) => s + p.thrust, 0) * (chemInfo ? chemInfo.thrustMul : 1);
+      const paperRisk = r.lantern ? (chargeThrust * 1.4 + fuelMass * 8) / (dryMass * 130) : 0;
+
       G.run.stats = {
         staged: false, thrust, fuelMass, dryMass, wetMass, dragCoef, spin, burnTime, twr, deltaV,
-        scoreBonusParts, wobble, partCount: parts.length, hasEngine: engineThrust > 0, hasFuel: fuelMass > 0
+        scoreBonusParts, wobble, paperRisk, partCount: parts.length, hasEngine: engineThrust > 0, hasFuel: fuelMass > 0,
+        casingCapMul, catoRisk, chemIgnitionRisk, chem: chemInfo, body: ex ? ex.body : null
       };
 
-      renderTelem([
+      const telem = [
         ["มวลรวม", fmt(wetMass, 2) + " kg"],
         ["แรงขับรวม", fmt(thrust) + " N"],
         ["อัตราส่วนแรงขับ/น้ำหนัก (TWR)", fmt(twr, 2), twr >= 1.2 ? "ok" : twr >= 1 ? "warn" : "bad"],
         ["Δv โดยประมาณ", fmt(deltaV) + " m/s"],
         ["เวลาเผาไหม้", fmt(burnTime, 1) + " s"]
-      ]);
+      ];
+      if (chemInfo) telem.push(["ดินขับ", chemInfo.quality, catoRisk >= 1 ? "bad" : chemInfo.altitudeMul < 0.6 || chemIgnitionRisk > 0.5 ? "warn" : "ok"]);
+      if (ex && ex.showBody) telem.push(["พิกัดความดันปลอก", "×" + (casingCapMul).toFixed(2), casingCapMul < 0.85 ? "warn" : "ok"]);
+      renderTelem(telem);
 
       const s = G.run.stats;
       const ok = s.hasEngine && s.hasFuel && twr > 1 && s.partCount <= r.maxParts;
+
+      // ลางบอกเหตุฟิสิกส์เฉพาะถิ่น (Phase 3/5) — เตือน ไม่บล็อก ให้ผู้เล่นได้เรียนรู้จากผล
+      let riskHint = null;
+      if (r.lantern && paperRisk > 1)
+        riskHint = "⚠️ ความร้อนเกินพิกัดกระดาษสา — โคมจะติดไฟกลางอากาศ (ใช้หัวเผา ไม่ใช่ดินขับพลุ)";
+      else if (r.lantern && paperRisk > 0.7)
+        riskHint = "⚠️ ความร้อนใกล้พิกัดกระดาษสา — เสี่ยงไหม้";
+      else if (catoRisk >= 1)
+        riskHint = "⚠️ ดินประสิวเยอะไป — เสี่ยงระเบิดคาแท่น (CATO) ลดดินประสิว เปลี่ยนเป็นไม้ไผ่ หรือพันลวดเพิ่ม";
+      else if (chemInfo && chemInfo.altitudeMul < 0.6)
+        riskHint = "⚠️ ถ่านเยอะไป — ดินขับเผาช้า แรงขับตก จะขึ้นไม่ถึงเป้า";
+      else if (chemIgnitionRisk > 0.5)
+        riskHint = "⚠️ กำมะถัน/ดินประสิวน้อยไป — ดินขับอาจจุดไม่ติด";
+      else if (r.blackPowder) {
+        const load = fuelMass / Math.max(0.5, thrust / 100);
+        if (load > 1.0) riskHint = "⚠️ ดินปืนเกินพิกัดปลอกลำ — เสี่ยงระเบิดคาแท่น (CATO)";
+        else if (load > 0.72) riskHint = "⚠️ ดินปืนมาก ศูนย์ถ่วงจะเลื่อนไปท้าย — บั้งไฟอาจส่ายเสียความสูง";
+      }
+
       setVerdict(!s.hasEngine ? ["ยังไม่มีเครื่องยนต์", "bad"]
         : !s.hasFuel ? ["ยังไม่มีเชื้อเพลิง (ดินขับ)", "bad"]
         : twr <= 1 ? ["TWR ≤ 1 — จรวดหนักเกินกว่าจะลอยขึ้น", "bad"]
+        : riskHint ? [riskHint, ""]
         : ["พร้อมปล่อย ✓ TWR > 1", "ok"]);
       $("#vab-proceed").disabled = !ok;
     },
@@ -470,6 +540,7 @@
     VAB.render();
     setupVabDnD();
     show("vab");
+    if (window.VN) VN.atVab(r);
   }
 
   let vabDnDReady = false;
@@ -649,30 +720,42 @@
     G.run.legalResult = checkClearance(TIERS[r.tierKey].legalTier, G.run.legalChecks);
     closeLegal();
 
-    G.run.wind = +((Math.random() * 2 - 1) * (2 + Math.min(3, tierN(r.tierKey)) * 1.5)).toFixed(1);
+    G.run.weather = window.Physics.makeWeather({
+      // จรวดเล็ก (tier ต่ำ) เจอพายุบ่อยกว่าเล็กน้อย เพื่อสอนเรื่องเขตปลอดภัย/หน้าต่างปล่อย
+      stormChance: 0.12 + (4 - Math.min(4, tierN(r.tierKey))) * 0.02
+    });
+    // ลมกระโชกวันพายุแรงกว่า
+    G.run.wind = +((Math.random() * 2 - 1) *
+      (2 + Math.min(3, tierN(r.tierKey)) * 1.5) * (1 + G.run.weather.windGust * 0.8)).toFixed(1);
+    const wxCommon = { windSpeed: G.run.wind, weather: G.run.weather };
 
     let cfg;
     if (s.staged) {
-      cfg = {
+      cfg = Object.assign({
         stages: s.stages, payloadMass: s.payloadMass, dragCoef: s.dragCoef,
-        orbital: s.orbital, targetAltitude: m.targetAltitude,
+        orbital: s.orbital, targetAltitude: m.targetAltitude, tier: tierN(r.tierKey),
         targetOrbitVelocity: m.targetOrbit || 0, launchAngleDeg: s.launchAngleDeg || 0,
-        windSpeed: G.run.wind, windSensitivity: 0.35, spinStabilized: true,
+        windSensitivity: 0.35, spinStabilized: true,
         rocketMeta: { icon: r.icon, tier: tierN(r.tierKey), orbital: s.orbital, stageCount: s.stages.length }
-      };
+      }, wxCommon);
     } else {
-      cfg = {
+      cfg = Object.assign({
         thrust: s.thrust, burnTime: s.burnTime, wetMass: s.wetMass, dryMass: s.dryMass,
-        dragCoef: s.dragCoef, windSpeed: G.run.wind, windSensitivity: r.windSensitivity,
+        dragCoef: s.dragCoef, windSensitivity: r.windSensitivity,
         spinStabilized: s.spin, thrustWobble: s.wobble, targetAltitude: m.targetAltitude,
-        rocketMeta: { icon: r.icon, tier: tierN(r.tierKey), spinStabilized: s.spin }
-      };
+        tier: tierN(r.tierKey), fuelMass: s.fuelMass, paperRisk: s.paperRisk,
+        structure: r.lantern ? "paper"
+          : (r.blackPowder || tierN(r.tierKey) === 2 ? "blackpowder" : null),
+        casingCapMul: s.casingCapMul || 1, catoRisk: s.catoRisk || 0, chemIgnitionRisk: s.chemIgnitionRisk || 0,
+        rocketMeta: { icon: r.icon, tier: tierN(r.tierKey), spinStabilized: s.spin, body: s.body || null }
+      }, wxCommon);
     }
 
     show("launch");
     const use3d = !!(window.Launch3D && window.THREE);
+    const WX_TH = { clear: "ฟ้าใส ☀️", cloudy: "เมฆมาก ⛅", rain: "ฝนตก 🌧️", thunderstorm: "พายุฝนฟ้าคะนอง ⛈️" };
     $("#launch-caption").textContent =
-      `${G.run.name} · ${use3d ? "3D cinematic" : "2D"} · ลม ${G.run.wind >= 0 ? "→" : "←"} ${Math.abs(G.run.wind)} m/s`;
+      `${G.run.name} · ${use3d ? "3D cinematic" : "2D"} · ลม ${G.run.wind >= 0 ? "→" : "←"} ${Math.abs(G.run.wind)} m/s · ${WX_TH[G.run.weather.type] || ""}`;
 
     const hooks = { onComplete: summary => { G.run.flightSummary = summary; showReport(summary); } };
     try {
@@ -748,8 +831,10 @@
 
     // ความเสียหายของยาน
     let damagePen = 0;
-    if (sum.burnedUp) { damagePen = Math.round(bp * 0.7); rows.push(["ยานไหม้จากความร้อน re-entry", -damagePen, false]); }
-    else if (!expendable && !orbital && sum.crashed) { damagePen = Math.round(bp * 0.6); rows.push(["จรวดตกกระแทกเสียหาย", -damagePen, false]); }
+    if (sum.failReason === "LANTERN_BURNUP") { damagePen = Math.round(bp * 0.7); rows.push(["โคมไหม้กลางอากาศ (ความร้อนเกินพิกัดกระดาษสา)", -damagePen, false]); }
+    else if (sum.failReason === "PAD_CATO") { damagePen = Math.round(bp * 0.8); rows.push(["ระเบิดคาแท่นปล่อย (CATO — อัดดินปืนเกิน)", -damagePen, false]); }
+    else if (sum.burnedUp) { damagePen = Math.round(bp * 0.7); rows.push(["ยานไหม้จากความร้อน re-entry", -damagePen, false]); }
+    else if (!expendable && !orbital && sum.crashed) { damagePen = Math.round(bp * 0.6); rows.push([sum.unstable ? "บั้งไฟส่ายตกเสียหาย (CG เพี้ยน)" : "จรวดตกกระแทกเสียหาย", -damagePen, false]); }
 
     // กฎหมาย
     const legalBonus = lr.bonusEarned || 0;
@@ -772,6 +857,9 @@
     vEl.textContent = success ? "ภารกิจสำเร็จ 🎉"
       : lr.gameOver && !cleared ? "จบเกม — ผลจากการละเมิดกฎหมาย"
       : !cleared ? "ปล่อยได้ แต่ผิดกฎหมาย"
+      : sum.failReason === "LANTERN_BURNUP" ? "โคมลอยไหม้กลางอากาศ 🔥"
+      : sum.failReason === "PAD_CATO" ? "จรวดระเบิดคาแท่นปล่อย 💥"
+      : sum.failReason === "UNSTABLE_COM" ? "บั้งไฟเสียการทรงตัว — ศูนย์ถ่วงเพี้ยน"
       : sum.burnedUp ? "ยานไหม้ตอนกลับเข้าชั้นบรรยากาศ"
       : orbital && !sum.reachedOrbit ? "ไม่ถึงความเร็ววงโคจร"
       : !expendable && sum.crashed ? "จรวดตก — ภารกิจไม่ผ่าน"
@@ -796,6 +884,8 @@
     // next-mission button target
     $("#btn-report-next").onclick = () => { renderMissions(); show("mission"); };
     show("report");
+
+    if (window.Narrative) Narrative.debrief(sum, G.run);
   }
 
   function tryUnlockTiers() {

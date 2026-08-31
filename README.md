@@ -40,7 +40,22 @@
 - **มินิเกมกฎหมายอวกาศ:** Outer Space Treaty 1967 Art. VI (รัฐรับรอง), Liability Convention 1972,
   ITU, แผนขยะอวกาศ
 
-**Phase 3 (ถัดไป):** วงโคจรค้างฟ้า (GEO transfer), rendezvous, การกู้ท่อนกลับมาใช้ซ้ำ, เศรษฐศาสตร์ของภารกิจ
+**Phase 3 (ปัจจุบัน):** HUD ขั้นสูง + ฟิสิกส์เฉพาะถิ่น + ตัวละครเล่าเรื่อง
+- **Advanced Flight HUD** (`js/ui.js` → `window.FlightHUD`): แถบล่างจอสไตล์ Spaceflight Simulator —
+  ซ้าย = มาตรวัดความเร็ว (m/s), ขวา = ความสูง (m/km) + แถบเชื้อเพลิงไดนามิก,
+  กลาง = ปุ่ม Pitch/Yaw คุม gravity turn + ปุ่ม STAGE สลัดท่อน; คีย์บอร์ด W/S/A/D + Space
+- **ฟิสิกส์เฉพาะถิ่น** (`physics.js`):
+  - Tier 1 โคมลอย — อุณหพลศาสตร์กระดาษสา: ดินขับแรง/หนักเกิน → ความร้อนต่อมวลโครงเกิน
+    จุดวาบไฟ ~233°C (Fahrenheit 451) → โคมไหม้กลางอากาศ
+  - Tier 2 บั้งไฟ — ดินปืนเกินปริมาตรปลอก → ความดันเกินกำลังวัสดุ → ระเบิดคาแท่น (CATO);
+    ดินปืนมาก → CG เลื่อนไปท้ายจนหลัง CP → static instability (coning) เสียความสูง
+  - Tier 4 — guidance / thrust-termination: ตัดเครื่องเมื่อ projected apogee ถึงเป้า
+    (แก้จรวดพุ่งเลยเป้าจนตกกลับด้วยความเร็วเกินขอบเขตความร้อน)
+- **"ลี" (Lee)** (`js/narrative.js` → `window.Narrative`): แมวสยามสไตล์โยไค หัวหน้าวิศวกร &
+  ที่ปรึกษากฎหมาย — บทสนทนาพิมพ์ดีดแบบ RPG ก่อน/หลังภารกิจ อธิบาย "ทำไม" ด้วยทฤษฎีจริง
+  (Newton F=ma, Tsiolkovsky, q̇∝ρv³, TWR) ผูกกับข้อกฎหมายที่เกี่ยวข้อง
+
+**Phase 4 (ถัดไป):** วงโคจรค้างฟ้า (GEO transfer), rendezvous, การกู้ท่อนกลับมาใช้ซ้ำ, เศรษฐศาสตร์ของภารกิจ
 
 ## โครงสร้างไฟล์
 
@@ -50,6 +65,9 @@ css/style.css        โทเคนธีม Cool Uncle Lab (light/dark/horror)
 js/data.js           TIERS, ROCKETS (10 ชนิด), MISSIONS, PARTS
 js/law.js            LegalFramework (ครบ 5 tier) + checkClearance()
 js/physics.js        เครื่องจำลองการบิน: Tier 1–4 บูรณาการแรงจริง / Tier 5 orbital ใช้ Δv budget + วิถีสคริปต์
+                     + ฟิสิกส์เฉพาะถิ่น Tier 1–2, guidance cutoff Tier 4, control API (pitch/yaw/stage)
+js/ui.js             FlightHUD — แถบ HUD ล่างจอ + ปุ่มควบคุม + คีย์บอร์ด (Phase 3)
+js/narrative.js      "ลี" — บทสนทนาพิมพ์ดีด + เนื้อหาทฤษฎี/กฎหมายต่อสถานการณ์ (Phase 3)
 js/launch2d.js       ตัวเรนเดอร์ Canvas 2 มิติ (fallback)
 js/launch3d.js       ตัวเรนเดอร์ Three.js ภาพยนตร์ (ค่าเริ่มต้น)
 js/main.js           สเตตแมชชีน, VAB (2 โหมด), โมดัลกฎหมาย + มินิเกม, คิดคะแนนตาม tier, ปลดล็อก (localStorage)

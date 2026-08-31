@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+Thai:wght@500;600;700;900&family=Sarabun:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=4">
+<link rel="stylesheet" href="css/style.css?v=8">
 </head>
 <body>
 <script>
@@ -142,6 +142,46 @@
       </div>
       <div id="launch-cam" class="launch-cam" hidden>GROUND</div>
       <div id="launch-event" class="launch-event" hidden></div>
+
+      <!-- Phase 4/5 · CAPCOM "พี่ช่าง" (real-time technical narrator) -->
+      <div id="capcom" class="capcom" hidden>
+        <div class="capcom-portrait" id="capcom-portrait" data-state="idle" aria-hidden="true">🦆</div>
+        <div class="capcom-line" id="capcom-line"></div>
+        <button class="capcom-mute" id="capcom-mute" type="button" title="ปิดเสียงพี่ช่าง (CAPCOM)">🦆</button>
+      </div>
+
+      <!-- Phase 4/5 · Operator "กะปิ" (silent — reacts via mood only) -->
+      <div id="operator" class="operator" data-mood="idle" hidden>
+        <div class="operator-face" id="operator-face" aria-hidden="true">😐</div>
+        <span class="operator-label">กะปิ</span>
+      </div>
+
+      <!-- Advanced bottom HUD (Phase 3) -->
+      <div id="flight-hud" class="fhud" hidden>
+        <div class="fhud-gauge fhud-left">
+          <span class="fhud-label">SPEED</span>
+          <span class="fhud-val" id="fhud-speed">0</span>
+          <span class="fhud-unit">m/s</span>
+        </div>
+        <div class="fhud-controls">
+          <div class="fhud-dpad">
+            <button class="fhud-btn" data-ctl="pitch-up" type="button" title="เชิดหัว / ตั้งตรง (W · ↑)">▲</button>
+            <div class="fhud-drow">
+              <button class="fhud-btn" data-ctl="yaw-left" type="button" title="หันซ้าย (A · ←)">◀</button>
+              <button class="fhud-btn fhud-stage" data-ctl="stage" type="button" title="สลัดท่อน (Space)">STAGE</button>
+              <button class="fhud-btn" data-ctl="yaw-right" type="button" title="หันขวา (D · →)">▶</button>
+            </div>
+            <button class="fhud-btn" data-ctl="pitch-down" type="button" title="กดหัว / gravity turn (S · ↓)">▼</button>
+          </div>
+          <span class="fhud-pitch" id="fhud-pitch">PITCH 0°</span>
+        </div>
+        <div class="fhud-gauge fhud-right">
+          <span class="fhud-label">ALTITUDE</span>
+          <span><span class="fhud-val" id="fhud-alt">0</span> <span class="fhud-unit" id="fhud-alt-unit">m</span></span>
+          <div class="fhud-fuel"><div class="fhud-fuel-fill" id="fhud-fuel"></div></div>
+          <span class="fhud-fuel-label">FUEL</span>
+        </div>
+      </div>
     </div>
     <div class="launch-caption" id="launch-caption">กำลังจุดระเบิด…</div>
   </section>
@@ -189,6 +229,20 @@
   </div>
 </div>
 
+<!-- ============ VISUAL NOVEL — cast dialogue (Phase 5) ============ -->
+<div id="vn" class="vn" hidden>
+  <div class="vn-portrait" aria-hidden="true">
+    <img id="vn-portrait-img" class="vn-portrait-img" alt="">
+  </div>
+  <div class="vn-body">
+    <button class="vn-x" id="vn-x" type="button" title="ข้าม">✕</button>
+    <div class="vn-plate"><span class="vn-name" id="vn-name"></span><span class="vn-role" id="vn-role"></span></div>
+    <p class="vn-text" id="vn-text"></p>
+    <p class="vn-stagedir" id="vn-stagedir" hidden></p>
+    <div class="vn-cont" id="vn-cont">▶ คลิกเพื่อไปต่อ</div>
+  </div>
+</div>
+
 <div id="toast" class="toast" hidden></div>
 
 <footer class="site-footer">
@@ -196,22 +250,28 @@
 </footer>
 
 <!-- Three.js r147 (UMD) + post-processing for the cinematic 3D launch -->
-<script src="vendor/three/three.min.js?v=4"></script>
-<script src="vendor/three/shaders/CopyShader.js?v=4"></script>
-<script src="vendor/three/shaders/LuminosityHighPassShader.js?v=4"></script>
-<script src="vendor/three/shaders/FilmShader.js?v=4"></script>
-<script src="vendor/three/postprocessing/EffectComposer.js?v=4"></script>
-<script src="vendor/three/postprocessing/MaskPass.js?v=4"></script>
-<script src="vendor/three/postprocessing/RenderPass.js?v=4"></script>
-<script src="vendor/three/postprocessing/ShaderPass.js?v=4"></script>
-<script src="vendor/three/postprocessing/UnrealBloomPass.js?v=4"></script>
-<script src="vendor/three/postprocessing/FilmPass.js?v=4"></script>
+<script src="vendor/three/three.min.js?v=8"></script>
+<script src="vendor/three/shaders/CopyShader.js?v=8"></script>
+<script src="vendor/three/shaders/LuminosityHighPassShader.js?v=8"></script>
+<script src="vendor/three/shaders/FilmShader.js?v=8"></script>
+<script src="vendor/three/postprocessing/EffectComposer.js?v=8"></script>
+<script src="vendor/three/postprocessing/MaskPass.js?v=8"></script>
+<script src="vendor/three/postprocessing/RenderPass.js?v=8"></script>
+<script src="vendor/three/postprocessing/ShaderPass.js?v=8"></script>
+<script src="vendor/three/postprocessing/UnrealBloomPass.js?v=8"></script>
+<script src="vendor/three/postprocessing/FilmPass.js?v=8"></script>
 
-<script src="js/data.js?v=4"></script>
-<script src="js/law.js?v=4"></script>
-<script src="js/physics.js?v=4"></script>
-<script src="js/launch2d.js?v=4"></script>
-<script src="js/launch3d.js?v=4"></script>
-<script src="js/main.js?v=4"></script>
+<script src="js/data.js?v=8"></script>
+<script src="js/law.js?v=8"></script>
+<script src="js/chemistry.js?v=8"></script>
+<script src="js/physics.js?v=8"></script>
+<script src="js/ui.js?v=8"></script>
+<script src="js/vn.js?v=8"></script>
+<script src="js/narrative.js?v=8"></script>
+<script src="js/vab.js?v=8"></script>
+<script src="js/textureManager.js?v=8"></script>
+<script src="js/launch2d.js?v=8"></script>
+<script src="js/launch3d.js?v=8"></script>
+<script src="js/main.js?v=8"></script>
 </body>
 </html>
