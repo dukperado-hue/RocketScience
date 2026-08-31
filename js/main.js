@@ -66,6 +66,7 @@
 
   // ---------------- screen routing ----------------
   function show(name) {
+    if (name !== "vab" && window.VAB3D) window.VAB3D.unmount();   // คืน GL context ก่อนออกจากโรงประกอบ
     SCREENS.forEach(s => { const el = $("#screen-" + s); if (el) el.hidden = (s !== name); });
     const bar = $("#stepbar");
     if (name === "home") { bar.hidden = true; }
@@ -360,6 +361,26 @@
       VAB.renderExtras();
       VAB.renderRecovery();
       VAB.computeStats();
+      VAB.sync3d();
+    },
+
+    // Phase 7: ซิงก์โมเดล 3 มิติ + สลับการแสดง grid ↔ 3D
+    sync3d() {
+      const r = G.run.rocket;
+      if (!window.VAB3D || !r) return;
+      window.__vabSlots = VAB.slots.slice();
+      if (isStaged(r)) {
+        window.__vabStages = effectiveStages(r);
+        window.__vabPayloadMass = VAB.payloadId ? (partById(VAB.payloadId).mass || 0) : (r.defaultPayload || 0);
+      }
+      const wrap = $("#vab3d-wrap"), grid = $("#vab-grid");
+      const ok = window.VAB3D.mount(wrap);
+      // WebGL ใช้ไม่ได้ → ถอยไปมุมมองกริดเดิม
+      const keepGrid = !ok || r.tierKey === "tier1";
+      if (wrap) wrap.hidden = !ok;
+      if (grid) grid.hidden = !keepGrid;
+      const eh = $("#vab-grid-empty"); if (eh && !keepGrid) eh.hidden = true;
+      if (ok) window.VAB3D.show(r);
     },
     add(pid) {
       const r = G.run.rocket;
@@ -433,11 +454,13 @@
       });
       VAB.renderRecovery();
       VAB.computeStats();
+      VAB.sync3d();
     },
 
     computeStats() {
       const r = G.run.rocket;
       isStaged(r) ? VAB.computeStaged() : VAB.computeClassic();
+      if (window.VAB3D && !$("#screen-vab").hidden) window.VAB3D.refresh(r);   // โมเดล 3 มิติตามสไลเดอร์
       return G.run.stats;
     },
 

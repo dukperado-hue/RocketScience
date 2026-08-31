@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+Thai:wght@500;600;700;900&family=Sarabun:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=13">
+<link rel="stylesheet" href="css/style.css?v=19">
 </head>
 <body>
 <script>
@@ -104,9 +104,17 @@
         <div id="vab-parts" class="vab-parts-list"></div>
       </aside>
 
-      <!-- CENTER: assembly grid -->
+      <!-- CENTER: interactive 3D inspection + assembly grid -->
       <div class="vab-panel vab-assembly">
-        <h3>กริดประกอบ (ล่าง → บน)</h3>
+        <h3>ตรวจสอบจรวด 3 มิติ</h3>
+        <div id="vab3d-wrap" hidden>
+          <canvas id="vab3d-canvas"></canvas>
+          <div class="vab3d-bar">
+            <button id="vab3d-explode" type="button" class="vab3d-btn">🔍 แยกชิ้นส่วน (X-Ray)</button>
+            <span class="vab3d-hint">ลากหมุน · สกรอลล์ซูม · Shift+ลากแพน · ชี้ชิ้นส่วนเพื่อดูสเปก</span>
+          </div>
+          <div id="vab3d-tip" hidden></div>
+        </div>
         <div id="vab-grid" class="vab-grid" aria-label="กริดประกอบจรวด">
           <div class="vab-grid-empty" id="vab-grid-empty">วางชิ้นส่วนที่นี่</div>
         </div>
@@ -250,31 +258,32 @@
 </footer>
 
 <!-- Three.js r147 (UMD) + post-processing for the cinematic 3D launch -->
-<script src="vendor/three/three.min.js?v=13"></script>
-<script src="vendor/three/shaders/CopyShader.js?v=13"></script>
-<script src="vendor/three/shaders/LuminosityHighPassShader.js?v=13"></script>
-<script src="vendor/three/shaders/FilmShader.js?v=13"></script>
-<script src="vendor/three/postprocessing/EffectComposer.js?v=13"></script>
-<script src="vendor/three/postprocessing/MaskPass.js?v=13"></script>
-<script src="vendor/three/postprocessing/RenderPass.js?v=13"></script>
-<script src="vendor/three/postprocessing/ShaderPass.js?v=13"></script>
-<script src="vendor/three/postprocessing/UnrealBloomPass.js?v=13"></script>
-<script src="vendor/three/postprocessing/FilmPass.js?v=13"></script>
+<script src="vendor/three/three.min.js?v=19"></script>
+<script src="vendor/three/shaders/CopyShader.js?v=19"></script>
+<script src="vendor/three/shaders/LuminosityHighPassShader.js?v=19"></script>
+<script src="vendor/three/shaders/FilmShader.js?v=19"></script>
+<script src="vendor/three/postprocessing/EffectComposer.js?v=19"></script>
+<script src="vendor/three/postprocessing/MaskPass.js?v=19"></script>
+<script src="vendor/three/postprocessing/RenderPass.js?v=19"></script>
+<script src="vendor/three/postprocessing/ShaderPass.js?v=19"></script>
+<script src="vendor/three/postprocessing/UnrealBloomPass.js?v=19"></script>
+<script src="vendor/three/postprocessing/FilmPass.js?v=19"></script>
 
-<script src="js/data.js?v=13"></script>
-<script src="js/law.js?v=13"></script>
-<script src="js/chemistry.js?v=13"></script>
-<script src="js/physics.js?v=13"></script>
-<script src="js/ui.js?v=13"></script>
-<script src="js/vn.js?v=13"></script>
-<script src="js/narrative.js?v=13"></script>
-<script src="js/vab.js?v=13"></script>
-<script src="js/talai.js?v=13"></script>
-<script src="js/bangfai.js?v=13"></script>
-<script src="js/recovery.js?v=13"></script>
-<script src="js/textureManager.js?v=13"></script>
-<script src="js/launch2d.js?v=13"></script>
-<script src="js/launch3d.js?v=13"></script>
-<script src="js/main.js?v=13"></script>
+<script src="js/data.js?v=19"></script>
+<script src="js/law.js?v=19"></script>
+<script src="js/chemistry.js?v=19"></script>
+<script src="js/physics.js?v=19"></script>
+<script src="js/ui.js?v=19"></script>
+<script src="js/vn.js?v=19"></script>
+<script src="js/narrative.js?v=19"></script>
+<script src="js/vab.js?v=19"></script>
+<script src="js/talai.js?v=19"></script>
+<script src="js/bangfai.js?v=19"></script>
+<script src="js/vab3d.js?v=19"></script>
+<script src="js/recovery.js?v=19"></script>
+<script src="js/textureManager.js?v=19"></script>
+<script src="js/launch2d.js?v=19"></script>
+<script src="js/launch3d.js?v=19"></script>
+<script src="js/main.js?v=19"></script>
 </body>
 </html>
