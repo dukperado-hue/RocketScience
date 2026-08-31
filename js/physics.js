@@ -112,8 +112,18 @@ function createFlight(config) {
     dragCoef: 0.5, payloadMass: 0,
     windSpeed: 0, windSensitivity: 1, spinStabilized: false, thrustWobble: 0,
     targetAltitude: 100, orbital: false, targetOrbitVelocity: 0, launchAngleDeg: 0,
-    tier: 1, structure: null, fuelMass: 0, weather: null, recovery: null, wanHu: false, talai: null
+    tier: 1, structure: null, fuelMass: 0, weather: null, recovery: null, wanHu: false, talai: null, bangfai: null
   }, config);
+
+  // กราฟแรงขับของบั้งไฟ (จากรูปทรงรูแกน + ดินหัวเลี้ยงท้าย) — f = ความคืบหน้าการเผาไหม้ 0..1
+  function bfThrustMul(f) {
+    const cv = c.bangfai && c.bangfai.curve;
+    if (!cv) return 1;
+    const tf = cv.tailFrac || 0, tl = cv.tailLevel != null ? cv.tailLevel : 0.35, fl = cv.frontLoad || 0;
+    if (f >= 1 - tf) return tl;                          // ช่วงดินหัว: แรงขับต่ำ ยาว = ค้างฟ้า
+    const g = tf < 1 ? f / (1 - tf) : 0;                 // ช่วงดินลำตัว: ตูดกว้าง = ออกตัวแรงแล้วค่อยลด
+    return (1 + fl) * (1 - g) + (1 - fl * 0.35) * g;
+  }
 
   const weather = normalizeWeather(c.weather);
   const stages = buildStages(c);
@@ -181,6 +191,7 @@ function createFlight(config) {
     _recDv: (c.recovery && c.recovery.dvReserve) || 0,
     chuteDeployed: false, retroBurn: false, recovered: false,
     roll: 0, rollRate: c.talai ? 3 : 0, talaiWobble: 0, talaiHoriz: false,
+    bangfaiWobble: 0, bangfaiHoriz: false,
     events: []
   };
 
@@ -310,6 +321,17 @@ function createFlight(config) {
       return state;
     }
 
+    // ---- บั้งไฟ (Master Craftsman): ดินร้อน/อัดผิด/รูแกนผิด/เฟื่องแคบ → ลำระเบิดคาแท่น ----
+    if (c.bangfai && (c.bangfai.catoRisk || 0) >= 1) {
+      if (!state._lit) { state._lit = true; state.events.push({ t: 0, k: "ignition", stage: 1 }); }
+      if (state.t >= 0.4 && !state.padExplosion) {
+        state.padExplosion = true; state.crashed = true; state.landed = true;
+        state.failReason = "BANGFAI_CATO"; state.phase = "done";
+        state.events.push({ t: state.t, k: "pad-explosion" });
+      }
+      return state;
+    }
+
     // ---- Tier 2 บั้งไฟ: ดินปืนเกินพิกัดปลอก → ระเบิดคาแท่น (CATO) ----
     if (padCATO) {
       if (!state._lit) { state._lit = true; state.events.push({ t: 0, k: "ignition", stage: 1 }); }
@@ -388,11 +410,14 @@ function createFlight(config) {
       const vacBoost = 1 + 0.12 * (1 - Math.min(1, rho / RHO0));
       // Phase 5: ดินขับผสมไม่ดี → จุดติดไม่สม่ำเสมอ แรงขับกระตุกและตกเป็นช่วง ๆ
       let dud = 1;
-      if (dudFire > 0) {
+      const dudAmt = Math.max(dudFire, c.bangfai ? Math.min(0.85, c.bangfai.ignitionRisk || 0) : 0);
+      if (dudAmt > 0) {
         const flick = wobbleNoise(seed + 17, state.t * 3.1);
-        dud = flick < (dudFire - 0.5) * 2 ? 0.15 + Math.random() * 0.2 : 1 - dudFire * 0.35;
+        dud = flick < (dudAmt - 0.5) * 2 ? 0.15 + Math.random() * 0.2 : 1 - dudAmt * 0.35;
       }
-      thr = st.thrust * vacBoost * Math.max(0.15, w) * comLoss * dud;
+      // บั้งไฟ: กราฟแรงขับตามรูปทรงรูแกน + ดินหัวเลี้ยงท้าย
+      const bfCurve = c.bangfai ? bfThrustMul(1 - state.stageProp / Math.max(1e-6, st.propMass)) : 1;
+      thr = st.thrust * vacBoost * Math.max(0.15, w) * comLoss * dud * bfCurve;
       const burn = Math.min(state.stageProp, st.mdot * dt);
       state.stageProp -= burn; state.mass -= burn;
       if (state.phase === "pad") { state.phase = "boost"; state.events.push({ t: state.t, k: "ignition", stage: 1 }); }
@@ -436,6 +461,28 @@ function createFlight(config) {
     const speed = Math.hypot(state.vx, state.vy) || 1e-6;
     state.mach = speed / 300;
     let cd = c.dragCoef * transonicFactor(state.mach);
+
+    // ---- บั้งไฟ: หางไม่สมดุล → "รำดาบ" (static margin ผิด → ส่ายขยายตามแรงลมพลวัต) ----
+    if (c.bangfai) {
+      const bal = c.bangfai.tailBalance == null ? 0.8 : c.bangfai.tailBalance;
+      const instab = Math.max(0, 0.75 - bal);           // เริ่มส่ายเมื่อหางสมดุล < 0.75
+      if (instab > 0 && (state.phase === "boost" || state.phase === "coast")) {
+        const q = Math.min(1.5, speed / 50);            // ยิ่งเร็ว แรงลมยิ่งขยายการส่าย (aerodynamically divergent)
+        const growth = instab * (0.30 + q) * dt * 2.0;
+        state.bangfaiWobble = Math.min(1.25, state.bangfaiWobble + growth - state.bangfaiWobble * dt * 0.30);
+      } else {
+        state.bangfaiWobble *= Math.max(0, 1 - dt * 0.5);
+      }
+      if (state.bangfaiWobble > 0.45 && !state._unstEvt && state.t > 0.35) {
+        state._unstEvt = true; state.unstable = true;
+        state.events.push({ t: state.t, k: "unstable" });
+      }
+      if (state.bangfaiWobble > 0.9 && !state.bangfaiHoriz && state.t > 0.5) {
+        state.bangfaiHoriz = true;                       // รำดาบเต็มขั้น — ควงออกนอกวิถี
+        state.events.push({ t: state.t, k: "bangfai-wobble" });
+      }
+      cd *= 1 + state.bangfaiWobble * 0.9;               // ส่ายมาก = แรงต้านเพิ่ม
+    }
 
     // ---- Phase 5: ระบบกู้คืน ----
     const rec = c.recovery;
@@ -500,7 +547,9 @@ function createFlight(config) {
       }
     } else if (thr > 0) {
       let phi = pitchFromVertical();
-      if (comInstab > 0) phi += Math.sin(state.t * 7.3 + seed) * comInstab * 1.3;  // coning ของบั้งไฟ
+      if (comInstab > 0) phi += Math.sin(state.t * 7.3 + seed) * comInstab * 1.3;  // coning ของบั้งไฟ (ดินหนัก)
+      if (c.bangfai && state.bangfaiWobble > 0)                                     // รำดาบจากหางไม่สมดุล
+        phi += Math.sin(state.t * 5.1 + seed) * state.bangfaiWobble * 1.7 + (state.bangfaiHoriz ? 0.55 : 0);
       thrX = thr * Math.sin(phi); thrY = thr * Math.cos(phi);
     }
 
@@ -596,7 +645,7 @@ function createFlight(config) {
         if (!state.crashed) { state.recovered = true; state.events.push({ t: state.t, k: "landing" }); }
         else state.events.push({ t: state.t, k: "crash" });
       } else {
-        state.crashed = touch > 65 || state.reentryFlag;
+        state.crashed = touch > 65 || state.reentryFlag || state.bangfaiHoriz;
         state.events.push({ t: state.t, k: state.crashed ? "crash" : "landing" });
       }
       state.phase = "done";
@@ -636,6 +685,7 @@ function createFlight(config) {
       guidanceCutoff: !!state._guidanceCutoff,
       failReason: state.failReason ||
         (c.talai && state.talaiHoriz && state.crashed ? "TALAI_WOBBLE" : null) ||
+        (c.bangfai && state.bangfaiHoriz && state.crashed ? "BANGFAI_WOBBLE" : null) ||
         (state.unstable && state.apogee < c.targetAltitude * 0.92 ? "UNSTABLE_COM" : null),
       apoapsis: state.apoapsis, periapsis: state.periapsis,
       peakHeatFlux: state.peakHeatFlux,
@@ -653,6 +703,9 @@ function createFlight(config) {
       talai: !!c.talai,
       talaiWobble: +state.talaiWobble.toFixed(2),
       talaiHoriz: !!state.talaiHoriz,
+      bangfai: !!c.bangfai,
+      bangfaiWobble: +state.bangfaiWobble.toFixed(2),
+      bangfaiHoriz: !!state.bangfaiHoriz,
       spinRate: Math.round(state.rollRate)
     };
   }

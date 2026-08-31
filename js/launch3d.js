@@ -19,6 +19,7 @@
     burnup: "ยานไหม้จากความร้อน!", crash: "ตกกระแทกพื้น", landing: "ลงจอดปลอดภัย",
     "lantern-burnup": "โคมไหม้! กระดาษสาติดไฟ 🔥", "pad-explosion": "ระเบิดคาแท่น (CATO) 💥",
     unstable: "เสียการทรงตัว — CG เพี้ยน",
+    "bangfai-wobble": "บั้งไฟรำดาบ! หางไม่สมดุล ควงเสียความสูง",
     "chute-deploy": "กางร่มชูชีพ 🪂", "retro-burn": "จุดเครื่องเบรกลงจอด 🔥",
     "soft-landing": "ลงจอดนุ่มนวล ✓", "landing-burn-fail": "เบรกไม่ทัน — ตกกระแทก 💥"
   };
@@ -710,6 +711,7 @@
         if (lbl) showEvent(e.k === "staging" ? `แยกท่อนที่ ${e.stage}${e.manual ? " (มือ)" : ""}` : lbl);
         if (e.k === "ignition") shake = Math.max(shake, 0.55);
         if (e.k === "maxq") shake = Math.max(shake, 0.4);
+        if (e.k === "bangfai-wobble") shake = Math.max(shake, 0.35);
         if (e.k === "staging") { shake = Math.max(shake, 0.28); detachStage(e.stage - 1); }
         if (e.k === "burnup" || e.k === "lantern-burnup") shake = Math.max(shake, 0.7);
         if (e.k === "pad-explosion") shake = Math.max(shake, 0.9);

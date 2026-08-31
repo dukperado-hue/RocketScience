@@ -240,9 +240,11 @@
       const list = $("#vab-parts");
       list.innerHTML = "";
       const talai = r.id === "talai";
+      const bangfai = r.id === "bangfai";
       PARTS.filter(p => p.tierMin <= tierN(r.tierKey) && ["engine", "propellant", "fin", "nosecone", "payload"].includes(p.type) && p.tierMin <= 2
         && (!p.secret || (p.wanhu && G.wanHu.unlocked))
-        && (talai ? (p.talaiOnly || p.type === "propellant") : !p.talaiOnly)).forEach(p => {
+        && (bangfai ? (p.type === "payload" && !p.talaiOnly)
+          : talai ? (p.talaiOnly || p.type === "propellant") : !p.talaiOnly)).forEach(p => {
         const el = document.createElement("div");
         el.className = "vab-part";
         el.draggable = true;
@@ -282,6 +284,10 @@
         window.Talai.render(host, null, () => VAB.computeStats());
         return;
       }
+      if (r.id === "bangfai" && window.Bangfai) {
+        window.Bangfai.render(host, null, () => VAB.computeStats());
+        return;
+      }
       if (!window.VabExtras) return;
       const t = tierN(r.tierKey);
       const showBody = t === 2;
@@ -292,7 +298,7 @@
     // Phase 5: แผงระบบกู้คืน / ลงจอด (ทุก tier ยกเว้น orbital-only ใช้เป็นการกู้บูสเตอร์)
     renderRecovery() {
       const r = G.run.rocket;
-      if (!window.Recovery || r.id === "talai") { const h = $("#vab-recovery"); if (h) { h.hidden = true; h.innerHTML = ""; } return; }
+      if (!window.Recovery || r.id === "talai" || r.id === "bangfai") { const h = $("#vab-recovery"); if (h) { h.hidden = true; h.innerHTML = ""; } return; }
       let host = $("#vab-recovery");
       if (!host) {
         host = document.createElement("div");
@@ -404,6 +410,7 @@
     computeClassic() {
       const r = G.run.rocket;
       if (r.id === "talai" && window.Talai) return VAB.computeTalai();
+      if (r.id === "bangfai" && window.Bangfai) return VAB.computeBangfai();
       const parts = VAB.slots.map(partById);
       const engineThrust = parts.filter(p => p.type === "engine").reduce((s, p) => s + p.thrust, 0);
       let fuelMass = parts.filter(p => p.type === "propellant").reduce((s, p) => s + p.fuel, 0);
@@ -553,6 +560,59 @@
       return G.run.stats;
     },
 
+    // ===== บั้งไฟ (Master Craftsman) — ดินขับ 3 ชั้น + แรงอัด + รูแกน + หาง =====
+    computeBangfai() {
+      const r = G.run.rocket;
+      const parts = VAB.slots.map(partById);
+      const payloadMass = parts.reduce((s, p) => s + (p.mass || 0), 0);
+      const scoreBonusParts = parts.reduce((s, p) => s + (p.scoreBonus || 0), 0);
+      const d = window.Bangfai.derived(r);
+      const a = d.analysis;
+
+      const fuelMass = d.fuelMass;
+      const dryMass = d.structKg + payloadMass;
+      const wetMass = dryMass + fuelMass;
+      const thrust = d.thrust;
+      const burnTime = d.burnTime;
+      const twr = thrust / (wetMass * 9.81);
+      const deltaV = d.isp * 9.81 * Math.log(wetMass / dryMass);
+      const cato = d.catoRisk;
+
+      G.run.stats = {
+        staged: false, bangfai: d, thrust, fuelMass, dryMass, wetMass,
+        dragCoef: r.dragCoef, spin: false, burnTime, twr, deltaV,
+        scoreBonusParts, wobble: 0.12, paperRisk: 0, partCount: parts.length,
+        hasEngine: true, hasFuel: fuelMass > 0.5,
+        casingCapMul: d.casingCapMul, catoRisk: cato, chemIgnitionRisk: d.ignitionRisk,
+        chem: null, body: d.body, recovery: null,
+        isp: d.isp
+      };
+
+      renderTelem([
+        ["มวลรวมตอนปล่อย", fmt(wetMass, 2) + " kg"],
+        ["ดินขับ 3 ชั้น (หัว/คอ/ลำตัว)", fmt(fuelMass, 2) + " kg"],
+        ["แรงขับพีค / TWR", fmt(thrust) + " N · " + fmt(twr, 2), twr >= 1.4 ? "ok" : twr >= 1.05 ? "warn" : "bad"],
+        ["เวลาเผาไหม้ (ลำตัว + ดินหัวเลี้ยง)", fmt(a.mainBurn, 1) + " + " + fmt(a.sustainSec, 1) + " s"],
+        ["แรงอัด", a.psiOK ? window.Bangfai.state.pressPSI + " PSI ✓" : window.Bangfai.state.pressPSI + " PSI ⚠",
+          a.psiOK ? "ok" : "warn"],
+        ["ดัชนีความดันห้องเผาไหม้", fmt(a.pressureIndex, 2) + " / พิกัด " + fmt(a.bodyCapThresh, 2),
+          a.pressureIndex > a.bodyCapThresh ? "bad" : a.pressureIndex < 0.52 ? "warn" : "ok"],
+        ["หางสมดุล", Math.round(a.tailBalance * 100) + "%",
+          a.tailBalance < 0.6 ? "bad" : a.tailBalance < 0.8 ? "warn" : "ok"],
+        ["เสี่ยง CATO (ลำระเบิด)", cato >= 1 ? "สูงมาก" : cato > 0.4 ? "ปานกลาง" : "ต่ำ",
+          cato >= 1 ? "bad" : cato > 0.4 ? "warn" : "ok"]
+      ]);
+
+      const ok = twr > 1.05 && cato < 1;
+      setVerdict(cato >= 1 ? ["⚠️ " + a.pchang, "bad"]
+        : twr <= 1.05 ? ["TWR " + fmt(twr, 2) + " ต่ำไป — ดินขับ/เพย์โหลดหนักเกินแรงขับพีค", "bad"]
+        : a.tailBalance < 0.6 ? ["⚠️ " + a.pchang, ""]
+        : !a.psiOK || a.quality !== "ได้ตำราช่างบั้งไฟ" ? ["⚠️ " + a.pchang, ""]
+        : ["พร้อมจุด — " + a.pchang, "ok"]);
+      $("#vab-proceed").disabled = !ok;
+      return G.run.stats;
+    },
+
     computeStaged() {
       const r = G.run.rocket, m = G.run.mission;
       const eff = effectiveStages(r);
@@ -677,11 +737,14 @@
       VAB.slots = ["burner_l", "prop_s"];
     } else if (r.id === "talai") {
       VAB.slots = ["motor_ring", "prop_l"];   // แกน + ดินตะไล (รายละเอียดในแผงตะไล)
+    } else if (r.id === "bangfai") {
+      VAB.slots = [];                          // ดิน/ลำ/หาง อยู่ในแผงช่างบั้งไฟ · เพย์โหลดเลือกเพิ่มได้
     } else {
       VAB.slots = ["motor_pvc", "prop_l", "fin_light"];
     }
     $("#vab-mode-tag").textContent = isStaged(r) ? "STAGED VEHICLE"
-      : r.id === "talai" ? "TALAI · จานหมุน" : "SINGLE STAGE";
+      : r.id === "talai" ? "TALAI · จานหมุน"
+      : r.id === "bangfai" ? "บั้งไฟ · ช่างบั้งไฟ" : "SINGLE STAGE";
     VAB.render();
     setupVabDnD();
     show("vab");
@@ -899,17 +962,20 @@
       }, wxCommon);
     } else {
       const isTalai = r.id === "talai" && s.talai;
+      const isBangfai = r.id === "bangfai" && s.bangfai;
       cfg = Object.assign({
         thrust: s.thrust, burnTime: s.burnTime, wetMass: s.wetMass, dryMass: s.dryMass,
         dragCoef: s.dragCoef, windSensitivity: r.windSensitivity,
         spinStabilized: s.spin, thrustWobble: s.wobble, targetAltitude: m.targetAltitude,
         tier: tierN(r.tierKey), fuelMass: s.fuelMass, paperRisk: s.paperRisk,
-        structure: isTalai ? null : (r.lantern ? "paper"
+        structure: (isTalai || isBangfai) ? null : (r.lantern ? "paper"
           : (r.blackPowder || tierN(r.tierKey) === 2 ? "blackpowder" : null)),
         casingCapMul: s.casingCapMul || 1, catoRisk: isTalai ? 0 : (s.catoRisk || 0), chemIgnitionRisk: s.chemIgnitionRisk || 0,
         talai: isTalai ? s.talai : null,
-        recovery: isTalai ? null : recPhys, wanHu: !!G.run.wanHu,
-        rocketMeta: { icon: r.icon, tier: tierN(r.tierKey), spinStabilized: s.spin, body: s.body || null, talai: isTalai }
+        bangfai: isBangfai ? { curve: s.bangfai.curve, tailBalance: s.bangfai.tailBalance,
+          catoRisk: s.bangfai.catoRisk, ignitionRisk: s.bangfai.ignitionRisk } : null,
+        recovery: (isTalai || isBangfai) ? null : recPhys, wanHu: !!G.run.wanHu,
+        rocketMeta: { icon: r.icon, tier: tierN(r.tierKey), spinStabilized: s.spin, body: s.body || null, talai: isTalai, bangfai: isBangfai }
       }, wxCommon);
     }
 
@@ -943,7 +1009,7 @@
     const bp = m.basePoints;
     const orbital = !!sum.orbital;
     const tier = tierN(r.tierKey);
-    const expendable = tier >= 3;          // Tier 3–4 จรวดตกกลับเป็นเรื่องปกติ (เพย์โหลดทำงานที่จุดสูงสุดแล้ว)
+    const expendable = tier >= 3 || r.id === "bangfai";   // Tier 3–4 + บั้งไฟ: ลำตกกลับเป็นเรื่องปกติ (บุญบั้งไฟตัดสินที่ความสูง/เวลาอยู่ฟ้า)
     let missionGoalMet = false;
 
     if (orbital) {
@@ -1001,14 +1067,33 @@
       const liab = Math.round(Math.min(bp * 0.45, bp * 0.08 + Math.abs(sum.recoveryDrift || sum.horizontalDrift) * 0.6));
       if (liab > 0) rows.push([`ร่วงแนวราบใส่ทรัพย์สิน ${fmt(Math.abs(sum.recoveryDrift || sum.horizontalDrift))} m — ค่าเสียหาย (Liability)`, -liab, false]);
     }
+    else if (sum.failReason === "BANGFAI_CATO") { damagePen = Math.round(bp * 0.8); rows.push(["ลำบั้งไฟระเบิดคาแท่น (CATO — ดินร้อน/อัดผิด/รูแกน/เฟื่องแคบ)", -damagePen, false]); }
+    else if (sum.failReason === "BANGFAI_WOBBLE") {
+      damagePen = Math.round(bp * 0.5); rows.push(["บั้งไฟ 'รำดาบ' — หางไม่สมดุล ส่ายเป็นเกลียวเสียความสูง", -damagePen, false]);
+      const dr = Math.abs(sum.recoveryDrift != null ? sum.recoveryDrift : sum.horizontalDrift);
+      const liab = Math.round(Math.min(bp * 0.4, bp * 0.06 + dr * 0.5));
+      if (liab > 0) rows.push([`ควงออกนอกวิถีตกใส่พื้นที่ชุมชน ${fmt(dr)} m — ค่าเสียหาย (Liability)`, -liab, false]);
+    }
     else if (sum.burnedUp) { damagePen = Math.round(bp * 0.7); rows.push(["ยานไหม้จากความร้อน re-entry", -damagePen, false]); }
     else if (!expendable && !orbital && sum.crashed) { damagePen = Math.round(bp * 0.6); rows.push([sum.unstable ? "บั้งไฟส่ายตกเสียหาย (CG เพี้ยน)" : "จรวดตกกระแทกเสียหาย", -damagePen, false]); }
     else if (sum.talai && sum.landed && !sum.crashed) { const b = Math.round(bp * 0.15); rows.push(["ตะไลเกลียวสว่านสวย ร่อนลงนิ่ม", b, true]); }
 
+    // ---- บั้งไฟ: การแข่งบุญบั้งไฟตัดสินที่ "เวลาอยู่กลางอากาศ" (จับเวลา) ----
+    if (r.id === "bangfai" && !sum.padExplosion) {
+      const tgt = m.timeAloftTarget || 42;
+      const tRatio = Math.max(0, Math.min(1.4, (sum.flightTime || 0) / tgt));
+      const tPts = Math.round(bp * 0.4 * tRatio);
+      rows.push([`จับเวลาอยู่กลางอากาศ ${fmt(sum.flightTime || 0, 1)} s / เป้า ${tgt} s`, tPts, tPts >= 0]);
+      if ((sum.flightTime || 0) >= tgt * 1.15 && !sum.crashed) {
+        const hb = Math.round(bp * 0.2);
+        rows.push(["ดินหัวเลี้ยงดี — บั้งไฟค้างฟ้านานเป็นพิเศษ", hb, true]);
+      }
+    }
+
     // ---- Phase 5: ระบบกู้คืน / ลงจอด ----
     const recv = (s.recovery && s.recovery.kind) || sum.recovery || "freefall";
     const drift = Math.abs(sum.recoveryDrift != null ? sum.recoveryDrift : sum.horizontalDrift);
-    if (!orbital && sum.failReason == null && !sum.burnedUp && !sum.talai) {
+    if (!orbital && sum.failReason == null && !sum.burnedUp && !sum.talai && !sum.bangfai) {
       if (recv === "propulsive" && sum.recovered) {
         rows.push(["ลงจอดด้วยแรงขับสำเร็จ — กู้ยานคืน (คืนงบ)", Math.round(bp * 0.35), true]);
       } else if (recv === "parachute" && sum.recovered) {
@@ -1055,6 +1140,8 @@
       : sum.failReason === "UNSTABLE_COM" ? "บั้งไฟเสียการทรงตัว — ศูนย์ถ่วงเพี้ยน"
       : sum.failReason === "TALAI_CATO" ? "บ้องไม้รวกปริแตกคามือ 💥"
       : sum.failReason === "TALAI_WOBBLE" ? "ตะไลส่ายแล้วร่วงแนวราบ — ปีกไม่ได้สัดส่วน"
+      : sum.failReason === "BANGFAI_CATO" ? "ลำบั้งไฟระเบิดคาแท่นปล่อย 💥"
+      : sum.failReason === "BANGFAI_WOBBLE" ? "บั้งไฟ 'รำดาบ' — หางไม่สมดุล ส่ายเสียความสูง"
       : sum.failReason === "LANDING_BURN_FAIL" ? "ลงจอดด้วยแรงขับล้มเหลว — ยานตกกระแทก 💥"
       : sum.failReason === "WAN_HU" ? "อนุสรณ์ Wan Hu — ระเบิดคาแท่นตามตำนาน 🪑💥"
       : sum.burnedUp ? "ยานไหม้ตอนกลับเข้าชั้นบรรยากาศ"

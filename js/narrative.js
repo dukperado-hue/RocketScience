@@ -131,6 +131,8 @@
         say(`ความเร็วขาด ~${nf(e.short || 0)} m/s — รอบนี้ไม่เข้าวงโคจร`); break;
       case "unstable":
         say(`ยานส่าย! CG เลื่อนไปท้าย — กะปิเริ่มเหงื่อแตกแล้ว`); break;
+      case "bangfai-wobble":
+        say(`บั้งไฟรำดาบ! หางคุมแกนไม่อยู่ ควงเป็นเกลียวเสียความสูง`); break;
       case "reentry":
         say(`re‑entry interface — ความร้อนพีค`); break;
       case "burnup":
@@ -202,7 +204,7 @@
   }
   function event(k) {
     if (k === "ignition") setMood("watch");
-    else if (k === "maxq" || k === "unstable" || k === "guidance-cutoff" || k === "reentry" || k === "retro-burn") setMood("sweat");
+    else if (k === "maxq" || k === "unstable" || k === "bangfai-wobble" || k === "guidance-cutoff" || k === "reentry" || k === "retro-burn") setMood("sweat");
     else if (k === "burnup" || k === "lantern-burnup" || k === "pad-explosion" || k === "crash" || k === "landing-burn-fail") { set("dead"); locked = true; }
     else if (k === "orbit" || k === "landing" || k === "soft-landing") { set("chill"); locked = true; }
   }

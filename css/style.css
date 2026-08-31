@@ -356,6 +356,18 @@ a{color:var(--accent)}
 .tl-toggles label{display:flex;align-items:center;gap:4px;cursor:pointer}
 select.vx-range{-webkit-appearance:menulist;appearance:menulist;height:auto;background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:6px;font-family:inherit;font-size:10.5px}
 
+/* bangfai (บั้งไฟ) — Master Craftsman panel */
+.bf-sub{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.03em;color:var(--gold);
+  border-top:1px dashed var(--line);margin:9px 0 3px;padding-top:5px}
+.bf-sub:first-of-type{border-top:0;padding-top:0}
+.bf-core{display:grid;grid-template-columns:1fr 1fr;gap:5px 10px;margin:4px 0 2px}
+.bf-core-cell{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:6px;font-size:10px;color:var(--ink-soft)}
+.bf-core-cell b{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--ink);min-width:18px;text-align:right}
+.bf-psi{accent-color:var(--gold)}
+.bf-pchang{border-left:2px solid #F5C518;padding-left:7px;background:color-mix(in srgb,#F5C518 8%,transparent);
+  border-radius:0 6px 6px 0;line-height:1.5}
+.bf-m{font-family:'JetBrains Mono',monospace;font-size:8.5px;color:var(--ink);margin-left:auto;padding-left:4px}
+
 /* ---------- Phase 5 · portrait art in CAPCOM pill / Operator badge ---------- */
 .capcom-portrait{overflow:hidden;background:#F5C518}
 .capcom-portrait img{object-position:50% 8%!important}
