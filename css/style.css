@@ -347,6 +347,15 @@ a{color:var(--accent)}
 .rc-opt.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,var(--card))}
 .rc-opt.on b{color:var(--accent)}
 
+/* talai (ตะไล) panel */
+.tl-casing{flex-wrap:wrap}
+.tl-casing .vx-seg-btn{flex:1 1 46%;font-size:10px}
+.vx-seg-btn.tl-bad{opacity:.72}
+.vx-seg-btn.tl-bad.on{border-color:var(--bad);background:var(--bad);color:#fff}
+.tl-toggles{display:flex;gap:12px;flex-wrap:wrap;font-size:10.5px;color:var(--ink-soft);margin:6px 0 2px}
+.tl-toggles label{display:flex;align-items:center;gap:4px;cursor:pointer}
+select.vx-range{-webkit-appearance:menulist;appearance:menulist;height:auto;background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:6px;font-family:inherit;font-size:10.5px}
+
 /* ---------- Phase 5 · portrait art in CAPCOM pill / Operator badge ---------- */
 .capcom-portrait{overflow:hidden;background:#F5C518}
 .capcom-portrait img{object-position:50% 8%!important}

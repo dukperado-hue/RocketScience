@@ -239,8 +239,10 @@
       const r = G.run.rocket;
       const list = $("#vab-parts");
       list.innerHTML = "";
+      const talai = r.id === "talai";
       PARTS.filter(p => p.tierMin <= tierN(r.tierKey) && ["engine", "propellant", "fin", "nosecone", "payload"].includes(p.type) && p.tierMin <= 2
-        && (!p.secret || (p.wanhu && G.wanHu.unlocked))).forEach(p => {
+        && (!p.secret || (p.wanhu && G.wanHu.unlocked))
+        && (talai ? (p.talaiOnly || p.type === "propellant") : !p.talaiOnly)).forEach(p => {
         const el = document.createElement("div");
         el.className = "vab-part";
         el.draggable = true;
@@ -264,10 +266,10 @@
       VAB.renderGridClassic();
     },
 
-    // Phase 5: แผงโครงสร้าง (PVC/ไม้ไผ่) + พันลวด + ผสมเคมีดินขับ
+    // Phase 5: แผงโครงสร้าง (PVC/ไม้ไผ่) + พันลวด + ผสมเคมีดินขับ · ตะไล = แผงเฉพาะ
     renderExtras() {
       const r = G.run.rocket;
-      if (isStaged(r) || !window.VabExtras) return;
+      if (isStaged(r)) return;
       let host = $("#vab-extras");
       if (!host) {
         host = document.createElement("div");
@@ -276,6 +278,11 @@
         const anchor = $("#vab-parts");
         anchor.parentElement.insertBefore(host, anchor.nextSibling);
       }
+      if (r.id === "talai" && window.Talai) {
+        window.Talai.render(host, null, () => VAB.computeStats());
+        return;
+      }
+      if (!window.VabExtras) return;
       const t = tierN(r.tierKey);
       const showBody = t === 2;
       const showChem = !!r.blackPowder || t === 2 || VAB.slots.some(id => /^charge/.test(id));
@@ -285,7 +292,7 @@
     // Phase 5: แผงระบบกู้คืน / ลงจอด (ทุก tier ยกเว้น orbital-only ใช้เป็นการกู้บูสเตอร์)
     renderRecovery() {
       const r = G.run.rocket;
-      if (!window.Recovery) return;
+      if (!window.Recovery || r.id === "talai") { const h = $("#vab-recovery"); if (h) { h.hidden = true; h.innerHTML = ""; } return; }
       let host = $("#vab-recovery");
       if (!host) {
         host = document.createElement("div");
@@ -396,6 +403,7 @@
 
     computeClassic() {
       const r = G.run.rocket;
+      if (r.id === "talai" && window.Talai) return VAB.computeTalai();
       const parts = VAB.slots.map(partById);
       const engineThrust = parts.filter(p => p.type === "engine").reduce((s, p) => s + p.thrust, 0);
       let fuelMass = parts.filter(p => p.type === "propellant").reduce((s, p) => s + p.fuel, 0);
@@ -493,6 +501,56 @@
         : riskHint ? [riskHint, ""]
         : ["พร้อมปล่อย ✓ TWR > 1", "ok"]);
       $("#vab-proceed").disabled = !ok;
+    },
+
+    // ===== ตะไล (Talai) — ภูมิปัญญาบ้านตาลิน =====
+    computeTalai() {
+      const r = G.run.rocket;
+      const parts = VAB.slots.map(partById);
+      const fuelMass = parts.filter(p => p.type === "propellant").reduce((s, p) => s + p.fuel, 0) || 5;
+      const nonFuel = parts.filter(p => p.type !== "propellant").reduce((s, p) => s + p.mass, 0);
+      const d = window.Talai.derived(r);
+      const g = d.geometry, ch = d.chem;
+
+      const dryMass = (r.dryMass || 3) + nonFuel;         // แกนไม้รวกสด + ปีกไผ่ตง
+      const wetMass = dryMass + fuelMass;
+      const baseThrust = 620 * d.thrustMul;               // มอเตอร์วงตะไล × แรงจากเคมี
+      const burnTime = Math.max(0.9, 5 / Math.max(0.3, d.burnRate));
+      const twr = baseThrust / (wetMass * 9.81);
+      const cato = d.catoRisk;
+      const catoNote = g.catoRisk >= ch.catoRisk ? g.note : ch.note;
+
+      G.run.stats = {
+        staged: false, talai: d, thrust: baseThrust, fuelMass, dryMass, wetMass,
+        dragCoef: r.dragCoef, spin: true, burnTime, twr,
+        deltaV: r.isp * 9.81 * Math.log(wetMass / dryMass),
+        scoreBonusParts: parts.reduce((s, p) => s + (p.scoreBonus || 0), 0),
+        wobble: 0, paperRisk: 0, partCount: parts.length,
+        hasEngine: true, hasFuel: fuelMass > 0,
+        casingCapMul: 1, catoRisk: cato, chemIgnitionRisk: 0, chem: null, body: null, recovery: null
+      };
+
+      renderTelem([
+        ["มวลรวม (แกนไม้รวก + ปีก + ดิน)", fmt(wetMass, 2) + " kg"],
+        ["เชือกวัดรอบวง ×2 รอบ", g.twoCirc + " ซม."],
+        ["Ø ปีกวงกลม / เป้า", fmt(g.wingDia) + " / " + fmt(g.twoCirc) + " ซม.",
+          (g.wingRatio > 0.88 && g.wingRatio < 1.12) ? "ok" : "warn"],
+        ["มุมรูประทุเฉียง", g.holeAngleDeg + "°", Math.abs(g.holeAngleDeg - 15) <= 5 ? "ok" : "warn"],
+        ["เสถียรภาพไจโรสโคปิก", (g.stabilityRatio * 100).toFixed(0) + "%",
+          g.stabilityRatio < 0.55 ? "bad" : g.stabilityRatio < 0.75 ? "warn" : "ok"],
+        ["ทดสอบจุดดินตะไล", ch.quality, cato >= 1 ? "bad" : ch.burnTest === "flash" ? "ok" : "warn"],
+        ["เสี่ยง CATO (บ้องปริ/คามือ)", cato >= 1 ? "สูงมาก" : cato > 0.4 ? "ปานกลาง" : "ต่ำ",
+          cato >= 1 ? "bad" : cato > 0.4 ? "warn" : "ok"]
+      ]);
+
+      const ok = g.casingOK && cato < 1;
+      setVerdict(!g.casingOK ? [g.note, "bad"]
+        : cato >= 1 ? ["⚠️ " + catoNote, "bad"]
+        : g.stabilityRatio < 0.5 ? ["⚠️ ปีก/แกนไม่ได้สัดส่วน 2×รอบวง — ตะไลจะส่ายแล้วร่วงแนวราบ (โดนค่าเสียหาย)", ""]
+        : ch.burnTest !== "flash" ? ["⚠️ " + ch.note, ""]
+        : ["พร้อมจุด — คว่ำมือขวาจับปีก สะบัดขว้างแบบจานบิน ✓", "ok"]);
+      $("#vab-proceed").disabled = !ok;
+      return G.run.stats;
     },
 
     computeStaged() {
@@ -617,10 +675,13 @@
       VAB.payloadId = (r.payloads && r.payloads[0]) || null;   // เพย์โหลดเบาสุดเป็นค่าเริ่มต้น
     } else if (r.tierKey === "tier1") {
       VAB.slots = ["burner_l", "prop_s"];
+    } else if (r.id === "talai") {
+      VAB.slots = ["motor_ring", "prop_l"];   // แกน + ดินตะไล (รายละเอียดในแผงตะไล)
     } else {
-      VAB.slots = [r.id === "talai" ? "motor_ring" : "motor_pvc", "prop_l", "fin_light"];
+      VAB.slots = ["motor_pvc", "prop_l", "fin_light"];
     }
-    $("#vab-mode-tag").textContent = isStaged(r) ? "STAGED VEHICLE" : "SINGLE STAGE";
+    $("#vab-mode-tag").textContent = isStaged(r) ? "STAGED VEHICLE"
+      : r.id === "talai" ? "TALAI · จานหมุน" : "SINGLE STAGE";
     VAB.render();
     setupVabDnD();
     show("vab");
@@ -837,16 +898,18 @@
         rocketMeta: { icon: r.icon, tier: tierN(r.tierKey), orbital: s.orbital, stageCount: s.stages.length }
       }, wxCommon);
     } else {
+      const isTalai = r.id === "talai" && s.talai;
       cfg = Object.assign({
         thrust: s.thrust, burnTime: s.burnTime, wetMass: s.wetMass, dryMass: s.dryMass,
         dragCoef: s.dragCoef, windSensitivity: r.windSensitivity,
         spinStabilized: s.spin, thrustWobble: s.wobble, targetAltitude: m.targetAltitude,
         tier: tierN(r.tierKey), fuelMass: s.fuelMass, paperRisk: s.paperRisk,
-        structure: r.lantern ? "paper"
-          : (r.blackPowder || tierN(r.tierKey) === 2 ? "blackpowder" : null),
-        casingCapMul: s.casingCapMul || 1, catoRisk: s.catoRisk || 0, chemIgnitionRisk: s.chemIgnitionRisk || 0,
-        recovery: recPhys, wanHu: !!G.run.wanHu,
-        rocketMeta: { icon: r.icon, tier: tierN(r.tierKey), spinStabilized: s.spin, body: s.body || null }
+        structure: isTalai ? null : (r.lantern ? "paper"
+          : (r.blackPowder || tierN(r.tierKey) === 2 ? "blackpowder" : null)),
+        casingCapMul: s.casingCapMul || 1, catoRisk: isTalai ? 0 : (s.catoRisk || 0), chemIgnitionRisk: s.chemIgnitionRisk || 0,
+        talai: isTalai ? s.talai : null,
+        recovery: isTalai ? null : recPhys, wanHu: !!G.run.wanHu,
+        rocketMeta: { icon: r.icon, tier: tierN(r.tierKey), spinStabilized: s.spin, body: s.body || null, talai: isTalai }
       }, wxCommon);
     }
 
@@ -932,13 +995,20 @@
     let damagePen = 0;
     if (sum.failReason === "LANTERN_BURNUP") { damagePen = Math.round(bp * 0.7); rows.push(["โคมไหม้กลางอากาศ (ความร้อนเกินพิกัดกระดาษสา)", -damagePen, false]); }
     else if (sum.failReason === "PAD_CATO") { damagePen = Math.round(bp * 0.8); rows.push(["ระเบิดคาแท่นปล่อย (CATO — อัดดินปืนเกิน)", -damagePen, false]); }
+    else if (sum.failReason === "TALAI_CATO") { damagePen = Math.round(bp * 0.8); rows.push(["บ้องไม้รวกปริแตกคามือ (ดินไวเกิน / ตำอัดแรง / ปลอกผิด)", -damagePen, false]); }
+    else if (sum.failReason === "TALAI_WOBBLE") {
+      damagePen = Math.round(bp * 0.5); rows.push(["ตะไลส่ายเสียการทรงตัว — ปีก/แกนไม่ได้สัดส่วน 2×รอบวง", -damagePen, false]);
+      const liab = Math.round(Math.min(bp * 0.45, bp * 0.08 + Math.abs(sum.recoveryDrift || sum.horizontalDrift) * 0.6));
+      if (liab > 0) rows.push([`ร่วงแนวราบใส่ทรัพย์สิน ${fmt(Math.abs(sum.recoveryDrift || sum.horizontalDrift))} m — ค่าเสียหาย (Liability)`, -liab, false]);
+    }
     else if (sum.burnedUp) { damagePen = Math.round(bp * 0.7); rows.push(["ยานไหม้จากความร้อน re-entry", -damagePen, false]); }
     else if (!expendable && !orbital && sum.crashed) { damagePen = Math.round(bp * 0.6); rows.push([sum.unstable ? "บั้งไฟส่ายตกเสียหาย (CG เพี้ยน)" : "จรวดตกกระแทกเสียหาย", -damagePen, false]); }
+    else if (sum.talai && sum.landed && !sum.crashed) { const b = Math.round(bp * 0.15); rows.push(["ตะไลเกลียวสว่านสวย ร่อนลงนิ่ม", b, true]); }
 
     // ---- Phase 5: ระบบกู้คืน / ลงจอด ----
     const recv = (s.recovery && s.recovery.kind) || sum.recovery || "freefall";
     const drift = Math.abs(sum.recoveryDrift != null ? sum.recoveryDrift : sum.horizontalDrift);
-    if (!orbital && sum.failReason == null && !sum.burnedUp) {
+    if (!orbital && sum.failReason == null && !sum.burnedUp && !sum.talai) {
       if (recv === "propulsive" && sum.recovered) {
         rows.push(["ลงจอดด้วยแรงขับสำเร็จ — กู้ยานคืน (คืนงบ)", Math.round(bp * 0.35), true]);
       } else if (recv === "parachute" && sum.recovered) {
@@ -983,6 +1053,8 @@
       : sum.failReason === "LANTERN_BURNUP" ? "โคมลอยไหม้กลางอากาศ 🔥"
       : sum.failReason === "PAD_CATO" ? "จรวดระเบิดคาแท่นปล่อย 💥"
       : sum.failReason === "UNSTABLE_COM" ? "บั้งไฟเสียการทรงตัว — ศูนย์ถ่วงเพี้ยน"
+      : sum.failReason === "TALAI_CATO" ? "บ้องไม้รวกปริแตกคามือ 💥"
+      : sum.failReason === "TALAI_WOBBLE" ? "ตะไลส่ายแล้วร่วงแนวราบ — ปีกไม่ได้สัดส่วน"
       : sum.failReason === "LANDING_BURN_FAIL" ? "ลงจอดด้วยแรงขับล้มเหลว — ยานตกกระแทก 💥"
       : sum.failReason === "WAN_HU" ? "อนุสรณ์ Wan Hu — ระเบิดคาแท่นตามตำนาน 🪑💥"
       : sum.burnedUp ? "ยานไหม้ตอนกลับเข้าชั้นบรรยากาศ"

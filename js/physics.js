@@ -112,7 +112,7 @@ function createFlight(config) {
     dragCoef: 0.5, payloadMass: 0,
     windSpeed: 0, windSensitivity: 1, spinStabilized: false, thrustWobble: 0,
     targetAltitude: 100, orbital: false, targetOrbitVelocity: 0, launchAngleDeg: 0,
-    tier: 1, structure: null, fuelMass: 0, weather: null, recovery: null, wanHu: false
+    tier: 1, structure: null, fuelMass: 0, weather: null, recovery: null, wanHu: false, talai: null
   }, config);
 
   const weather = normalizeWeather(c.weather);
@@ -180,8 +180,17 @@ function createFlight(config) {
     _recFuel: (c.recovery && c.recovery.recFuel) || 0,
     _recDv: (c.recovery && c.recovery.dvReserve) || 0,
     chuteDeployed: false, retroBurn: false, recovered: false,
+    roll: 0, rollRate: c.talai ? 3 : 0, talaiWobble: 0, talaiHoriz: false,
     events: []
   };
+
+  // ตะไล: ปล่อยด้วยการสะบัดมือขว้าง (ไม่ยิงตรงจากแท่น) → มีความเร็วเริ่มต้นเฉียง
+  if (c.talai) {
+    const tv = c.talai.throwSpeed || 10;
+    state.vx = tv; state.vy = tv * 0.32;
+    state.phase = "boost";
+    state.events.push({ t: 0, k: "ignition", stage: 1 });
+  }
 
   // ===== การควบคุมทิศ (gravity turn) + สลัดท่อนด้วยมือ — เชื่อมกับ FlightHUD =====
   const control = { pitchDeg: c.launchAngleDeg || 0, yaw: 0 };
@@ -286,6 +295,16 @@ function createFlight(config) {
       if (state.t >= 0.35 && !state.padExplosion) {
         state.padExplosion = true; state.crashed = true; state.landed = true;
         state.failReason = "WAN_HU"; state.phase = "done";
+        state.events.push({ t: state.t, k: "pad-explosion" });
+      }
+      return state;
+    }
+
+    // ---- ตะไล: ดินไวเกิน / ตำอัดแรง / ปลอกผิด → บ้องไม้รวกปริแตกคามือทันที ----
+    if (c.talai && (c.talai.catoRisk || 0) >= 1) {
+      if (state.t >= 0.3 && !state.padExplosion) {
+        state.padExplosion = true; state.crashed = true; state.landed = true;
+        state.failReason = "TALAI_CATO"; state.phase = "done";
         state.events.push({ t: state.t, k: "pad-explosion" });
       }
       return state;
@@ -448,7 +467,38 @@ function createFlight(config) {
     }
 
     let thrX = 0, thrY = thr;
-    if (thr > 0) {
+    if (c.talai) {
+      // ---- ตะไล: เกลียวสว่าน (torque จากรูประทุเฉียง + ปีกวงกลม) ----
+      const T = c.talai;
+      const angR = (T.holeAngleDeg || 15) * Math.PI / 180;
+      if (thr > 0) {
+        // สปิน-อัพจาก torque ของรูประทุเฉียง (ยิ่งมุมชัน/แรงขับสูง ยิ่งหมุนเร็ว)
+        state.rollRate += (thr * Math.sin(angR) * (T.spinTorqueFactor || 1) * 0.11) / Math.max(3, state.mass) * dt * 6;
+      }
+      state.rollRate *= Math.exp(-dt * 0.04);
+      state.rollRate = Math.min(state.rollRate, 200);
+      state.roll += state.rollRate * dt;
+
+      // เสถียรภาพไจโรสโคปิก
+      const gyro = Math.max(0, Math.min(1, state.rollRate / 26));
+      const stab = T.stabilityRatio == null ? 0.8 : T.stabilityRatio;
+      const climbEff = Math.max(0, (T.climbBase || 0.8) * (0.35 + 0.65 * gyro) * (0.45 + 0.55 * stab));
+      // ปีกผิดสัดส่วน / สปินไม่พอ → ส่าย
+      const targetW = (1 - stab) * 0.85 + (1 - gyro) * 0.4;
+      state.talaiWobble += (targetW - state.talaiWobble) * Math.min(1, dt * 2.4);
+      if (state.talaiWobble > 0.45 && !state._unstEvt && state.t > 0.3) {
+        state._unstEvt = true; state.unstable = true; state.talaiHoriz = true;
+        state.events.push({ t: state.t, k: "unstable" });
+      }
+
+      if (thr > 0) {
+        thrY = thr * Math.cos(angR) * climbEff;
+        const leak = thr * (1 - climbEff * 0.9);
+        // ส่วนที่ไม่ไต่ → หมุนควงรอบแกน (สปินนิ่ง = สุทธิ ~0) + ส่ายจาก wobble
+        thrX = leak * 0.28 * Math.cos(state.roll)
+             + thr * (0.12 + state.talaiWobble * 1.6) * Math.cos(state.t * 4.2 + seed);
+      }
+    } else if (thr > 0) {
       let phi = pitchFromVertical();
       if (comInstab > 0) phi += Math.sin(state.t * 7.3 + seed) * comInstab * 1.3;  // coning ของบั้งไฟ
       thrX = thr * Math.sin(phi); thrY = thr * Math.cos(phi);
@@ -485,6 +535,12 @@ function createFlight(config) {
       state.vy += (vTerm - state.vy) * Math.min(1, dt * 2.6);
       state.vx += ((c.windSpeed || 0) - state.vx) * Math.min(1, dt * 0.7);
     }
+    // ตะไล: สปินช่วยหน่วงการร่วง (autorotation คล้ายเมล็ดยางนา) ถ้าจานยังหมุนและไม่ส่าย
+    if (c.talai && state.vy < 0 && state.y > 0 && state.rollRate > 5) {
+      const vT = -5 - (1 - Math.min(1, state.rollRate / 40)) * 20 - state.talaiWobble * 25;
+      state.vy += (vT - state.vy) * Math.min(1, dt * 1.8);
+      if (!state.talaiHoriz) state.vx += (0 - state.vx) * Math.min(1, dt * 0.5);   // ควงลงตรง ๆ
+    }
     state.x += state.vx * dt; state.y += state.vy * dt;
 
     state.q = 0.5 * rho * speed * speed;
@@ -515,10 +571,17 @@ function createFlight(config) {
     }
     if (state.phase === "reentry" && state.y < 24000) state.phase = "descent";
 
-    if (state.y <= 0 && state.phase !== "pad" && state.phase !== "boost") {
+    if (state.y <= 0 && state.phase !== "pad" && (state.phase !== "boost" || (c.talai && state.t > 1))) {
       state.y = 0; state.landed = true;
       state.recoveryDrift = Math.abs(state.x);
       const touch = Math.hypot(state.vx, state.vy);
+      if (c.talai) {
+        // ตะไลที่ส่ายจะร่วงแนวราบไปไกล; ที่หมุนนิ่งจะร่อนลงช้า
+        state.crashed = state.talaiHoriz || touch > 34;
+        state.events.push({ t: state.t, k: state.crashed ? "crash" : "landing" });
+        state.phase = "done";
+        return state;
+      }
       if (rec && rec.kind === "propulsive" && !c.orbital) {
         // ลงจอดด้วยแรงขับ: สำเร็จถ้าเบรกจนแตะพื้นช้า (งบ Δv สำรองต้องพอ)
         if (state.retroBurn && touch <= 16 && !state.burnedUp) {
@@ -572,6 +635,7 @@ function createFlight(config) {
       skinTempPeak: Math.round(state.skinTempPeak),
       guidanceCutoff: !!state._guidanceCutoff,
       failReason: state.failReason ||
+        (c.talai && state.talaiHoriz && state.crashed ? "TALAI_WOBBLE" : null) ||
         (state.unstable && state.apogee < c.targetAltitude * 0.92 ? "UNSTABLE_COM" : null),
       apoapsis: state.apoapsis, periapsis: state.periapsis,
       peakHeatFlux: state.peakHeatFlux,
@@ -585,7 +649,11 @@ function createFlight(config) {
       chuteDeployed: !!state.chuteDeployed,
       retroBurn: !!state.retroBurn,
       recoveryDrift: state.recoveryDrift != null ? state.recoveryDrift : Math.abs(state.x),
-      recFuelLeft: state._recFuel
+      recFuelLeft: state._recFuel,
+      talai: !!c.talai,
+      talaiWobble: +state.talaiWobble.toFixed(2),
+      talaiHoriz: !!state.talaiHoriz,
+      spinRate: Math.round(state.rollRate)
     };
   }
 
