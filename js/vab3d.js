@@ -77,7 +77,7 @@
     }
     root = new (T().Group)();
     internals = new (T().Group)();
-    internals.visible = false;
+    internals.visible = exploded;   // เคารพสถานะ X-Ray ปัจจุบัน (กันโชว์ไส้ในตอนยังไม่กด)
     root.add(internals);
     scene.add(root);
   }
@@ -244,7 +244,14 @@
     const goal = exploded ? 1 : 0;
     explodeT += (goal - explodeT) * 0.14;
     const e = explodeT < 0.5 ? 2 * explodeT * explodeT : 1 - Math.pow(-2 * explodeT + 2, 2) / 2;  // easeInOut
-    if (internals) internals.visible = explodeT > 0.02;
+    if (internals) {
+      internals.visible = explodeT > 0.02;
+      // Task 4: ดินสีหัวพลุเรืองแสงตอน X-Ray
+      if (internals.visible) {
+        const pulse = 1.4 + Math.sin(performance.now() * 0.006) * 0.5;
+        internals.children.forEach(o => { if (o.userData && o.userData.fwGlow) o.intensity = e * pulse; });
+      }
+    }
     parts.forEach(p => {
       p.mesh.position.set(
         p.home.x + p.ex.x * e, p.home.y + p.ex.y * e, p.home.z + p.ex.z * e
@@ -264,15 +271,45 @@
   function fitDist(r) {
     if (!r) return 15;
     if (r.id === "bangfai") return 20;
-    if (r.id === "talai") return 12;
+    if (r.id === "talai") return 10;
     if (r.lantern || r.tierKey === "tier1") return 12;
     return 17;
+  }
+
+  // Task 4: ดินสีหัวพลุ — ก้อนดินเรืองแสงสีตรงกับสารเคมีที่เลือก โผล่ตอนแยกชิ้นส่วน (X-Ray)
+  function addFireworkCharge(y, radius, height) {
+    const FW = window.Fireworks;
+    if (!FW || !FW.state || !FW.state.enabled) return null;
+    const d = FW.derived ? FW.derived() : { color: 0xff2d2d };
+    const c = new (T().Color)(d.color != null ? d.color : 0xff2d2d);
+    const m = new (T().Mesh)(
+      new (T().CylinderGeometry)(radius, radius, height, 20),
+      new (T().MeshStandardMaterial)({
+        color: c, roughness: 0.55, metalness: 0.05,
+        emissive: c, emissiveIntensity: 0.9
+      })
+    );
+    m.position.y = y;
+    m.userData.isInternal = true;
+    m.userData.fwCharge = true;
+    internals.add(m);
+    // แสงเรืองสีในตัว (ให้ bloom จับตอน X-Ray)
+    const gl = new (T().PointLight)(c.getHex(), 0.0, 6, 2);
+    gl.position.y = y;
+    gl.userData.isInternal = true;
+    gl.userData.fwGlow = true;
+    internals.add(gl);
+    const col = window.Fireworks.COLORANTS[FW.state.colorant] || {};
+    tag(m, "ดินสีหัวพลุ · " + (col.th || "สาร") + " (" + (col.el || "") + ")",
+      "เปลว" + (d.flame || col.flame || "สี") + " — ระเบิดเป็นสีนี้ตอนถึงจุดสูงสุด", V3(0, 0, 1.4));
+    return m;
   }
 
   function build(r) {
     clearModel();
     curRocket = r;
     cam.tgt.set(0, 3.2, 0);
+    cam.phi = 1.12;
     cam.distGoal = fitDist(r);
     if (r.id === "bangfai") buildBangfai(r);
     else if (r.id === "talai") buildTalai(r);
@@ -402,48 +439,70 @@
     tag(coreMesh, "รูประทุ (ห้องเผาไหม้ทรงกรวยกลับ)",
       `ยอด ${S.coreTip} · ไฟกิน ${S.coreBurn} · ตูด ${S.coreBase} · เฟื่อง ${S.coreNozzle} มม. — ตูดกว้าง = ออกตัวแรง, เฟื่องแคบ = CATO`,
       V3(0, 0, 1.6));
+
+    // ดินสีหัวพลุ (Task 4) — ในหัวลำ (เหนือดินอัด)
+    addFireworkCharge(yBot + packH * 0.98, bf.BR * 0.7, 0.7);
   }
 
-  // ===== ตะไล =====
+  // ===== ตะไล — ล้อไผ่แบน (ไม่ใช่หอก!) =====
+  //   ตะไลคือ "จานหมุน" — ดุมบ้องไม้รวกสั้น ๆ เกือบเสมอปีกวง ปีกวงกลมไผ่ตงวางแนวนอน
   function buildTalai(r) {
     const S = window.Talai ? window.Talai.state : {};
     const g = window.Talai ? window.Talai.geometry(S) : {};
     const casing = (window.Talai && window.Talai.CASING[S.casing]) || {};
-    const CR = 0.34, CH = 2.6, baseY = 1.4;
+    const HUB_Y = 1.7;                       // ระนาบล้อ
+    const HUB_H = 0.55;                      // ดุมเตี้ย — โผล่พ้นปีกแค่นิดเดียว (จานหมุน ไม่ใช่หอก)
+    const wd0 = Math.max(0.9, Math.min(2.6, (g.wingDia || 24) / 22 * 1.5));
 
     const okCase = !!casing.ok;
+    // ดุมกลาง = บ้องดินไม้รวก (สั้น อ้วน) — เกือบเสมอปีก
     const coreMat = mat(okCase ? 0x9c7b45 : 0xb5544a, { rough: 0.82, transparent: true });
-    const core = new (T().Mesh)(geo(new (T().CylinderGeometry)(CR, CR, CH, 24)), coreMat);
-    core.position.y = baseY + CH / 2;
+    const core = new (T().Mesh)(geo(new (T().CylinderGeometry)(0.42, 0.46, HUB_H, 22)), coreMat);
+    core.position.y = HUB_Y + 0.05;
     core.name = "tl-core";
     root.add(core);
-    tag(core, "แกนตะไล — " + (casing.th || "?").split(" ")[0],
-      casing.hint || "แกนต้องเป็นไม้รวกสดเท่านั้น", V3(0, 0, 0), { ghost: true });
+    tag(core, "ดุมตะไล (บ้องดินไม้รวก) — " + (casing.th || "?").split(" ")[0],
+      casing.hint || "แกนต้องเป็นไม้รวกสดเท่านั้น", V3(0, 0.7, 0), { ghost: true });
 
-    // ปีกวงกลม (ไผ่ตง) — Ø ตามสไลเดอร์
+    // จุกปิดบ้อง — จานแบน ๆ เสมอยอดดุม
+    const cap = new (T().Mesh)(geo(new (T().CylinderGeometry)(0.44, 0.42, 0.12, 20)),
+      mat(0x6b4f2e, { rough: 0.85 }));
+    cap.position.y = HUB_Y + 0.05 + HUB_H / 2 + 0.03;
+    cap.name = "tl-cap";
+    root.add(cap);
+    tag(cap, "จุกปิดบ้อง", "อัดดินแล้วปิดหัว", V3(0, 0.6, 0));
+
+    // ปีกวงกลม (ไผ่ตง) — วงแหวนหนาวางแนวนอน + วงในเสริม
     const wingMat = mat(0x8a6a3a, { rough: 0.85 });
-    const wing = new (T().Mesh)(geo(new (T().TorusGeometry)(1, 0.07, 8, 44)), wingMat);
+    const wing = new (T().Mesh)(geo(new (T().TorusGeometry)(1, 0.13, 14, 60)), wingMat);
     wing.rotation.x = Math.PI / 2;
-    wing.position.y = baseY + CH * 0.55;
+    wing.position.y = HUB_Y;
     wing.name = "tl-wing";
     root.add(wing);
-    tag(wing, "ปีกวงกลม (ไผ่ตง)", "", V3(0, 1.5, 0));
+    tag(wing, "ปีกวงกลม (ไผ่ตง)", "Ø ต้องเท่ากับเส้นรอบวงรูบ้องวน 2 รอบ", V3(0, 1.4, 0));
 
-    for (let k = 0; k < 3; k++) {
-      const sp = new (T().Mesh)(geo(new (T().BoxGeometry)(2, 0.045, 0.07)), mat(0x7a5a34, { rough: 0.9 }));
-      sp.rotation.y = k * Math.PI / 3;
-      sp.position.y = baseY + CH * 0.55;
+    const wingIn = new (T().Mesh)(geo(new (T().TorusGeometry)(0.56, 0.05, 10, 44)), wingMat);
+    wingIn.rotation.x = Math.PI / 2;
+    wingIn.position.y = HUB_Y;
+    wingIn.name = "tl-wingin";
+    root.add(wingIn);
+
+    // ซี่ล้อ 4 ซี่ — ทรงกระบอกนอนราบ (ยึดดุม→ปีก)
+    for (let k = 0; k < 4; k++) {
+      const sp = new (T().Mesh)(geo(new (T().CylinderGeometry)(0.045, 0.045, 2, 8)), mat(0x7a5a34, { rough: 0.9 }));
+      sp.rotation.z = Math.PI / 2;
+      sp.rotation.y = k * Math.PI / 2;
+      sp.position.y = HUB_Y;
       sp.name = "tl-spoke" + k;
       root.add(sp);
-      tag(sp, "ซี่ยึดปีก", "", V3(0, 1.5, 0));
+      tag(sp, "ซี่ยึดปีก", "", V3(0, 1.2, 0));
     }
 
-    const cap = new (T().Mesh)(geo(new (T().ConeGeometry)(CR, 0.5, 16)), mat(0x6b4f2e, { rough: 0.85 }));
-    cap.position.y = baseY + CH + 0.25;
-    root.add(cap);
-    tag(cap, "จุกปิดยอดแกน", "", V3(0, 2.4, 0));
-
-    root.userData.tl = { CR, CH, baseY };
+    root.userData.tl = { HUB_Y, HUB_H, wd0 };
+    // กล้อง: มองจากมุมสูงขึ้น ให้เห็นเป็นจานหมุนแบน ๆ (ไม่ใช่แท่ง)
+    cam.tgt.set(0, HUB_Y + 0.2, 0);
+    cam.phi = 0.82;
+    cam.distGoal = Math.max(6, wd0 * 4);
     buildTalaiInternals(r);
   }
 
@@ -456,31 +515,34 @@
     for (let i = parts.length - 1; i >= 0; i--) if (parts[i].mesh.userData.isInternal) parts.splice(i, 1);
 
     const S = window.Talai ? window.Talai.state : {};
-    const tl = root.userData.tl || { CR: 0.34, CH: 2.6, baseY: 1.4 };
+    const tl = root.userData.tl || { HUB_Y: 1.7, HUB_H: 0.9 };
 
-    // ดินตะไลอัดในแกน
+    // ดินตะไลอัดในดุม
     const powder = new (T().Mesh)(
-      new (T().CylinderGeometry)(tl.CR * 0.8, tl.CR * 0.8, tl.CH * 0.7, 20),
+      new (T().CylinderGeometry)(0.3, 0.3, tl.HUB_H * 0.78, 20),
       new (T().MeshStandardMaterial)({ color: 0x3f3a30, roughness: 0.95 })
     );
-    powder.position.y = tl.baseY + tl.CH * 0.42;
+    powder.position.y = tl.HUB_Y - 0.03;
     powder.userData.isInternal = true;
     internals.add(powder);
     tag(powder, "ดินตะไล (ดินบาท-มาดเฟื้อง-ถ่านสลึง)",
       `ดินประสิว ${Math.round((S.mix ? S.mix.saltpeter : 72))} : ถ่าน ${Math.round((S.mix ? S.mix.charcoal : 18))} : กำมะถัน ${Math.round((S.mix ? S.mix.sulfur : 10))}`,
-      V3(0, 0.4, 0));
+      V3(0, 0.9, 0));
 
-    // รูประทุเฉียง
+    // รูประทุเฉียง — เจาะทะลุดุมเฉียงลง ~15°
     const ang = (S.holeAngle || 15) * Math.PI / 180;
     const hole = new (T().Mesh)(
-      new (T().CylinderGeometry)(0.05, 0.05, tl.CR * 2.6, 10),
+      new (T().CylinderGeometry)(0.04, 0.04, 0.62, 10),
       new (T().MeshStandardMaterial)({ color: 0x120d08, roughness: 0.5, emissive: 0xff5a1e, emissiveIntensity: 0.3 })
     );
-    hole.position.set(0, tl.baseY + tl.CH * 0.3, 0);
+    hole.position.set(0, tl.HUB_Y - 0.05, 0);
     hole.rotation.z = Math.PI / 2 - ang;
     hole.userData.isInternal = true;
     internals.add(hole);
-    tag(hole, "รูประทุเฉียง", `${S.holeAngle || 15}° ใต้จุดสมดุล → เกลียวสว่าน`, V3(0.6, 0, 0));
+    tag(hole, "รูประทุเฉียง", `${S.holeAngle || 15}° ใต้จุดสมดุล → เกลียวสว่าน`, V3(0.6, -0.2, 0));
+
+    // เคมีหัวพลุ (Task 4) — ดินสีในดุม
+    addFireworkCharge(tl.HUB_Y + 0.05, 0.24, 0.5);
   }
 
   // ===== โคมลอย =====
@@ -518,6 +580,9 @@
 
     const lamp = new (T().PointLight)(0xffb45a, 2.2, 12, 2);
     lamp.position.y = CY - 0.8; root.add(lamp);
+
+    // ดินสีหัวพลุ (Task 4) — ผูกใต้ยอดโคม
+    addFireworkCharge(CY + KH / 2 - 0.5, 0.34, 0.55);
   }
 
   // ===== พลุ =====
@@ -543,6 +608,9 @@
     powder.position.y = 3.0; powder.userData.isInternal = true;
     internals.add(powder);
     tag(powder, "ดินขับพลุ", "เผาไหม้เร็วมาก แรงเยอะช่วงสั้น ๆ", V3(0, 0, 0));
+
+    // ดินสีหัวพลุ (Task 4) — เม็ดสีในลูกพลุ
+    addFireworkCharge(3.0, 0.5, 0.9);
   }
 
   // ===== จรวดหลายท่อน (Tier 3–5) =====
@@ -603,6 +671,9 @@
         })
         .catch(e => console.warn("[VAB3D] payload model", e));
     }
+
+    // ดินสีหัวพลุ (Task 4) — ในจมูกจรวด (Tier 3 เท่านั้นที่แผงโชว์)
+    addFireworkCharge(y + topRad * 0.7, topRad * 0.55, topRad * 1.1);
 
     cam.tgt.set(0, y * 0.45, 0);
     cam.distGoal = y * 2.2;
@@ -666,11 +737,14 @@
       const tl = root.userData.tl || {};
       const wing = root.getObjectByName("tl-wing");
       if (wing) {
-        const wd = Math.max(0.8, Math.min(2.6, (g.wingDia || 24) / 22 * 1.5));
+        const wd = Math.max(0.9, Math.min(2.6, (g.wingDia || 24) / 22 * 1.5));
         wing.scale.set(wd, wd, 1);
+        const wingIn = root.getObjectByName("tl-wingin");
+        if (wingIn) wingIn.scale.set(wd, wd, 1);
         const rec = parts.find(p => p.mesh === wing);
         if (rec) { rec.stat = `Ø ${g.wingDia} ซม. / เป้า ${g.twoCirc} ซม. (${Math.round((g.wingRatio || 1) * 100)}%)`; wing.userData.tip.stat = rec.stat; }
-        for (let k = 0; k < 3; k++) { const sp = root.getObjectByName("tl-spoke" + k); if (sp) sp.scale.x = wd; }
+        for (let k = 0; k < 4; k++) { const sp = root.getObjectByName("tl-spoke" + k); if (sp) sp.scale.y = wd; }
+        cam.distGoal = Math.max(6.5, wd * 4.4);
       }
       buildTalaiInternals(r);
     }
@@ -698,9 +772,11 @@
   function show(r) {
     if (!mounted || webglFailed || !T()) return;
     resize();
+    const fw = window.Fireworks && window.Fireworks.state;
     const key = r.id + "|" + (r.id === "bangfai" && window.Bangfai ? window.Bangfai.state.body : "")
       + "|" + (r.id === "talai" && window.Talai ? window.Talai.state.casing : "")
-      + "|" + (window.__vabPayloadId || "");
+      + "|" + (window.__vabPayloadId || "")
+      + "|" + (fw ? (fw.enabled ? "fw:" + fw.colorant : "") : "");
     if (key !== curKey) { curKey = key; build(r); }
     else applyParams(r);
   }

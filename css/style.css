@@ -7,6 +7,9 @@
   --bad:#B23A3A;--bad-bg:#FBEAEA;--accent:#2E4A7A;--radius:14px;
   --shadow:0 1px 2px rgba(34,40,58,.05),0 6px 20px rgba(34,40,58,.07);
   --blueprint:#12335c;--blueprint-line:rgba(255,255,255,.14);
+  /* Task 1: glassmorphism (แผงลอยโปร่งแสงบนฉาก 3 มิติ — โทนเดียวทุกธีมเพราะฉากมืดเสมอ) */
+  --glass-bg:rgba(18,24,36,.72);--glass-line:rgba(255,255,255,.14);--glass-blur:blur(13px);
+  --glass-hi:#eef3fb;
 }
 :root[data-theme="dark"]{
   --paper:#14161f;--card:#1c2030;--ink:#E9E7E1;--ink-soft:#A9AEC2;--ink-faint:#6C7188;
@@ -26,6 +29,7 @@
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 html,body{margin:0;padding:0}
+html{overflow-x:hidden}   /* Task 1: กันสกรอลล์แนวนอนจากเวที 3D เต็มจอ (full-bleed vw) */
 body{
   font-family:'Sarabun',system-ui,sans-serif;color:var(--ink);
   background:radial-gradient(1200px 500px at 50% -200px,#F2EDDF 0%,transparent 60%),var(--paper);
@@ -133,6 +137,62 @@ body.vn-open .wrap{padding-bottom:clamp(220px,30vh,280px)}
 .vab-blueprint-tag{font-family:'JetBrains Mono',monospace;font-size:10px;background:var(--blueprint);color:#cfe3ff;padding:3px 8px;border-radius:6px;vertical-align:middle;letter-spacing:1px}
 .vab{display:grid;grid-template-columns:250px 1fr 270px;gap:14px;align-items:start}
 .vab-panel{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:14px;box-shadow:var(--shadow)}
+
+/* ================= Task 1: VAB โรงประกอบเต็มจอ + แผงกระจกลอย ================= */
+@media(min-width:821px){
+  #screen-vab .vab{
+    display:block;position:relative;
+    margin-left:calc(50% - 50vw);margin-right:calc(50% - 50vw);
+    height:min(84vh,860px);overflow:hidden;
+    background:radial-gradient(130% 100% at 50% 0%,#1b3358 0%,#0e2038 55%,#0a1626 100%);
+  }
+  /* เวที 3 มิติ = พื้นหลังเต็มเฟรม */
+  #screen-vab .vab-assembly{
+    position:absolute;inset:0;margin:0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none;
+  }
+  #screen-vab .vab-assembly>h3{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);margin:0}
+  #screen-vab #vab3d-wrap{position:absolute;inset:0;height:auto;margin:0;border:0;border-radius:0}
+  /* แถบ X-Ray/คำใบ้ = อยู่ในช่องว่างระหว่างแผงซ้าย-ขวา ไม่ทับกัน */
+  #screen-vab .vab3d-bar{left:calc(min(340px,42vw) + 26px);right:calc(min(272px,38vw) + 26px);
+    top:12px;bottom:auto;transform:none;justify-content:center;flex-wrap:wrap;z-index:6}
+
+  /* แผงกระจกลอย — โทนมืดเสมอ (ฉากมืด) : รีแมป token ให้ลูก ๆ อ่านออกบนกระจก */
+  #screen-vab .vab-inventory,#screen-vab .vab-telemetry{
+    --ink:#eef3fb;--ink-soft:#bcc9df;--ink-faint:#8a97ae;
+    --card:rgba(255,255,255,.055);--paper:rgba(255,255,255,.035);--line:rgba(255,255,255,.16);
+    --accent:#84A6E8;--gold:#E0BD73;--gold-soft:rgba(224,189,115,.16);
+    --ok:#4FCB8D;--ok-bg:rgba(79,203,141,.14);--bad:#E2685F;--bad-bg:rgba(226,104,95,.16);
+    position:absolute;z-index:5;
+    background:var(--glass-bg);border:1px solid var(--glass-line);color:var(--glass-hi);
+    backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);
+    border-radius:16px;box-shadow:0 14px 44px rgba(0,0,0,.42);
+    overflow-y:auto;overscroll-behavior:contain;
+  }
+  #screen-vab .vab-inventory h3,#screen-vab .vab-telemetry h3{color:#eef3fb}
+  #screen-vab .vab-inventory{left:14px;top:14px;bottom:14px;width:min(340px,42vw);
+    transition:transform .28s ease,opacity .28s ease}
+  #screen-vab .vab-telemetry{right:14px;top:14px;width:min(272px,38vw);max-height:calc(100% - 28px)}
+  #screen-vab .vab-parts-list{max-height:none}
+
+  /* ลิ้นชักเก็บได้ — ปุ่มพับที่หัวแผง */
+  #screen-vab .vab-inventory h3{cursor:pointer;position:sticky;top:0;z-index:2;
+    margin:0 0 9px;padding:0 0 9px;border-bottom:1px solid var(--glass-line);
+    background:var(--glass-bg);
+    display:flex;align-items:center;gap:8px}
+  #screen-vab .vab-inventory h3::after{content:"◀";margin-left:auto;font-size:11px;color:#9db8dd;transition:transform .28s}
+  body.vab-drawer-collapsed #screen-vab .vab-inventory{transform:translateX(calc(-100% + 46px))}
+  body.vab-drawer-collapsed #screen-vab .vab-inventory h3::after{transform:rotate(180deg)}
+  body.vab-drawer-collapsed #screen-vab .vab-inventory>:not(h3){opacity:0;pointer-events:none}
+
+  /* กริดลากวาง (Tier 1) + ปุ่มดำเนินการ = การ์ดกระจกลอยล่างกลาง */
+  #screen-vab #vab-grid{position:absolute;left:50%;bottom:84px;transform:translateX(-50%);z-index:5;
+    min-height:0;max-width:min(380px,64vw);
+    background:var(--glass-bg);border-color:var(--glass-line);
+    backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur)}
+  #screen-vab .vab-actions{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);z-index:6;
+    width:min(540px,86vw);margin:0}
+  #screen-vab .screen-nav{max-width:1120px;margin:10px auto 0;padding:0 18px}
+}
 .vab-panel h3{margin:0 0 4px;font-size:15px}
 .vab-panel-hint{font-size:11.5px;color:var(--ink-soft);margin:0 0 10px}
 
@@ -167,8 +227,9 @@ body.vn-open .wrap{padding-bottom:clamp(220px,30vh,280px)}
 .vab3d-hint{pointer-events:none;font-family:'JetBrains Mono',monospace;font-size:8.5px;color:#9db8dd;
   background:rgba(10,22,42,.5);border-radius:6px;padding:3px 7px}
 #vab3d-tip{position:absolute;z-index:5;pointer-events:none;max-width:240px;
-  background:rgba(10,20,38,.94);border:1px solid var(--accent);border-radius:8px;padding:7px 10px;
-  box-shadow:0 6px 20px rgba(0,0,0,.4)}
+  background:var(--glass-bg);border:1px solid rgba(132,166,232,.5);border-radius:10px;padding:8px 11px;
+  backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);
+  box-shadow:0 10px 30px rgba(0,0,0,.5)}
 #vab3d-tip b{display:block;font-family:'Noto Serif Thai',serif;font-weight:800;font-size:12px;color:#eaf2ff;margin-bottom:2px}
 #vab3d-tip span{display:block;font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#a7c4e6;line-height:1.5}
 @media(max-width:720px){#vab3d-wrap{height:300px}}
@@ -211,13 +272,17 @@ body.vn-open .wrap{padding-bottom:clamp(220px,30vh,280px)}
 .vab-slot.payload{border-color:#8fd0ff}
 
 /* ---------- launch ---------- */
-.launch-wrap{position:relative;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);background:#05060c}
-#launch-canvas{display:block;width:100%;height:min(72vh,600px)}
+/* Task 1: เต็มจอ — เฟรมปล่อยจรวดขยายเต็มความกว้าง viewport + สูงเกือบเต็มจอ */
+#screen-launch{position:relative;margin-left:calc(50% - 50vw);margin-right:calc(50% - 50vw)}
+#screen-launch .screen-title{max-width:1120px;margin-left:auto;margin-right:auto;padding:0 18px}
+#screen-launch .launch-caption{max-width:1120px;margin-left:auto;margin-right:auto}
+.launch-wrap{position:relative;border:0;border-radius:0;overflow:hidden;background:#05060c}
+#launch-canvas{display:block;width:100%;height:min(88vh,880px)}
 .launch-caption{text-align:center;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink-soft);margin-top:10px}
-.launch-hud{position:absolute;top:12px;left:12px;background:rgba(6,8,16,.68);border:1px solid rgba(176,138,60,.6);border-radius:8px;padding:9px 11px;font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#e9e7e1;min-width:190px;backdrop-filter:blur(2px)}
+.launch-hud{position:absolute;top:16px;left:16px;background:var(--glass-bg);border:1px solid var(--glass-line);border-radius:14px;padding:11px 14px;font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#eef3fb;min-width:190px;backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);box-shadow:0 8px 30px rgba(0,0,0,.35)}
 .launch-hud .lh-row{display:flex;justify-content:space-between;gap:12px;padding:2px 0}
-.launch-hud .lh-row span{color:#8aa6d8}
-.launch-cam{position:absolute;top:12px;right:12px;background:rgba(6,8,16,.68);border:1px solid rgba(255,255,255,.2);border-radius:999px;padding:4px 12px;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:1px;color:#cfe0ff}
+.launch-hud .lh-row span{color:#93b0e0}
+.launch-cam{position:absolute;top:16px;right:16px;background:var(--glass-bg);border:1px solid var(--glass-line);border-radius:999px;padding:5px 14px;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:1px;color:#dbe7ff;backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur)}
 .launch-event{position:absolute;left:50%;bottom:104px;transform:translateX(-50%);background:rgba(176,138,60,.92);color:#1a1206;font-family:'Noto Serif Thai',serif;font-weight:800;font-size:14px;padding:7px 18px;border-radius:999px;animation:evpop .3s ease;white-space:nowrap;z-index:7}
 @keyframes evpop{from{opacity:0;transform:translate(-50%,8px)}to{opacity:1;transform:translate(-50%,0)}}
 @media(max-width:560px){.launch-hud{font-size:10px;min-width:150px}}
@@ -298,7 +363,8 @@ body.vn-open .wrap{padding-bottom:clamp(220px,30vh,280px)}
 .fhud-dpad{display:flex;flex-direction:column;align-items:center;gap:5px}
 .fhud-drow{display:flex;gap:5px;align-items:center}
 .fhud-btn{font-family:inherit;font-weight:700;font-size:13px;min-width:40px;height:36px;padding:0 8px;
-  border-radius:9px;border:1px solid rgba(176,138,60,.7);background:rgba(6,8,16,.74);color:#f0f6ff;
+  border-radius:10px;border:1px solid rgba(255,255,255,.22);background:var(--glass-bg);color:#f0f6ff;
+  backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);
   cursor:pointer;transition:transform .1s,background .15s;user-select:none;-webkit-user-select:none;touch-action:none}
 .fhud-btn:hover{background:rgba(46,74,122,.9)}
 .fhud-btn:active,.fhud-btn.pressed{transform:scale(.9);background:var(--accent)}
@@ -427,11 +493,13 @@ select.vx-range{-webkit-appearance:menulist;appearance:menulist;height:auto;back
    (portrait placeholders: swap for real art via [data-state]/[data-mood])
    ============================================================ */
 .capcom{
-  position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:8;
+  position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:8;
   display:flex;align-items:center;gap:9px;
   max-width:min(560px,calc(100% - 24px));
-  background:rgba(6,8,16,.82);border:1px solid rgba(245,197,24,.55);border-radius:999px;
-  padding:6px 8px 6px 6px;font-family:'JetBrains Mono',monospace;backdrop-filter:blur(2px)
+  background:var(--glass-bg);border:1px solid rgba(245,197,24,.5);border-radius:999px;
+  padding:6px 10px 6px 6px;font-family:'JetBrains Mono',monospace;
+  backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);
+  box-shadow:0 8px 30px rgba(0,0,0,.4)
 }
 .capcom.muted{border-color:rgba(255,255,255,.22)}
 .capcom-portrait{flex:0 0 34px;width:34px;height:34px;border-radius:50%;

@@ -907,10 +907,26 @@
       : r.id === "bangfai" ? "บั้งไฟ · ช่างบั้งไฟ" : "SINGLE STAGE";
     VAB.render();
     setupVabDnD();
+    setupVabDrawer();
     show("vab");
     // บรีฟ 4 ส่วนของพี่ช่าง — ยิงหลังจอเปลี่ยนเข้าโรงประกอบแล้ว
     if (window.VN && window.VN.brief) setTimeout(() => VN.brief(G.run), 260);
     else if (window.VN) VN.atVab(r);
+  }
+
+  // Task 1: ลิ้นชักคลังชิ้นส่วน — แตะหัวแผงเพื่อพับ/กาง (เปิดพื้นที่ดูโมเดล 3 มิติ)
+  let vabDrawerReady = false;
+  function setupVabDrawer() {
+    if (vabDrawerReady) return;
+    const inv = document.querySelector("#screen-vab .vab-inventory");
+    const h = inv && inv.querySelector("h3");
+    if (!h) return;
+    vabDrawerReady = true;
+    h.setAttribute("role", "button");
+    h.setAttribute("tabindex", "0");
+    const toggle = () => document.body.classList.toggle("vab-drawer-collapsed");
+    h.addEventListener("click", toggle);
+    h.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } });
   }
 
   let vabDnDReady = false;

@@ -108,6 +108,39 @@
     return new (T().CanvasTexture)(c);
   }
 
+  // Task 3: พื้นดินลานปล่อย — ดิน/หญ้าแห้ง + ตารางสำรวจ + คอนกรีตกลางลาน (ทำให้รู้สึกถึงสเกล)
+  function groundTexture() {
+    const S = 512;
+    const c = document.createElement("canvas");
+    c.width = c.height = S;
+    const x = c.getContext("2d");
+    // ฐานดินอีสาน — น้ำตาลอมแดง ไล่เฉด
+    x.fillStyle = "#5b4a30"; x.fillRect(0, 0, S, S);
+    for (let i = 0; i < 2600; i++) {
+      const r = Math.random();
+      x.fillStyle = r < 0.5 ? "rgba(74,60,38,0.5)" : r < 0.8 ? "rgba(108,92,58,0.4)" : "rgba(150,132,86,0.3)";
+      const s = 1 + Math.random() * 4;
+      x.fillRect(Math.random() * S, Math.random() * S, s, s);
+    }
+    // หย่อมหญ้าแห้ง
+    for (let i = 0; i < 90; i++) {
+      x.fillStyle = "rgba(120,124,68," + (0.12 + Math.random() * 0.16) + ")";
+      x.beginPath();
+      x.ellipse(Math.random() * S, Math.random() * S, 12 + Math.random() * 40, 8 + Math.random() * 26, Math.random() * 3, 0, 7);
+      x.fill();
+    }
+    // ตารางสำรวจจาง ๆ
+    x.strokeStyle = "rgba(255,255,255,0.05)"; x.lineWidth = 1;
+    for (let i = 0; i <= S; i += 32) {
+      x.beginPath(); x.moveTo(i, 0); x.lineTo(i, S); x.stroke();
+      x.beginPath(); x.moveTo(0, i); x.lineTo(S, i); x.stroke();
+    }
+    const tex = new (T().CanvasTexture)(c);
+    tex.wrapS = tex.wrapT = T().RepeatWrapping;
+    tex.repeat.set(26, 26);
+    return tex;
+  }
+
   function run(canvas, cfg, hooks) {
     const THREE = T();
     if (!THREE) throw new Error("THREE not available");
@@ -155,12 +188,21 @@
     // ---------- ground + pad (worldGroup sinks as altitude rises) ----------
     const worldGroup = new THREE.Group();
     scene.add(worldGroup);
+    const groundTex = track(groundTexture());
     const ground = new THREE.Mesh(
-      new THREE.CircleGeometry(600, 48),
-      new THREE.MeshStandardMaterial({ color: 0x5a4b32, roughness: 1, metalness: 0 })
+      new THREE.CircleGeometry(600, 64),
+      new THREE.MeshStandardMaterial({ map: groundTex, color: 0xffffff, roughness: 1, metalness: 0 })
     );
     ground.rotation.x = -Math.PI / 2;
     worldGroup.add(ground);
+    // ลานปล่อยที่โล่งเตียน (ดินอัดแน่น) — จุดอ้างอิงสเกลใกล้จรวด
+    const apron = new THREE.Mesh(
+      new THREE.CircleGeometry(13, 44),
+      new THREE.MeshStandardMaterial({ color: 0x6a5a42, roughness: 1, metalness: 0 })
+    );
+    apron.rotation.x = -Math.PI / 2;
+    apron.position.y = 0.015;
+    worldGroup.add(apron);
     const pad = new THREE.Mesh(
       new THREE.CylinderGeometry(3.4, 3.8, 0.8, 20),
       new THREE.MeshStandardMaterial({ color: 0x3c3c44, roughness: 0.9 })
@@ -180,6 +222,77 @@
     );
     horizon.rotation.x = -Math.PI / 2;
     worldGroup.add(horizon);
+
+    // ---------- Task 3: ชั้นเมฆอ้างอิงความสูง (มีเสมอ ไม่ใช่แค่ตอนอากาศแปรปรวน) ----------
+    //   แผ่นเมฆกระจายที่ ~1.5 / 4 / 9 กม. — จรวดพุ่งผ่าน = รู้สึกถึงความเร็ว/ความสูงทันที
+    const scaleCloudTex = track(cloudSprite());
+    const cloudDecks = [];
+    [[1500, 12, 0.55, 150], [4200, 9, 0.42, 240], [9000, 7, 0.32, 360]].forEach(([altM, n, op, spread]) => {
+      const deck = new THREE.Group();
+      deck.position.y = altU(altM);
+      deck.userData.baseOp = op;
+      deck.userData.altM = altM;
+      worldGroup.add(deck);
+      for (let i = 0; i < n; i++) {
+        const m = new THREE.MeshBasicMaterial({
+          map: scaleCloudTex, transparent: true, depthWrite: false, opacity: 0, side: THREE.DoubleSide
+        });
+        const pl = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), m);
+        const sz = 34 + Math.random() * 70;
+        pl.scale.set(sz, sz * (0.42 + Math.random() * 0.28), 1);
+        pl.position.set((Math.random() - 0.5) * spread, (Math.random() - 0.5) * 22, (Math.random() - 0.5) * spread);
+        pl.userData.drift = 1.4 + Math.random() * 2.2;
+        deck.add(pl);
+      }
+      cloudDecks.push(deck);
+    });
+    function updateCloudDecks(dt, alt, spaceT) {
+      const wind = cfg.windSpeed || 0;
+      const fade = Math.max(0, 1 - spaceT * 1.6);
+      cloudDecks.forEach(deck => {
+        const near = 1 - Math.min(1, Math.abs(alt - deck.userData.altM) / 6000);   // จางเมื่ออยู่ไกลชั้นเมฆ
+        const target = deck.userData.baseOp * fade * (0.35 + near * 0.65);
+        deck.children.forEach(pl => {
+          pl.lookAt(camera.position);
+          pl.position.x += (pl.userData.drift + wind * 0.12) * dt;
+          if (pl.position.x > 220) pl.position.x -= 440;
+          pl.material.opacity += (target - pl.material.opacity) * Math.min(1, dt * 1.5);
+        });
+      });
+    }
+
+    // ---------- Task 3: ฝุ่น/ละอองลมใกล้พื้น ----------
+    const dustTex = track(softSprite());
+    const DUSTN = 90;
+    const dustGeo = new THREE.BufferGeometry();
+    const dustPos = new Float32Array(DUSTN * 3);
+    const dustVel = [];
+    for (let i = 0; i < DUSTN; i++) {
+      dustPos[i * 3] = (Math.random() - 0.5) * 64;
+      dustPos[i * 3 + 1] = 0.2 + Math.random() * 4.2;
+      dustPos[i * 3 + 2] = (Math.random() - 0.5) * 64;
+      dustVel.push(0.4 + Math.random() * 1.2);
+    }
+    dustGeo.setAttribute("position", new THREE.BufferAttribute(dustPos, 3));
+    const dust = new THREE.Points(dustGeo, new THREE.PointsMaterial({
+      map: dustTex, color: 0xb09a78, size: 0.34, sizeAttenuation: true,
+      transparent: true, opacity: 0, depthWrite: false
+    }));
+    dust.frustumCulled = false;
+    worldGroup.add(dust);
+    function updateDust(dt, alt) {
+      const wind = cfg.windSpeed || 0;
+      const near = Math.max(0, 1 - alt / 240);
+      dust.material.opacity += (near * 0.38 - dust.material.opacity) * Math.min(1, dt * 2);
+      if (dust.material.opacity < 0.01) return;
+      const arr = dustGeo.attributes.position.array;
+      for (let i = 0; i < DUSTN; i++) {
+        arr[i * 3] += (dustVel[i] + wind * 0.35) * dt;
+        arr[i * 3 + 1] += Math.sin(performance.now() * 0.001 + i) * 0.15 * dt;
+        if (arr[i * 3] > 40) arr[i * 3] -= 80;
+      }
+      dustGeo.attributes.position.needsUpdate = true;
+    }
 
     // ---------- starfield + ทางช้างเผือก (Phase 4) ----------
     const starPtsTex = track(softSprite());
@@ -491,13 +604,13 @@
       const HUB_Y = 1.5;
       const bamboo = pmat("mat_bamboo");
 
-      // ดุมกลาง — บ้องดินไม้รวก (สั้น อ้วน)
-      const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.36, 1.5, 18), bamboo);
-      hub.position.y = HUB_Y;
-      rocket.add(hub); rParts.push({ mesh: hub, stage: 1, baseY: HUB_Y, h: 1.5 });
-      const capT = new THREE.Mesh(new THREE.ConeGeometry(0.36, 0.52, 16),
+      // ดุมกลาง — บ้องดินไม้รวก (เตี้ย อ้วน) — เกือบเสมอปีก ไม่ใช่แท่งหอก
+      const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.44, 0.6, 20), bamboo);
+      hub.position.y = HUB_Y + 0.05;
+      rocket.add(hub); rParts.push({ mesh: hub, stage: 1, baseY: hub.position.y, h: 0.6 });
+      const capT = new THREE.Mesh(new THREE.CylinderGeometry(0.44, 0.42, 0.12, 20),
         new THREE.MeshStandardMaterial({ color: 0x6b4f2e, roughness: 0.85 }));
-      capT.position.y = HUB_Y + 1.0; rocket.add(capT); rParts.push({ mesh: capT, stage: 1, baseY: capT.position.y });
+      capT.position.y = HUB_Y + 0.05 + 0.36; rocket.add(capT); rParts.push({ mesh: capT, stage: 1, baseY: capT.position.y });
 
       // ปีกวงกลม — วงแหวนไผ่หนา วางแนวนอน + วงในเสริม
       const rimMat = pmat("mat_bamboo"); if (rimMat.color) rimMat.color.multiplyScalar(0.8);
@@ -567,6 +680,29 @@
       }
     }
     const NOZZLE_Y = 0.9;
+
+    // ---------- Task 5: ไอพ่นเรืองแสง (exhaust plume) — กรวยเรืองสว่างที่ปลายท่อ ----------
+    //   ทุกจรวดที่มีเครื่องยนต์จริง (ยกเว้นโคม = ไม่มีไอพ่น, ตะไล = พ่นจากขอบล้อ)
+    let plume = null, plumeCore = null;
+    if (!meta.lantern && !meta.talai) {
+      const pMat = new THREE.MeshBasicMaterial({
+        color: liquid ? 0x8fc4ff : 0xffae5c, transparent: true, opacity: 0,
+        depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false, side: THREE.DoubleSide
+      });
+      pMat.color.multiplyScalar(1.7);   // over-bright → ติด bloom
+      plume = new THREE.Mesh(new THREE.ConeGeometry(0.55, 3.6, 20, 1, true), pMat);
+      plume.rotation.x = Math.PI;       // ชี้ลง
+      plume.renderOrder = 3;
+      rocket.add(plume);
+      const cMat = new THREE.MeshBasicMaterial({
+        color: 0xffffff, transparent: true, opacity: 0,
+        depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false, side: THREE.DoubleSide
+      });
+      plumeCore = new THREE.Mesh(new THREE.ConeGeometry(0.24, 2.0, 16, 1, true), cMat);
+      plumeCore.rotation.x = Math.PI;
+      plumeCore.renderOrder = 4;
+      rocket.add(plumeCore);
+    }
 
     // ---------- particles ----------
     const sprite = softSprite();
@@ -947,7 +1083,7 @@
         try {
           fx.push(window.Fireworks.detonate(THREE, scene,
             new THREE.Vector3(rocket.position.x, my, 0), meta.firework));
-          shake = Math.max(shake, 0.22);
+          shake = Math.max(shake, 0.5);
           showEvent("หัวพลุแตก! เปลว" + (meta.firework.flame || "สี") + " 🎆");
         } catch (e) { console.warn("[Launch3D] firework", e); }
       }
@@ -1012,8 +1148,28 @@
         exhaustLight.color.setHex(liquid ? 0x8ec4ff : 0xff8a3a);
         exhaustLight.intensity = 2.2 + Math.random() * 2.6 + (alt < 300 ? 2 : 0);
         exhaustLight.distance = 55;
+        // Task 5: ไอพ่นเรืองแสง — ยืด/สั่นตามแรงขับ + จางลงในสุญญากาศ
+        if (plume) {
+          const pw = Math.max(0.35, Math.min(1.6, power));
+          const vac = Math.max(0.35, 1 - alt / 60000);          // ไอพ่นบานกว้างเมื่ออากาศเบา แต่หรี่ลง
+          const flk = 0.85 + Math.random() * 0.3;
+          plume.position.y = nozY - 1.75 * pw;
+          plume.scale.set((0.85 + pw * 0.5) * flk, pw * 1.2 * flk, (0.85 + pw * 0.5) * flk);
+          plume.material.opacity += ((0.34 * vac) - plume.material.opacity) * Math.min(1, dt * 12);
+          plumeCore.position.y = nozY - 0.95 * pw;
+          plumeCore.scale.set((0.7 + pw * 0.28) * flk, pw * 1.05, (0.7 + pw * 0.28) * flk);
+          plumeCore.material.opacity += ((0.55 * vac) - plumeCore.material.opacity) * Math.min(1, dt * 12);
+        }
+        // Task 5: liftoff rumble — สั่นต่อเนื่องช่วงเครื่องแรงเต็ม ใกล้พื้น
+        if (s.phase === "boost" && alt < 1400) {
+          shake = Math.max(shake, (0.05 + Math.random() * 0.055) * power * Math.max(0.25, 1 - alt / 1400));
+        }
       } else {
         exhaustLight.intensity *= 0.86;
+        if (plume) {
+          plume.material.opacity *= 0.82;
+          plumeCore.material.opacity *= 0.82;
+        }
       }
       if (s.phase === "reentry") {
         const my = vehicleMidY();
@@ -1029,6 +1185,8 @@
       const spaceT = Math.min(1, alt / 75000);
       const flash = updateWeather(dt * Math.min(simSpeed, 3), alt, spaceT);
       updateTraffic(dt * Math.min(simSpeed, 4), alt);
+      updateCloudDecks(dt * Math.min(simSpeed, 3), alt, spaceT);   // Task 3
+      updateDust(dt * Math.min(simSpeed, 3), alt);                 // Task 3
 
       // sky / space blend (พื้น → อวกาศ) + สภาพอากาศทำให้ฟ้ามืด
       const dark = weather.skyDark * (1 - spaceT);
