@@ -189,7 +189,7 @@
     scene.background = new THREE.Color(nightFW ? 0x02030a : 0x0a1830);
     scene.fog = new THREE.FogExp2(nightFW ? 0x02030a : 0x0a1830, nightFW ? 0.0008 : 0.0016);
 
-    const camera = new THREE.PerspectiveCamera(52, 1, 0.1, 6000);
+    const camera = new THREE.PerspectiveCamera(nightFW ? 68 : 52, 1, 0.1, 6000);
     camera.position.set(10, 6, 18);
     const lookTarget = new THREE.Vector3(0, 4, 0);
 
@@ -269,7 +269,10 @@
       }
       cloudDecks.push(deck);
     });
+    // Phase 13: พลุ — เอาเมฆออกให้หมด ท้องฟ้าเป็นผืนมืดสะอาด เห็นดอกพลุชัดทุกความสูง
+    if (nightFW) cloudDecks.forEach(d => { d.visible = false; });
     function updateCloudDecks(dt, alt, spaceT) {
+      if (nightFW) return;
       const wind = cfg.windSpeed || 0;
       const fade = Math.max(0, 1 - spaceT * 1.6);
       cloudDecks.forEach(deck => {
@@ -565,20 +568,47 @@
       rocket.userData.khomFlame = flame;
       rocket.userData.khomCore = fireCore;
     } else if (tier === 1) {
-      // ---- พลุ: ลูกพลุกลม + ชนวน (ไม่ใช่จรวด ไม่มีครีบ) ----
+      // ---- พลุ: ลูกพลุกลม + ชนวน (ไม่ใช่จรวด ไม่มีครีบ) — ยิงจากท่อครก (mortar) ----
+      const shR = 0.62 * ((meta.firework && meta.firework.burstScale) || 1);
       const shMat = pmat("mat_bamboo"); if (shMat.color) shMat.color.setHex(0x8a3a2c);
       shMat.roughness = 0.9;
-      const shell = new THREE.Mesh(new THREE.SphereGeometry(0.95, 22, 16), shMat);
-      shell.position.y = 2.5; shell.scale.y = 1.12;
+      const shell = new THREE.Mesh(new THREE.SphereGeometry(shR, 22, 16), shMat);
+      shell.position.y = 2.5; shell.scale.y = 1.1;
       rocket.add(shell); rParts.push({ mesh: shell, stage: 1, baseY: 2.5 });
-      const band = new THREE.Mesh(new THREE.TorusGeometry(0.95, 0.06, 6, 22),
+      const band = new THREE.Mesh(new THREE.TorusGeometry(shR, 0.05, 6, 22),
         new THREE.MeshStandardMaterial({ color: 0xcaa24a, roughness: 0.8 }));
       band.rotation.x = Math.PI / 2; band.position.y = 2.5;
       rocket.add(band);
-      const fuse = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.8, 6),
+      const fuse = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.7, 6),
         new THREE.MeshStandardMaterial({ color: 0x2b2b2b, roughness: 1 }));
-      fuse.position.set(0.18, 3.7, 0); fuse.rotation.z = 0.35;
+      fuse.position.set(0.14, 2.5 + shR + 0.5, 0); fuse.rotation.z = 0.35;
       rocket.add(fuse);
+
+      if (meta.firework) {
+        // แร็คท่อครก (mortar rack) แทนร้านบั้งไฟ — ท่อ HDPE เรียงกัน จมตามพื้น
+        pad.visible = false; tower.visible = false;
+        const rack = new THREE.Group();
+        const tubeMat = new THREE.MeshStandardMaterial({ color: 0x24405c, roughness: 0.5, metalness: 0.15 });
+        const capMat = new THREE.MeshStandardMaterial({ color: 0x0e1b28, roughness: 0.8 });
+        const TUBES = 5, TH = 4.4, TR = 0.72;
+        for (let i = 0; i < TUBES; i++) {
+          const x = (i - (TUBES - 1) / 2) * (TR * 2.35);
+          const tube = new THREE.Mesh(new THREE.CylinderGeometry(TR, TR, TH, 18, 1, true), tubeMat);
+          tube.position.set(x, TH / 2, 0);
+          rack.add(tube);
+          const capB = new THREE.Mesh(new THREE.CylinderGeometry(TR * 1.05, TR * 1.05, 0.25, 18), capMat);
+          capB.position.set(x, 0.12, 0);
+          rack.add(capB);
+        }
+        // ฐานไม้ยึดท่อ
+        const beam = new THREE.Mesh(new THREE.BoxGeometry(TUBES * TR * 2.35, 0.5, TR * 2.4),
+          new THREE.MeshStandardMaterial({ color: 0x5a4327, roughness: 0.95 }));
+        beam.position.y = 1.1;
+        rack.add(beam);
+        rack.position.y = 0.02;
+        worldGroup.add(rack);
+        rocket.userData.mortarTubeH = TH;   // ลูกพลุเริ่มจมอยู่ในท่อ
+      }
     } else if (meta.bangfai) {
       // ---- บั้งไฟ: ลำสั้นเรียว (ไม้ไผ่/PVC) + หางไม้ไผ่ยาวกว่าลำมาก · ไม่มีครีบเลย ----
       const BR = 0.32, BH = 4.0;
@@ -750,10 +780,39 @@
     const flame = makePoints(260, 0.9, true);
     const smoke = makePoints(420, 2.6, false);
 
-    // Phase 8/12: หัวพลุเฉลิมฉลอง — จุดระเบิดหลายชั้นตอนถึง apogee (vy ≤ 0)
+    // Phase 8/12/13: หัวพลุเฉลิมฉลอง — จุดระเบิดหลายชั้นตอนถึง apogee (vy ≤ 0)
     const fx = [];
-    let fwFired = false, fwBurstY = null, fwChemTimer = 0;
+    let fwFired = false, fwBurstY = null, fwChemTimer = 0, fwFuseT = 0, fwChemShown = false;
     const fwChemEl = document.getElementById("fw-chem");
+
+    // Phase 13: ท่อครก — ลูกพลุค้างในท่อจนกดปุ่ม "จุดพลุ" (จรวดปกติเริ่มทันที)
+    let fwArmed = !nightFW;
+    const fwIgniteBtn = document.getElementById("fw-ignite");
+    if (nightFW && fwIgniteBtn) {
+      fwIgniteBtn.hidden = false;
+      fwIgniteBtn.onclick = () => { fwArmed = true; fwIgniteBtn.hidden = true; };
+    }
+    if (nightFW && canvas.parentElement) canvas.parentElement.classList.add("fw-mode");
+
+    // Phase 13: หางประกายขาขึ้น — ให้ตาผู้ชมตามลูกพลุในฟ้ามืด
+    const fwTrail = nightFW ? makePoints(220, 0.5, true) : null;
+    function emitFwTrail(px, py) {
+      if (!fwTrail) return;
+      let c = 0;
+      for (const p of fwTrail.pool) {
+        if (p.life > 0) continue;
+        p.life = p.max = 0.5 + Math.random() * 0.55;
+        p.x = px + (Math.random() - 0.5) * 0.28;
+        p.y = py + (Math.random() - 0.5) * 0.25;
+        p.z = (Math.random() - 0.5) * 0.28;
+        p.vx = (Math.random() - 0.5) * 0.55;
+        p.vy = -1.1 - Math.random() * 1.6;
+        p.vz = (Math.random() - 0.5) * 0.55;
+        p.grow = 0;
+        p.r = 1; p.g = 0.72 + Math.random() * 0.22; p.b = 0.32 + Math.random() * 0.22;
+        if (++c > 3) break;
+      }
+    }
 
     // ---------- ระบบสภาพอากาศ (Phase 4): เมฆ / ฝน / ฟ้าผ่า ----------
     const wxActive = weather.cloudCover > 0.12 || weather.rainRate > 0.02 || weather.skyDark > 0.05;
@@ -984,7 +1043,7 @@
 
     // ---------- FlightHUD (แถบล่าง + ปุ่มควบคุม gravity turn / STAGE) ----------
     //   โคมลอยบังคับทิศไม่ได้ (ลอยตามลม) — ซ่อนแผงควบคุมล่าง ไม่ให้บังตัวโคม
-    const hudOn = !!window.FlightHUD && !meta.lantern;
+    const hudOn = !!window.FlightHUD && !meta.lantern && !meta.firework;   // พลุบังคับทิศไม่ได้ — ซ่อน D-pad
     if (hudOn) {
       window.FlightHUD.mount({
         initialPitch: (flight.control && flight.control.pitchDeg) || 0,
@@ -1040,11 +1099,12 @@
       else camState = "orbital";
       if (camTag) camTag.textContent = { pad: "PAD", ground: "GROUND", chase: "CHASE", orbital: "ORBITAL" }[camState];
 
-      // Phase 12: กล้องมุมผู้ชม — ยืนบนพื้นห่างจากแท่น เงยหน้าดูพลุแตกบนฟ้า
-      if (nightFW && camState !== "orbital") {
-        const rise = Math.min(24, 5 + alt * 0.045);
-        camGoalPos.set(6.5, 2.0, tier === 1 ? 46 : 54);
-        camGoalLook.set(0, fwBurstY != null ? (fwBurstY * 0.5 + rise * 0.6 + 4) : rise, 0);
+      // Phase 12/13: กล้องมุมผู้ชม — ยืนบนพื้นไกลจากแร็คท่อครก เงยหน้าตามลูกพลุขึ้นฟ้า
+      if (nightFW) {
+        // ตามลูกพลุตอนขาขึ้น แล้วค้างที่จุดแตก
+        const focus = fwBurstY != null ? fwBurstY : rocket.position.y;
+        camGoalPos.set(5, 3.2, 62);
+        camGoalLook.set(0, Math.max(6, focus * 0.72 + 2), 0);
         if (camTag) camTag.textContent = "SPECTATOR";
         return;
       }
@@ -1081,7 +1141,9 @@
       simSpeed += (targetSpeed - simSpeed) * Math.min(1, dt * 1.5);
 
       // step physics — พอหัวพลุแตกที่ apogee ให้หยุดฟิสิกส์ ค้างจรวดไว้ ให้พลุเป็นไคลแม็กซ์
-      if (fwFired) {
+      if (!fwArmed) {
+        // ลูกพลุรอในท่อครก — ยังไม่กด "จุดพลุ"
+      } else if (fwFired) {
         if (!fx.length && ++holdF > 40) { finish(); return; }
       } else if (flight.state.phase !== "done") {
         const simDt = dt * simSpeed;
@@ -1116,24 +1178,34 @@
       if (hudOn) window.FlightHUD.update(s, flight);
       if (window.Capcom) window.Capcom.feed(s, flight);
 
-      // หัวพลุ: จุดครั้งเดียวเมื่อความเร็วแนวดิ่ง ≤ 0 (apogee — Time Fuse ถึง Bursting Charge)
+      // หัวพลุ: Time Fuse ถึง Bursting Charge — จุดหลัง apogee ตามความยาวชนวนที่เลือก
       if (!fwFired && meta.firework && window.Fireworks && s.vy <= 0 && s.t > 1 && alt > 20
         && s.phase !== "pad" && !s.landed) {
-        fwFired = true;
-        const my = vehicleMidY() + 1.5;
-        fwBurstY = my;
+        fwFuseT += dt;
+        if (fwFuseT >= (meta.firework.fuseDelay || 0)) {
+          fwFired = true;
+          const my = (nightFW ? rocket.position.y : 0) + vehicleMidY() + 1.5;
+          fwBurstY = my;
+          try {
+            fx.push(window.Fireworks.detonate(THREE, scene,
+              new THREE.Vector3(rocket.position.x, my, 0), meta.firework));
+            shake = Math.max(shake, 0.5);
+            showEvent("หัวพลุแตก! เปลว" + (meta.firework.flame || "สี") + " 🎆");
+          } catch (e) { console.warn("[Launch3D] firework", e); }
+        }
+      }
+      if (fwFired && !fwChemShown) {
+        fwChemShown = true;
         try {
-          fx.push(window.Fireworks.detonate(THREE, scene,
-            new THREE.Vector3(rocket.position.x, my, 0), meta.firework));
-          shake = Math.max(shake, 0.5);
-          showEvent("หัวพลุแตก! เปลว" + (meta.firework.flame || "สี") + " 🎆");
-          // Task 4: overlay อธิบายปฏิกิริยาเคมี
-          const sp = meta.firework.spec;
-          if (fwChemEl && sp) {
+          const sps = (meta.firework.specs && meta.firework.specs.length) ? meta.firework.specs
+            : (meta.firework.spec ? [meta.firework.spec] : []);
+          if (fwChemEl && sps.length) {
             const a = document.getElementById("fw-chem-el");
             const c = document.getElementById("fw-chem-chain");
-            if (a) a.textContent = sp.th + " (" + sp.el + ")" + (sp.nm ? " — เปล่งแสง " + sp.nm + " nm" : "");
-            if (c) c.textContent = (sp.reaction || "") + " → เปลว" + (sp.flame || "");
+            if (a) a.textContent = sps.map(sp => sp.th + " (" + sp.el + ")" + (sp.nm ? " " + sp.nm + "nm" : "")).join("  ·  ");
+            if (c) c.textContent = sps.length > 1
+              ? "การเปล่งแสงเชิงอะตอมหลายธาตุ → เปลว " + sps.map(sp => sp.flame).join(" + ")
+              : (sps[0].reaction || "") + " → เปลว" + (sps[0].flame || "");
             fwChemEl.hidden = false; fwChemEl.classList.remove("fade");
             fwChemTimer = 6;
           }
@@ -1152,7 +1224,17 @@
 
       // world sink
       const u = altU(alt);
-      worldGroup.position.y = -u;
+      let yOff = 0;
+      if (nightFW) {
+        // Phase 13: พลุต้องขึ้นสูง — พื้นอยู่กับที่ ลูกพลุพุ่งขึ้นเหนือพื้นจริง ๆ
+        worldGroup.position.y = 0;
+        const riseU = alt <= 300 ? alt * 0.13 : 39 + (alt - 300) * 0.032;
+        const tgt = !fwArmed ? -1.4 : (fwFired ? rocket.position.y : riseU);
+        rocket.position.y += (tgt - rocket.position.y) * Math.min(1, dt * 6);
+        yOff = rocket.position.y;
+      } else {
+        worldGroup.position.y = -u;
+      }
 
       // rocket subtle drift with wind / spin
       rocket.position.x = Math.max(-3, Math.min(3, s.x * 0.0006));
@@ -1186,10 +1268,13 @@
         if (core) { core.visible = litK; core.scale.setScalar(0.85 + Math.random() * 0.4); }
       }
 
-      // จุดปลายท่อ (nozzle) = ใต้ท่อนล่างสุดที่ยังติดอยู่
-      let nozY = NOZZLE_Y;
-      rParts.forEach(rp => { if (!rp.detached && rp.stage) nozY = Math.min(nozY, rp.mesh.position.y - (rp.h ? rp.h / 2 : 0)); });
+      // จุดปลายท่อ (nozzle) = ใต้ท่อนล่างสุดที่ยังติดอยู่ (+yOff = ลูกพลุยกตัวขึ้นในฉากกลางคืน)
+      let nozY = NOZZLE_Y + yOff;
+      rParts.forEach(rp => { if (!rp.detached && rp.stage) nozY = Math.min(nozY, rp.mesh.position.y + yOff - (rp.h ? rp.h / 2 : 0)); });
       exhaustLight.position.set(rocket.position.x, nozY, 0);
+
+      // Phase 13: หางประกายขาขึ้น — ระหว่างพุ่งขึ้นก่อนแตก
+      if (nightFW && fwArmed && !fwFired && s.thrustNow <= 0 && s.vy > -3) emitFwTrail(rocket.position.x, nozY);
 
       // exhaust / smoke  (โคมลอยไม่มีไอพ่น — ใช้ไฟในโคมแทน)
       const burning = s.thrustNow > 0 && !meta.lantern;
@@ -1202,6 +1287,7 @@
           exhaustLight.position.set(rocket.position.x, (rocket.userData.talaiJets && rocket.userData.talaiJets[0].y) || 1, 0);
         } else {
           emitFlame(rocket.position.x, nozY, 0, power);
+          if (nightFW) emitFwTrail(rocket.position.x, nozY + 0.3);
           if (inAtmo) emitSmoke(rocket.position.x, nozY + 0.2, 0, alt < 400, !liquid && alt < 6000);
         }
         exhaustLight.color.setHex(liquid ? 0x8ec4ff : 0xff8a3a);
@@ -1239,6 +1325,7 @@
       }
       updatePoints(flame, dt * Math.min(simSpeed, 4), 4);
       updatePoints(smoke, dt * Math.min(simSpeed, 3), 1.5);
+      if (fwTrail) updatePoints(fwTrail, dt * Math.min(simSpeed, 3), 3.5);
 
       // weather (เมฆ/ฝน/ฟ้าผ่า) — คืนความสว่างแฟลชฟ้าผ่า
       const spaceT = Math.min(1, alt / 75000);
@@ -1356,6 +1443,8 @@
       if (camTag) camTag.hidden = true;
       if (evEl) evEl.hidden = true;
       if (fwChemEl) { fwChemEl.hidden = true; fwChemEl.classList.remove("fade"); }
+      if (fwIgniteBtn) { fwIgniteBtn.hidden = true; fwIgniteBtn.onclick = null; }
+      if (canvas && canvas.parentElement) canvas.parentElement.classList.remove("fw-mode");
       try {
         scene.traverse(o => {
           if (o.geometry) o.geometry.dispose();

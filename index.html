@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+Thai:wght@500;600;700;900&family=Sarabun:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=38">
+<link rel="stylesheet" href="css/style.css?v=40">
 </head>
 <body>
 <script>
@@ -69,6 +69,7 @@
   <section id="screen-mission" class="screen" hidden>
     <h2 class="screen-title">1 · เลือกภารกิจ</h2>
     <div id="mission-grid" class="card-grid"></div>
+    <div class="screen-nav"><button class="btn btn-ghost" data-back="home">← กลับหน้าหลัก</button></div>
   </section>
 
   <!-- ============ ROCKET SELECT ============ -->
@@ -140,6 +141,8 @@
     <h2 class="screen-title">6 · ปล่อยจรวด</h2>
     <div class="launch-wrap">
       <canvas id="launch-canvas"></canvas>
+      <button class="btn btn-ghost launch-back" data-back="vab">← กลับไปแก้ไข</button>
+      <button id="fw-ignite" class="fw-ignite" type="button" hidden>🎆 จุดพลุ<small>IGNITE</small></button>
       <div id="launch-hud" class="launch-hud" hidden>
         <div class="lh-row"><span>ALT</span><b id="lh-alt">0 m</b></div>
         <div class="lh-row"><span>VEL</span><b id="lh-vel">0 m/s</b></div>
@@ -294,38 +297,38 @@
 </footer>
 
 <!-- Three.js r147 (UMD) + post-processing + GLTFLoader for the cinematic 3D launch -->
-<script src="vendor/three/three.min.js?v=38"></script>
-<script src="vendor/three/shaders/CopyShader.js?v=38"></script>
-<script src="vendor/three/shaders/LuminosityHighPassShader.js?v=38"></script>
-<script src="vendor/three/shaders/FilmShader.js?v=38"></script>
-<script src="vendor/three/postprocessing/EffectComposer.js?v=38"></script>
-<script src="vendor/three/postprocessing/MaskPass.js?v=38"></script>
-<script src="vendor/three/postprocessing/RenderPass.js?v=38"></script>
-<script src="vendor/three/postprocessing/ShaderPass.js?v=38"></script>
-<script src="vendor/three/postprocessing/UnrealBloomPass.js?v=38"></script>
-<script src="vendor/three/postprocessing/FilmPass.js?v=38"></script>
-<script src="vendor/three/loaders/GLTFLoader.js?v=38"></script>
+<script src="vendor/three/three.min.js?v=40"></script>
+<script src="vendor/three/shaders/CopyShader.js?v=40"></script>
+<script src="vendor/three/shaders/LuminosityHighPassShader.js?v=40"></script>
+<script src="vendor/three/shaders/FilmShader.js?v=40"></script>
+<script src="vendor/three/postprocessing/EffectComposer.js?v=40"></script>
+<script src="vendor/three/postprocessing/MaskPass.js?v=40"></script>
+<script src="vendor/three/postprocessing/RenderPass.js?v=40"></script>
+<script src="vendor/three/postprocessing/ShaderPass.js?v=40"></script>
+<script src="vendor/three/postprocessing/UnrealBloomPass.js?v=40"></script>
+<script src="vendor/three/postprocessing/FilmPass.js?v=40"></script>
+<script src="vendor/three/loaders/GLTFLoader.js?v=40"></script>
 
-<script src="js/data.js?v=38"></script>
-<script src="js/law.js?v=38"></script>
-<script src="js/chemistry.js?v=38"></script>
-<script src="js/fireworks.js?v=38"></script>
-<script src="js/codex.js?v=38"></script>
-<script src="js/physics.js?v=38"></script>
-<script src="js/ui.js?v=38"></script>
-<script src="js/vn.js?v=38"></script>
-<script src="js/narrative.js?v=38"></script>
-<script src="js/vab.js?v=38"></script>
-<script src="js/talai.js?v=38"></script>
-<script src="js/bangfai.js?v=38"></script>
-<script src="js/skins.js?v=38"></script>
-<script src="js/modelManager.js?v=38"></script>
-<script src="js/vab3d.js?v=38"></script>
-<script src="js/codexViewer.js?v=38"></script>
-<script src="js/recovery.js?v=38"></script>
-<script src="js/textureManager.js?v=38"></script>
-<script src="js/launch2d.js?v=38"></script>
-<script src="js/launch3d.js?v=38"></script>
-<script src="js/main.js?v=38"></script>
+<script src="js/data.js?v=40"></script>
+<script src="js/law.js?v=40"></script>
+<script src="js/chemistry.js?v=40"></script>
+<script src="js/fireworks.js?v=40"></script>
+<script src="js/codex.js?v=40"></script>
+<script src="js/physics.js?v=40"></script>
+<script src="js/ui.js?v=40"></script>
+<script src="js/vn.js?v=40"></script>
+<script src="js/narrative.js?v=40"></script>
+<script src="js/vab.js?v=40"></script>
+<script src="js/talai.js?v=40"></script>
+<script src="js/bangfai.js?v=40"></script>
+<script src="js/skins.js?v=40"></script>
+<script src="js/modelManager.js?v=40"></script>
+<script src="js/vab3d.js?v=40"></script>
+<script src="js/codexViewer.js?v=40"></script>
+<script src="js/recovery.js?v=40"></script>
+<script src="js/textureManager.js?v=40"></script>
+<script src="js/launch2d.js?v=40"></script>
+<script src="js/launch3d.js?v=40"></script>
+<script src="js/main.js?v=40"></script>
 </body>
 </html>

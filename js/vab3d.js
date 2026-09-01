@@ -177,6 +177,7 @@
   }
 
   function pickAt(e) {
+    if (!camera || !ray.rc || !mounted) return;   // ยังไม่เมานต์ / WebGL ใช้ไม่ได้
     const r = canvas.getBoundingClientRect();
     ray.ndc.x = ((e.clientX - r.left) / r.width) * 2 - 1;
     ray.ndc.y = -((e.clientY - r.top) / r.height) * 2 + 1;
@@ -602,31 +603,88 @@
   }
 
   // ===== พลุ =====
+  // Phase 13: ประกอบลูกพลุแบบ 3 ขั้น — เปลือก → สารเคมีเม็ดดาว → ชนวน  (X-Ray เปิดอัตโนมัติ)
   function buildFirework(r) {
-    const shMat = mat(0x8a3a2c, { rough: 0.9, transparent: true });
-    const shell = new (T().Mesh)(geo(new (T().SphereGeometry)(1.1, 24, 18)), shMat);
-    shell.position.y = 3.0; shell.scale.y = 1.12;
+    const FW = window.Fireworks;
+    const d = (FW && FW.derived) ? FW.derived() : { enabled: false, chems: [], colors: [], shell: "medium", fuse: "medium" };
+    const SH = (FW && FW.SHELLS) || {};
+    const shDef = SH[d.shell] || { burstScale: 1 };
+    const R = 1.05 * (shDef.burstScale || 1);
+    const CY = 3.0;
+    if (d.enabled) setExploded(true);   // X-Ray เปิดโดยปริยายในโหมดประกอบลูกพลุ
+
+    // ---- Step 1 · เปลือกพลุ (hollow shell) ----
+    const shMat = mat(0x8a3a2c, { rough: 0.9, transparent: true, opacity: 0.5, side: T().DoubleSide });
+    const shell = new (T().Mesh)(geo(new (T().SphereGeometry)(R, 28, 20)), shMat);
+    shell.position.y = CY; shell.scale.y = 1.1;
     root.add(shell);
-    tag(shell, "ลูกพลุ (shell)", "ดินขับเผาเร็ว วิถีตรง คุมเพดานยาก", V3(0, 1.4, 0), { ghost: true });
+    tag(shell, "1 · เปลือกพลุ (" + ((FW && FW.SHELLS && FW.SHELLS[d.shell] && FW.SHELLS[d.shell].th) || d.shell) + ")",
+      d.enabled ? "ทรงกลมกลวง — ยิ่งใหญ่ ยิ่งขึ้นสูง ดอกยิ่งบาน" : "เปิดใช้หัวพลุในแผงด้านซ้ายเพื่อเริ่มบรรจุ",
+      V3(0, 1.6, 0), { ghost: true });
 
-    const band = new (T().Mesh)(geo(new (T().TorusGeometry)(1.1, 0.07, 6, 22)), mat(0xcaa24a, { rough: 0.8 }));
-    band.rotation.x = Math.PI / 2; band.position.y = 3.0;
+    const band = new (T().Mesh)(geo(new (T().TorusGeometry)(R, 0.05, 6, 24)), mat(0xcaa24a, { rough: 0.8 }));
+    band.rotation.x = Math.PI / 2; band.position.y = CY;
     root.add(band);
-    tag(band, "แถบกระดาษรัด", "", V3(0, 0, 1.4));
+    tag(band, "แถบกระดาษรัดเปลือก", "", V3(0, 0, 1.4));
 
-    const fuse = new (T().Mesh)(geo(new (T().CylinderGeometry)(0.05, 0.05, 0.9, 6)), mat(0x2b2b2b, { rough: 1 }));
-    fuse.position.set(0.2, 4.4, 0); fuse.rotation.z = 0.35;
-    root.add(fuse);
-    tag(fuse, "ชนวน", "", V3(0.3, 1, 0));
+    // ---- Step 2 · สารเคมีเม็ดดาว (fill the hollow shell) ----
+    if (d.enabled && d.chems && d.chems.length) {
+      const cols = (d.colors && d.colors.length ? d.colors : [d.color || 0xff2d2d]).map(h => new (T().Color)(h));
+      const N = 280;
+      const g = geo(new (T().BufferGeometry)());
+      const pos = new Float32Array(N * 3), col = new Float32Array(N * 3);
+      for (let i = 0; i < N; i++) {
+        // กระจายในลูกกลม (รัศมี < เปลือก) — เม็ดดาวเรียงชั้นตามสี
+        const u = Math.random() * 2 - 1, a = Math.random() * Math.PI * 2, rr = Math.cbrt(Math.random()) * (R - 0.28);
+        const s = Math.sqrt(1 - u * u);
+        pos[i * 3] = s * Math.cos(a) * rr;
+        pos[i * 3 + 1] = CY + u * rr * 1.1;
+        pos[i * 3 + 2] = s * Math.sin(a) * rr;
+        const c = cols[(cols.length * (u * 0.5 + 0.5)) | 0] || cols[0];
+        col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
+      }
+      g.setAttribute("position", new (T().BufferAttribute)(pos, 3));
+      g.setAttribute("color", new (T().BufferAttribute)(col, 3));
+      const pm = new (T().PointsMaterial)({
+        size: 0.16, vertexColors: true, transparent: true, opacity: 0.95,
+        depthWrite: false, blending: T().AdditiveBlending, sizeAttenuation: true
+      });
+      disposables.push(pm);
+      const stars = new (T().Points)(g, pm);
+      stars.userData.isInternal = true;
+      internals.add(stars);
 
-    const powder = new (T().Mesh)(new (T().SphereGeometry)(0.8, 18, 14),
-      new (T().MeshStandardMaterial)({ color: 0x3f3a30, roughness: 0.95 }));
-    powder.position.y = 3.0; powder.userData.isInternal = true;
-    internals.add(powder);
-    tag(powder, "ดินขับพลุ", "เผาไหม้เร็วมาก แรงเยอะช่วงสั้น ๆ", V3(0, 0, 0));
+      // เม็ดสีตัวแทน (มี tag + เรืองแสง) กลางลูก
+      addFireworkCharge(CY, R * 0.42, R * 0.9);
+    } else {
+      // ยังไม่ใส่สาร — โพรงกลวงโปร่ง
+      const cavity = new (T().Mesh)(geo(new (T().SphereGeometry)(R - 0.22, 20, 14)),
+        mat(0x1a2030, { transparent: true, opacity: 0.12, side: T().BackSide }));
+      cavity.position.y = CY; cavity.userData.isInternal = true;
+      internals.add(cavity);
+      tag(cavity, "2 · โพรงกลวง — รอใส่สารเคมีเม็ดดาว", "เลือกสีในแผงด้านซ้าย", V3(0, 0, 0));
+    }
 
-    // ดินสีหัวพลุ (Task 4) — เม็ดสีในลูกพลุ
-    addFireworkCharge(3.0, 0.5, 0.9);
+    // ---- Step 3 · ชนวนหน่วงเวลา (time fuse) ----
+    if (d.enabled) {
+      const fMap = { short: 0.6, medium: 1.0, long: 1.5 };
+      const fh = fMap[d.fuse] || 1.0;
+      const fuse = new (T().Mesh)(geo(new (T().CylinderGeometry)(0.055, 0.055, fh, 6)), mat(0x2b2b2b, { rough: 1 }));
+      fuse.position.set(0, CY + R + fh / 2 - 0.05, 0);
+      root.add(fuse);
+      // ปลอกกันน้ำสีแดง
+      const ferrule = new (T().Mesh)(geo(new (T().CylinderGeometry)(0.09, 0.09, 0.22, 8)), mat(0xb5342c, { rough: 0.6 }));
+      ferrule.position.set(0, CY + R + 0.06, 0);
+      root.add(ferrule);
+      tag(fuse, "3 · ชนวนหน่วงเวลา (" + ((FW && FW.FUSES && FW.FUSES[d.fuse] && FW.FUSES[d.fuse].th) || d.fuse) + ")",
+        "เผาไหม้ระหว่างพุ่งขึ้น จุดดินแตกเมื่อถึงจุดสูงสุด", V3(0.2, 1.1, 0));
+
+      // ดินส่ง (lift charge) ก้นลูก
+      const lift = new (T().Mesh)(geo(new (T().CylinderGeometry)(R * 0.7, R * 0.55, 0.5, 16)), mat(0x3a3226, { rough: 0.95 }));
+      lift.position.y = CY - R - 0.05; lift.userData.isInternal = true;
+      internals.add(lift);
+      tag(lift, "ดินส่ง (lift charge)", "ระเบิดในท่อครก ดันลูกพลุขึ้นสูง", V3(0, -0.8, 0));
+    }
   }
 
   // ===== จรวดหลายท่อน (Tier 3–5) =====
@@ -788,11 +846,11 @@
   function show(r) {
     if (!mounted || webglFailed || !T()) return;
     resize();
-    const fw = window.Fireworks && window.Fireworks.state;
+    const fw = window.Fireworks && window.Fireworks.derived ? window.Fireworks.derived() : null;
     const key = r.id + "|" + (r.id === "bangfai" && window.Bangfai ? window.Bangfai.state.body : "")
       + "|" + (r.id === "talai" && window.Talai ? window.Talai.state.casing : "")
       + "|" + (window.__vabPayloadId || "")
-      + "|" + (fw ? (fw.enabled ? "fw:" + fw.colorant : "") : "")
+      + "|" + (fw ? (fw.enabled ? "fw:" + fw.shell + ":" + fw.chems.join(",") + ":" + fw.fuse + ":" + fw.pattern : "fw0") : "")
       + "|skin:" + (window.__vabSkin || "");
     if (key !== curKey) { curKey = key; build(r); }
     else applyParams(r);

@@ -194,8 +194,12 @@
   function fireworkMeta() {
     if (!fwActive()) return null;
     const d = window.Fireworks.derived();
-    return { color: d.color, spark: d.spark, flame: d.flame, colorant: d.colorant,
-      pattern: d.pattern, nm: d.nm, spec: d.spec };
+    return {
+      color: d.color, colors: d.colors, spark: d.spark, flame: d.flame,
+      colorant: d.colorant, chems: d.chems, spec: d.spec, specs: d.specs,
+      pattern: d.pattern, nm: d.nm, shell: d.shell, fuse: d.fuse, fuseDelay: d.fuseDelay,
+      burstScale: d.burstScale, altMul: d.altMul, apogeeM: d.apogeeM, requiredMet: d.requiredMet
+    };
   }
 
   function tierUnlocked(k) { return G.progress.unlockedTiers.includes(k); }
@@ -444,7 +448,12 @@
         const anchor = $("#vab-recovery") || $("#vab-extras") || $("#vab-parts");
         anchor.parentElement.insertBefore(host, anchor.nextSibling);
       }
-      window.Fireworks.render(host, () => VAB.computeStats());
+      const mm = G.run.mission || {};
+      window.Fireworks.render(host, () => VAB.computeStats(), {
+        maxChems: mm.maxChems || (mm.fireworkMission ? 1 : 1),
+        requiredChems: mm.requiredChems || null,
+        missionTitle: mm.titleTh || ""
+      });
     },
 
     // Phase 11: แผงเลือกลายข้างลำ (บั้งไฟ / โคม) — ถัดจากเชื้อเพลิง/หัวพลุ
@@ -866,6 +875,7 @@
   function isWanHu(r, s) {
     if (!r || isStaged(r) || !s) return false;
     if (VAB.slots.includes("payload_chair")) return true;
+    if (r.firework) return false;   // พลุยิงจากท่อครก TWR สูงเป็นปกติ — ไม่ใช่จรวดหวันหู่
     const hasFin = VAB.slots.some(id => { const p = partById(id); return p && p.type === "fin"; });
     const powder = !!r.blackPowder || VAB.slots.some(id => /^charge/.test(id));
     return (s.twr || 0) > 15 && !hasFin && powder;
@@ -1267,6 +1277,16 @@
     if (payloadBonus && payloadOK) rows.push([orbital ? "เพย์โหลดเข้าประจำวงโคจร" : "เพย์โหลดทำงาน", payloadBonus, true]);
     else payloadBonus = 0;
 
+    // Phase 13: ภารกิจพลุเฉพาะ — ครบสีตามที่กำหนดไหม
+    if (m.fireworkMission && m.requiredChems && payloadOK) {
+      try {
+        const fd = window.Fireworks.derived();
+        rows.push(fd.requiredMet
+          ? ["จัดลูกพลุครบสีตามธีม (" + m.requiredChems.map(k => window.Chemistry.starChem(k).th).join(" · ") + ")", 400, true]
+          : ["ลูกพลุสีไม่ครบตามธีมงาน — ขาด " + m.requiredChems.filter(k => !fd.chems.includes(k)).map(k => window.Chemistry.starChem(k).th).join(" · "), 0, false]);
+      } catch (e) {}
+    }
+
     // ความเสียหายของยาน
     let damagePen = 0;
     if (sum.failReason === "LANTERN_BURNUP") { damagePen = Math.round(bp * 0.7); rows.push(["โคมไหม้กลางอากาศ (ความร้อนเกินพิกัดกระดาษสา)", -damagePen, false]); }
@@ -1484,9 +1504,18 @@
 
     $$("[data-back]").forEach(b => b.addEventListener("click", () => {
       const t = b.dataset.back;
-      if (t === "mission") { renderMissions(); show("mission"); }
+      if (t === "home") { renderHome(); show("home"); }
+      else if (t === "mission") { renderMissions(); show("mission"); }
       else if (t === "rocket") goRocket();
       else if (t === "name") goName();
+      else if (t === "vab") {
+        if (G.launchInstance && G.launchInstance.cancel) { try { G.launchInstance.cancel(); } catch (e) {} }
+        G.launchInstance = null;
+        closeLegal();
+        const li = $("#legal-ignite"); if (li) { li.dataset.armed = ""; li.textContent = "🔥 IGNITION"; }
+        show("vab");
+        if (G.run.rocket) VAB.render();   // คงชิ้นส่วนเดิม + รีเมานต์ 3D
+      }
     }));
 
     $("#btn-to-vab").addEventListener("click", goVab);

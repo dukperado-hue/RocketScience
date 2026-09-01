@@ -25,9 +25,9 @@ const ROCKETS = [
   },
   {
     id: "phu", tierKey: "tier1", nameTh: "พลุ", nameEn: "Firework Shell", icon: "🎆",
-    baseThrust: 220, dryMass: 0.5, baseFuel: 0.35, isp: 70, dragCoef: 0.05,
-    spinStabilized: false, maxParts: 4, windSensitivity: 1.0,
-    blurb: "ดินขับเผาไหม้เร็ว พุ่งขึ้นสูงในไม่กี่วินาที วิถีค่อนข้างตรงแต่ควบคุมความสูงยาก"
+    baseThrust: 420, dryMass: 0.5, baseFuel: 0.35, isp: 78, dragCoef: 0.03,
+    spinStabilized: false, maxParts: 4, windSensitivity: 1.0, firework: true,
+    blurb: "ดินขับเผาไหม้เร็ว ยิงลูกพลุจากท่อครก (mortar) พุ่งขึ้นสูงหลายร้อยเมตรแล้วแตกที่จุดสูงสุด"
   },
   // ---------- Tier 2 ----------
   {
@@ -111,8 +111,17 @@ const ROCKETS = [
 const MISSIONS = [
   { id: "m1_festival",  tierKey: "tier1", titleTh: "งานวัดประจำปี",        targetAltitude: 60,   budget: 3000,   basePoints: 600,
     briefTh: "ปล่อยโคมลอยในงานวัด แต่สนามบินอยู่ไม่ไกล ต้องเช็กระยะให้ดีก่อนจุด", hazards: ["ลมแรงพัดเข้าหารันเวย์", "เขตปลอดภัย 9 กม."] },
-  { id: "m2_newyear",   tierKey: "tier1", titleTh: "เคาต์ดาวน์ปีใหม่",     targetAltitude: 250,  budget: 5000,   basePoints: 900,
+  { id: "m2_newyear",   tierKey: "tier1", titleTh: "เคาต์ดาวน์ปีใหม่",     targetAltitude: 300,  budget: 5000,   basePoints: 900,
+    fireworkMission: true, maxChems: 1,
     briefTh: "จุดพลุฉลองปีใหม่ให้ขึ้นสูงพอโดยไม่รบกวนน่านฟ้า", hazards: ["ทัศนวิสัยกลางคืน", "เขตปลอดภัย 9 กม."] },
+  { id: "m9_july4",     tierKey: "tier1", titleTh: "พลุวันชาติสหรัฐฯ",      targetAltitude: 400,  budget: 8000,   basePoints: 1500,
+    fireworkMission: true, maxChems: 3, requiredChems: ["strontium", "magnesium", "copper"],
+    briefTh: "งานเฉลิมฉลองวันประกาศอิสรภาพ 4 ก.ค. — คณะกรรมการสั่งลูกพลุ 'มัลติเบรก' สามสี ธงชาติ: แดง (สตรอนเชียม) · ขาว (แมกนีเซียม) · น้ำเงิน (ทองแดง) ในดอกเดียว",
+    hazards: ["ทัศนวิสัยกลางคืน", "ต้องครบ 3 สีธงชาติ", "เขตปลอดภัย 9 กม."] },
+  { id: "m10_brazil",   tierKey: "tier1", titleTh: "เทศกาลคาร์นิวัลบราซิล",  targetAltitude: 390,  budget: 8000,   basePoints: 1500,
+    fireworkMission: true, maxChems: 3, requiredChems: ["barium", "sodium", "copper"],
+    briefTh: "คาร์นิวัลริโอ — ลูกพลุสามสีธงบราซิล: เขียว (แบเรียม) · เหลือง (โซเดียม) · น้ำเงิน (ทองแดง) แตกพร้อมกันเหนืออ่าว",
+    hazards: ["ทัศนวิสัยกลางคืน", "ต้องครบ 3 สีธงบราซิล", "ลมทะเลแรง"] },
   { id: "m3_rocketfest",tierKey: "tier2", titleTh: "ประเพณีบุญบั้งไฟ",      targetAltitude: 1200, timeAloftTarget: 42, budget: 12000,  basePoints: 2200,
     briefTh: "แข่งบั้งไฟตามประเพณี — กรรมการจับเวลา 'อยู่กลางอากาศ' และวัดความสูง ต้องทำดินขับ 3 ชั้น อัดดินด้วยแม่แรงให้อยู่โซน 300–400 PSI เจาะรูแกนเป็นทรงกรวย และจูนหางยาวให้สมดุลไม่ให้บั้งไฟ 'รำดาบ'; ผ่านการอนุญาตจากจังหวัดและคณะทำงาน Sky Hazard",
     hazards: ["ลำระเบิดคาแท่น (CATO)", "หางไม่สมดุล = รำดาบ", "ใบอนุญาตจังหวัด"] },
@@ -141,8 +150,8 @@ const PARTS = [
   // ===== Tier 1–2 =====
   { id: "burner_s",   type: "engine",    nameTh: "หัวเผาโคมเล็ก",       icon: "🔥", mass: 0.1,  thrust: 25,   tierMin: 1 },
   { id: "burner_l",   type: "engine",    nameTh: "หัวเผาโคมใหญ่",       icon: "🔥", mass: 0.2,  thrust: 55,   tierMin: 1 },
-  { id: "charge_s",   type: "engine",    nameTh: "ดินขับพลุเล็ก",       icon: "✨", mass: 0.15, thrust: 120,  tierMin: 1 },
-  { id: "charge_l",   type: "engine",    nameTh: "ดินขับพลุใหญ่",       icon: "✨", mass: 0.3,  thrust: 260,  tierMin: 1 },
+  { id: "charge_s",   type: "engine",    nameTh: "ดินขับพลุเล็ก",       icon: "✨", mass: 0.15, thrust: 190,  tierMin: 1 },
+  { id: "charge_l",   type: "engine",    nameTh: "ดินขับพลุใหญ่",       icon: "✨", mass: 0.3,  thrust: 360,  tierMin: 1 },
   { id: "motor_bamboo", type: "engine",  nameTh: "มอเตอร์ลำไม้ไผ่",     icon: "🧨", mass: 2.5,  thrust: 700,  tierMin: 2 },
   { id: "motor_pvc",  type: "engine",    nameTh: "มอเตอร์ท่อ PVC",      icon: "🧨", mass: 3.5,  thrust: 1100, tierMin: 2 },
   { id: "motor_ring", type: "engine",    nameTh: "แกนตะไล + ปีกวงกลม",   icon: "💫", mass: 2.0,  thrust: 620,  tierMin: 2, addsSpin: true, talaiOnly: true },

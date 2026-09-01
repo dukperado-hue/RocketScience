@@ -581,6 +581,42 @@ select.vx-range{-webkit-appearance:menulist;appearance:menulist;height:auto;back
   .fw-chem-chain{font-size:9px}
 }
 
+/* ---------- Phase 13 · firework assembly steps + mortar launch UI ---------- */
+.fw-step{border-top:1px dashed var(--line);margin-top:9px;padding-top:8px}
+.fw-step:first-of-type{border-top:0;margin-top:4px;padding-top:0}
+.fw-step-h{font-family:'Noto Serif Thai',serif;font-weight:800;font-size:11.5px;color:var(--ink);margin-bottom:6px;
+  display:flex;align-items:center;gap:6px}
+.fw-step-ok{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;
+  background:var(--gold,#F5C518);color:#1a1a1a;font-size:9px;font-weight:900;flex:0 0 auto}
+.fw-shells,.fw-fuses{grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}
+
+/* universal back button on the launch screen */
+.launch-back{position:absolute;top:14px;left:16px;z-index:11;font-size:11px;padding:5px 12px;
+  background:var(--glass-bg);border:1px solid var(--glass-line);
+  -webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur)}
+#screen-launch .launch-hud{top:52px}
+
+/* IGNITE button — the firework sits in the mortar until this is pressed */
+.fw-ignite{position:absolute;left:50%;bottom:92px;transform:translateX(-50%);z-index:12;
+  display:flex;flex-direction:column;align-items:center;gap:1px;
+  font-family:'Noto Serif Thai',serif;font-weight:900;font-size:19px;color:#fff;cursor:pointer;
+  padding:14px 34px;border-radius:16px;border:1px solid rgba(255,220,150,.6);
+  background:linear-gradient(180deg,#ff7a3d,#e23c2c);
+  box-shadow:0 10px 40px rgba(226,60,44,.55),0 0 0 0 rgba(255,140,80,.6);
+  animation:fwPulse 1.5s ease-in-out infinite}
+.fw-ignite small{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:9px;letter-spacing:3px;opacity:.85}
+.fw-ignite:hover{filter:brightness(1.08)}
+.fw-ignite:active{transform:translateX(-50%) scale(.96)}
+@keyframes fwPulse{
+  0%,100%{box-shadow:0 10px 40px rgba(226,60,44,.55),0 0 0 0 rgba(255,140,80,.55)}
+  50%{box-shadow:0 10px 46px rgba(226,60,44,.7),0 0 0 16px rgba(255,140,80,0)}
+}
+
+/* firework spectator mode — clear the sky: push chrome to the edges */
+.launch-wrap.fw-mode .capcom{top:auto;bottom:14px}
+.launch-wrap.fw-mode .operator{bottom:64px}
+@media(max-width:640px){ .fw-ignite{font-size:16px;padding:11px 24px;bottom:84px} }
+
 /* ---------- Phase 11 · ลายข้างลำ (decorative skins) ---------- */
 .skin-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:6px}
 .skin-sw{display:flex;flex-direction:column;align-items:flex-start;gap:3px;font-family:inherit;font-size:10.5px;
