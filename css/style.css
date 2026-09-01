@@ -184,13 +184,15 @@ body.vn-open .wrap{padding-bottom:clamp(220px,30vh,280px)}
   body.vab-drawer-collapsed #screen-vab .vab-inventory h3::after{transform:rotate(180deg)}
   body.vab-drawer-collapsed #screen-vab .vab-inventory>:not(h3){opacity:0;pointer-events:none}
 
-  /* กริดลากวาง (Tier 1) + ปุ่มดำเนินการ = การ์ดกระจกลอยล่างกลาง */
-  #screen-vab #vab-grid{position:absolute;left:50%;bottom:84px;transform:translateX(-50%);z-index:5;
-    min-height:0;max-width:min(380px,64vw);
+  /* กริดลากวาง (Tier 1) = การ์ดกระจกลอยเหนือปุ่มดำเนินการ */
+  #screen-vab #vab-grid{position:absolute;left:50%;bottom:86px;transform:translateX(-50%);z-index:5;
+    min-height:0;max-width:min(360px,60vw);max-height:38vh;overflow-y:auto;
     background:var(--glass-bg);border-color:var(--glass-line);
     backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur)}
-  #screen-vab .vab-actions{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);z-index:6;
-    width:min(540px,86vw);margin:0}
+  #screen-vab .vab-actions{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:7;
+    width:min(540px,86vw);margin:0;
+    background:var(--glass-bg);border:1px solid var(--glass-line);border-radius:14px;padding:8px;
+    backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur)}
   #screen-vab .screen-nav{max-width:1120px;margin:10px auto 0;padding:0 18px}
 }
 .vab-panel h3{margin:0 0 4px;font-size:15px}
