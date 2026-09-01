@@ -305,6 +305,20 @@
     return m;
   }
 
+  // Phase 11: แปะลายข้างลำ (บั้งไฟ/โคม) ลงบนวัสดุลำ
+  function applySkin(material, family, rough) {
+    const id = window.__vabSkin;
+    if (!window.Skins || !id || id === "plain" || !material) return;
+    try {
+      const tex = window.Skins.texture(T(), id);
+      material.map = tex;
+      if (material.color) material.color.setHex(0xffffff);
+      if (rough != null) material.roughness = rough;
+      material.needsUpdate = true;
+      disposables.push(tex);
+    } catch (e) { console.warn("[VAB3D] skin", e); }
+  }
+
   function build(r) {
     clearModel();
     curRocket = r;
@@ -328,6 +342,7 @@
 
     // ---- ลำบั้งไฟ (โปร่งแสงตอนแยกชิ้นส่วน) ----
     const bodyMat = mat(isPVC ? 0xdadbd4 : 0xb98f57, { rough: isPVC ? 0.45 : 0.8, transparent: true });
+    applySkin(bodyMat, "bangfai", 0.62);
     const body = new (T().Mesh)(geo(new (T().CylinderGeometry)(BR, BR, BH, 32)), bodyMat);
     body.position.y = baseY + BH / 2;
     root.add(body);
@@ -549,6 +564,7 @@
   function buildKhom(r) {
     const CY = 3.6, KH = 3.4;
     const paper = mat(0xf3dcae, { rough: 0.95, transparent: true, opacity: 0.82, side: T().DoubleSide, emis: 0xff9a3c, emisI: 0.6 });
+    applySkin(paper, "khom", 0.9);
     const shell = new (T().Mesh)(geo(new (T().CylinderGeometry)(1.36, 1.5, KH, 26, 1, true)), paper);
     shell.position.y = CY;
     root.add(shell);
@@ -776,7 +792,8 @@
     const key = r.id + "|" + (r.id === "bangfai" && window.Bangfai ? window.Bangfai.state.body : "")
       + "|" + (r.id === "talai" && window.Talai ? window.Talai.state.casing : "")
       + "|" + (window.__vabPayloadId || "")
-      + "|" + (fw ? (fw.enabled ? "fw:" + fw.colorant : "") : "");
+      + "|" + (fw ? (fw.enabled ? "fw:" + fw.colorant : "") : "")
+      + "|skin:" + (window.__vabSkin || "");
     if (key !== curKey) { curKey = key; build(r); }
     else applyParams(r);
   }

@@ -558,6 +558,21 @@ select.vx-range{-webkit-appearance:menulist;appearance:menulist;height:auto;back
 .fw-sw-th em{font-style:normal;font-family:'JetBrains Mono',monospace;font-size:8.5px;opacity:.7}
 .fw-sw small{font-size:9px;opacity:.8}
 
+/* ---------- Phase 11 · ลายข้างลำ (decorative skins) ---------- */
+.skin-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:6px}
+.skin-sw{display:flex;flex-direction:column;align-items:flex-start;gap:3px;font-family:inherit;font-size:10.5px;
+  padding:7px 8px;border-radius:10px;cursor:pointer;text-align:left;
+  border:1px solid var(--line);background:var(--card);color:var(--ink-soft);transition:all .15s}
+.skin-sw:hover:not(:disabled){border-color:var(--accent)}
+.skin-sw.on{border-color:var(--gold);background:var(--gold-soft);color:var(--ink)}
+.skin-sw.locked{opacity:.55;cursor:not-allowed}
+.skin-chip{width:36px;height:36px;border-radius:7px;border:1px solid var(--line);
+  background-size:cover;background-position:center;image-rendering:auto}
+.skin-sw.locked .skin-chip{filter:grayscale(.85) brightness(.7)}
+.skin-th{font-weight:700;color:var(--ink)}
+.skin-sw.locked .skin-th{color:var(--ink-faint)}
+.skin-sw small{font-size:8.5px;line-height:1.35;opacity:.85}
+
 /* ============================================================
    Phase 9 · Aerospace Codex (หอจดหมายเหตุอวกาศ)
    ============================================================ */

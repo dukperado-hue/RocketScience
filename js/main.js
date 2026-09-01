@@ -445,6 +445,25 @@
       }
       window.Fireworks.render(host, () => VAB.computeStats());
     },
+
+    // Phase 11: แผงเลือกลายข้างลำ (บั้งไฟ / โคม) — ถัดจากเชื้อเพลิง/หัวพลุ
+    renderSkins() {
+      const r = G.run.rocket;
+      const fam = r && r.id === "bangfai" ? "bangfai" : (r && r.lantern) ? "khom" : null;
+      let host = $("#vab-skins");
+      if (!window.Skins || !fam) {
+        if (host) { host.hidden = true; host.innerHTML = ""; }
+        return;
+      }
+      if (!host) {
+        host = document.createElement("div");
+        host.id = "vab-skins";
+        host.className = "vab-extras";
+        const anchor = $("#vab-firework") || $("#vab-recovery") || $("#vab-extras") || $("#vab-parts");
+        anchor.parentElement.insertBefore(host, anchor.nextSibling);
+      }
+      window.Skins.render(host, fam, () => VAB.computeStats());
+    },
     renderGridClassic() {
       const grid = $("#vab-grid");
       grid.querySelectorAll(".vab-slot, .vab-stage").forEach(n => n.remove());
@@ -461,6 +480,7 @@
       VAB.renderExtras();
       VAB.renderRecovery();
       VAB.renderFirework();
+      VAB.renderSkins();
       VAB.computeStats();
       VAB.sync3d();
     },
@@ -471,6 +491,8 @@
       if (!window.VAB3D || !r) return;
       window.__vabSlots = VAB.slots.slice();
       window.__vabPayloadId = VAB.payloadId || null;
+      window.__vabSkin = (window.Skins && r) ? (r.id === "bangfai" ? window.Skins.state.bangfai
+        : r.lantern ? window.Skins.state.khom : null) : null;
       if (isStaged(r)) {
         window.__vabStages = effectiveStages(r);
         window.__vabPayloadMass = VAB.payloadId ? (partById(VAB.payloadId).mass || 0) : (r.defaultPayload || 0);
@@ -556,6 +578,7 @@
       });
       VAB.renderRecovery();
       VAB.renderFirework();
+      VAB.renderSkins();
       VAB.computeStats();
       VAB.sync3d();
     },
@@ -1156,6 +1179,7 @@
         recovery: (isTalai || isBangfai || isLantern) ? null : recPhys, wanHu: !!G.run.wanHu,
         rocketMeta: { icon: r.icon, tier: tierN(r.tierKey), spinStabilized: s.spin, body: s.body || null,
           talai: isTalai, bangfai: isBangfai, lantern: isLantern, firework: fireworkMeta(),
+          skin: (window.Skins ? (isBangfai ? Skins.state.bangfai : isLantern ? Skins.state.khom : null) : null),
           payloadId: VAB.payloadId || null,
           tailLengthCm: isBangfai ? s.bangfai.tailLengthCm : null,
           tailAttachCm: isBangfai ? s.bangfai.tailAttachCm : null,
@@ -1378,6 +1402,19 @@
       updateCodexButton();
     }
 
+    // Phase 11 — ปลดล็อกลายข้างลำจากภารกิจ
+    if (window.Skins) {
+      const newSkins = window.Skins.unlockFromFlight({
+        rocket: r, mission: m, summary: sum,
+        missionPassed: success && missionGoalMet,
+        totalScore: G.progress.totalScore
+      });
+      newSkins.forEach(s => {
+        notes.push("🎨 ปลดล็อกลาย: <b>" + s.th + "</b> — เลือกมาแต้มข้างลำได้ในโรงประกอบ");
+        toast("ปลดล็อกลาย: " + s.th);
+      });
+    }
+
     if (notes.length) { unlockBox.hidden = false; unlockBox.innerHTML = notes.join("<br>"); }
     saveProgress();
 
@@ -1427,6 +1464,7 @@
       if (!confirm("ล้างความคืบหน้าทั้งหมด?")) return;
       G.progress = defaultProgress();
       if (window.Codex) window.Codex.reset();
+      if (window.Skins) window.Skins.reset();
       saveProgress();
       renderHome();
       toast("ล้างความคืบหน้าแล้ว");

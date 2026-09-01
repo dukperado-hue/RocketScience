@@ -161,6 +161,18 @@
     const disposables = [];   // เทกซ์เจอร์ที่ต้อง dispose ตอนจบ
     function track(tex) { if (tex) disposables.push(tex); return tex; }
 
+    // Phase 11: แปะลายข้างลำ (บั้งไฟ/โคม)
+    function applySkinL(material, skinId, rough) {
+      if (!window.Skins || !skinId || skinId === "plain" || !material) return;
+      try {
+        const tex = track(window.Skins.texture(THREE, skinId));
+        material.map = tex;
+        if (material.color) material.color.setHex(0xffffff);
+        if (rough != null) material.roughness = rough;
+        material.needsUpdate = true;
+      } catch (e) { console.warn("[Launch3D] skin", e); }
+    }
+
     // ---------- renderer / scene ----------
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -227,7 +239,7 @@
     //   แผ่นเมฆกระจายที่ ~1.5 / 4 / 9 กม. — จรวดพุ่งผ่าน = รู้สึกถึงความเร็ว/ความสูงทันที
     const scaleCloudTex = track(cloudSprite());
     const cloudDecks = [];
-    [[1500, 12, 0.55, 150], [4200, 9, 0.42, 240], [9000, 7, 0.32, 360]].forEach(([altM, n, op, spread]) => {
+    [[1400, 16, 0.34, 300], [4000, 13, 0.28, 460], [8500, 10, 0.22, 640]].forEach(([altM, n, op, spread]) => {
       const deck = new THREE.Group();
       deck.position.y = altU(altM);
       deck.userData.baseOp = op;
@@ -238,10 +250,11 @@
           map: scaleCloudTex, transparent: true, depthWrite: false, opacity: 0, side: THREE.DoubleSide
         });
         const pl = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), m);
-        const sz = 34 + Math.random() * 70;
-        pl.scale.set(sz, sz * (0.42 + Math.random() * 0.28), 1);
-        pl.position.set((Math.random() - 0.5) * spread, (Math.random() - 0.5) * 22, (Math.random() - 0.5) * spread);
-        pl.userData.drift = 1.4 + Math.random() * 2.2;
+        const sz = 16 + Math.random() * 34;                     // เล็กลง — เป็นปุยไม่ใช่กำแพง
+        pl.scale.set(sz, sz * (0.4 + Math.random() * 0.28), 1);
+        pl.position.set((Math.random() - 0.5) * spread, (Math.random() - 0.5) * 14, (Math.random() - 0.5) * spread);
+        pl.userData.drift = 1.2 + Math.random() * 2;
+        pl.userData.op = op * (0.55 + Math.random() * 0.6);      // ทึบไม่เท่ากัน
         deck.add(pl);
       }
       cloudDecks.push(deck);
@@ -250,13 +263,15 @@
       const wind = cfg.windSpeed || 0;
       const fade = Math.max(0, 1 - spaceT * 1.6);
       cloudDecks.forEach(deck => {
-        const near = 1 - Math.min(1, Math.abs(alt - deck.userData.altM) / 6000);   // จางเมื่ออยู่ไกลชั้นเมฆ
-        const target = deck.userData.baseOp * fade * (0.35 + near * 0.65);
+        // จางลงเมื่อกล้อง "อยู่ใน" ชั้นเมฆพอดี (ปุยที่วิ่งผ่าน = สื่อความเร็ว ไม่ใช่ผนังขาว)
+        const passing = 1 - Math.min(1, Math.abs(alt - deck.userData.altM) / 550);
+        const dist = Math.min(1, Math.abs(alt - deck.userData.altM) / 9000);   // ไกลเกินก็จาง
+        const mul = fade * (1 - passing * 0.75) * (1 - dist * 0.6);
         deck.children.forEach(pl => {
           pl.lookAt(camera.position);
           pl.position.x += (pl.userData.drift + wind * 0.12) * dt;
-          if (pl.position.x > 220) pl.position.x -= 440;
-          pl.material.opacity += (target - pl.material.opacity) * Math.min(1, dt * 1.5);
+          if (pl.position.x > 260) pl.position.x -= 520;
+          pl.material.opacity += (pl.userData.op * mul - pl.material.opacity) * Math.min(1, dt * 2);
         });
       });
     }
@@ -493,6 +508,8 @@
       paperMat.roughness = 0.95; paperMat.metalness = 0;
       paperMat.side = THREE.DoubleSide;
       paperMat.transparent = true; paperMat.opacity = 0.72;   // โปร่งพอให้แสงไฟด้านในทะลุออกมา
+      applySkinL(paperMat, meta.skin, 0.92);                  // Phase 11: ลายข้างโคม
+      if (paperMat.map) paperMat.opacity = 0.8;
       if (paperMat.emissive) { paperMat.emissive.setHex(0xff7b2e); paperMat.emissiveIntensity = 0.9; }
       // ลำโคม — ทรงกระบอกเรียวเล็กน้อย เปิดก้น (openEnded)
       const shell = new THREE.Mesh(
@@ -557,6 +574,7 @@
       const BR = 0.32, BH = 4.0;
       const bMat = pmat("mat_bamboo");                  // pmat จัดการ recolor PVC เป็นเทาพลาสติกเอง
       bMat.roughness = pvcBody ? 0.42 : 0.78;
+      applySkinL(bMat, meta.skin, 0.6);                 // Phase 11: ลายบั้งไฟเอ้
       const body = new THREE.Mesh(new THREE.CylinderGeometry(BR, BR, BH, 20), bMat);
       body.position.y = 1.0 + BH / 2;
       rocket.add(body);
