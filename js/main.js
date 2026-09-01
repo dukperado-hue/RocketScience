@@ -194,7 +194,8 @@
   function fireworkMeta() {
     if (!fwActive()) return null;
     const d = window.Fireworks.derived();
-    return { color: d.color, spark: d.spark, flame: d.flame, colorant: d.colorant };
+    return { color: d.color, spark: d.spark, flame: d.flame, colorant: d.colorant,
+      pattern: d.pattern, nm: d.nm, spec: d.spec };
   }
 
   function tierUnlocked(k) { return G.progress.unlockedTiers.includes(k); }

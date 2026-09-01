@@ -148,14 +148,19 @@
     const flight = window.Physics.createFlight(cfg);
     const meta = cfg.rocketMeta || {};
     const tier = meta.tier || 1;
+    // Phase 12: หัวพลุ → บังคับฉากกลางคืน อากาศดีเสมอ + กล้องมุมผู้ชมบนพื้น
+    const nightFW = !!meta.firework;
     const propType = (cfg.stages && cfg.stages[0] && cfg.stages[0].propType) || "solid";
     const liquid = propType === "liquid";
     const stageCount = (cfg.stages && cfg.stages.length) || 1;
 
     // ---------- Phase 4: สภาพอากาศ + ตัวจัดการพื้นผิว ----------
-    const weather = (window.Physics && window.Physics.normalizeWeather)
-      ? window.Physics.normalizeWeather(cfg.weather)
-      : Object.assign({ type: "clear", cloudCover: 0.05, rainRate: 0, skyDark: 0, lightning: false, windGust: 0 }, cfg.weather || {});
+    const weather = nightFW
+      // Phase 12: จุดพลุต้องเป็นกลางคืน "อากาศดีเสมอ" — ฟ้าโปร่ง ลมนิ่ง
+      ? { type: "clear", cloudCover: 0.03, rainRate: 0, skyDark: 0, lightning: false, windGust: 0 }
+      : (window.Physics && window.Physics.normalizeWeather)
+        ? window.Physics.normalizeWeather(cfg.weather)
+        : Object.assign({ type: "clear", cloudCover: 0.05, rainRate: 0, skyDark: 0, lightning: false, windGust: 0 }, cfg.weather || {});
     const TM = window.TextureManager ? window.TextureManager.init() : null;
     const tmReady = () => !!(TM && window.TextureManager.ready());
     const disposables = [];   // เทกซ์เจอร์ที่ต้อง dispose ตอนจบ
@@ -178,22 +183,27 @@
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.outputEncoding = THREE.sRGBEncoding;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.05;
+    renderer.toneMappingExposure = nightFW ? 1.18 : 1.05;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x0a1830);
-    scene.fog = new THREE.FogExp2(0x0a1830, 0.0016);
+    scene.background = new THREE.Color(nightFW ? 0x02030a : 0x0a1830);
+    scene.fog = new THREE.FogExp2(nightFW ? 0x02030a : 0x0a1830, nightFW ? 0.0008 : 0.0016);
 
     const camera = new THREE.PerspectiveCamera(52, 1, 0.1, 6000);
     camera.position.set(10, 6, 18);
     const lookTarget = new THREE.Vector3(0, 4, 0);
 
     // ---------- lights ----------
-    const hemi = new THREE.HemisphereLight(0x9ec8ff, 0x2a2016, 0.5);
+    const hemi = new THREE.HemisphereLight(nightFW ? 0x2a3a66 : 0x9ec8ff, 0x2a2016, nightFW ? 0.12 : 0.5);
     scene.add(hemi);
-    const sun = new THREE.DirectionalLight(0xfff2d8, 1.15);
+    const sun = new THREE.DirectionalLight(0xfff2d8, nightFW ? 0 : 1.15);
     sun.position.set(-30, 40, 20);
     scene.add(sun);
+    // Phase 12: กลางคืน — ใช้แสงจันทร์นวล ๆ ผ่าน sun ที่มีอยู่แล้ว (ไม่เพิ่ม light ใหม่ = ไม่ recompile)
+    if (nightFW) {
+      sun.color.setHex(0xaec4ff);
+      sun.position.set(24, 34, -18);
+    }
     const exhaustLight = new THREE.PointLight(liquid ? 0x8ec4ff : 0xff8a3a, 0, 60, 2);
     scene.add(exhaustLight);
 
@@ -740,9 +750,10 @@
     const flame = makePoints(260, 0.9, true);
     const smoke = makePoints(420, 2.6, false);
 
-    // Phase 8: หัวพลุเฉลิมฉลอง — จุดระเบิดเป็นอนุภาคสีตอนถึง apogee (vy ≤ 0)
+    // Phase 8/12: หัวพลุเฉลิมฉลอง — จุดระเบิดหลายชั้นตอนถึง apogee (vy ≤ 0)
     const fx = [];
-    let fwFired = false;
+    let fwFired = false, fwBurstY = null, fwChemTimer = 0;
+    const fwChemEl = document.getElementById("fw-chem");
 
     // ---------- ระบบสภาพอากาศ (Phase 4): เมฆ / ฝน / ฟ้าผ่า ----------
     const wxActive = weather.cloudCover > 0.12 || weather.rainRate > 0.02 || weather.skyDark > 0.05;
@@ -955,7 +966,8 @@
     try {
       composer = new THREE.EffectComposer(renderer);
       composer.addPass(new THREE.RenderPass(scene, camera));
-      const bloom = new THREE.UnrealBloomPass(new THREE.Vector2(512, 512), 0.85, 0.42, 0.85);
+      const bloom = new THREE.UnrealBloomPass(new THREE.Vector2(512, 512),
+        nightFW ? 1.0 : 0.85, nightFW ? 0.5 : 0.42, nightFW ? 0.7 : 0.85);
       bloom.renderToScreen = true;
       composer.addPass(bloom);
     } catch (e) {
@@ -1028,6 +1040,15 @@
       else camState = "orbital";
       if (camTag) camTag.textContent = { pad: "PAD", ground: "GROUND", chase: "CHASE", orbital: "ORBITAL" }[camState];
 
+      // Phase 12: กล้องมุมผู้ชม — ยืนบนพื้นห่างจากแท่น เงยหน้าดูพลุแตกบนฟ้า
+      if (nightFW && camState !== "orbital") {
+        const rise = Math.min(24, 5 + alt * 0.045);
+        camGoalPos.set(6.5, 2.0, tier === 1 ? 46 : 54);
+        camGoalLook.set(0, fwBurstY != null ? (fwBurstY * 0.5 + rise * 0.6 + 4) : rise, 0);
+        if (camTag) camTag.textContent = "SPECTATOR";
+        return;
+      }
+
       // จรวดพื้นบ้านลำเล็ก (บั้งไฟ/ตะไล/โคม) — ดึงกล้องเข้าใกล้ให้เห็นลำ+หางชัด
       const sm = meta.bangfai || meta.talai || tier === 1;
       if (camState === "pad") {
@@ -1059,14 +1080,16 @@
         : alt < 2500 ? 2.2 : alt < 30000 ? 7 : 16;
       simSpeed += (targetSpeed - simSpeed) * Math.min(1, dt * 1.5);
 
-      // step physics
-      if (flight.state.phase !== "done") {
+      // step physics — พอหัวพลุแตกที่ apogee ให้หยุดฟิสิกส์ ค้างจรวดไว้ ให้พลุเป็นไคลแม็กซ์
+      if (fwFired) {
+        if (!fx.length && ++holdF > 40) { finish(); return; }
+      } else if (flight.state.phase !== "done") {
         const simDt = dt * simSpeed;
         const steps = Math.max(2, Math.ceil(simDt / 0.02));
         for (let i = 0; i < steps; i++) flight.step(simDt / steps);
       } else {
         holdF++;
-        if (holdF > 42) { finish(); return; }
+        if (holdF > 42 && !fx.length) { finish(); return; }
       }
       const s = flight.state;
 
@@ -1093,20 +1116,38 @@
       if (hudOn) window.FlightHUD.update(s, flight);
       if (window.Capcom) window.Capcom.feed(s, flight);
 
-      // หัวพลุ: จุดครั้งเดียวเมื่อความเร็วแนวดิ่ง ≤ 0 (apogee) และพ้นแท่นแล้ว
+      // หัวพลุ: จุดครั้งเดียวเมื่อความเร็วแนวดิ่ง ≤ 0 (apogee — Time Fuse ถึง Bursting Charge)
       if (!fwFired && meta.firework && window.Fireworks && s.vy <= 0 && s.t > 1 && alt > 20
         && s.phase !== "pad" && !s.landed) {
         fwFired = true;
-        const my = vehicleMidY();
+        const my = vehicleMidY() + 1.5;
+        fwBurstY = my;
         try {
           fx.push(window.Fireworks.detonate(THREE, scene,
             new THREE.Vector3(rocket.position.x, my, 0), meta.firework));
           shake = Math.max(shake, 0.5);
           showEvent("หัวพลุแตก! เปลว" + (meta.firework.flame || "สี") + " 🎆");
+          // Task 4: overlay อธิบายปฏิกิริยาเคมี
+          const sp = meta.firework.spec;
+          if (fwChemEl && sp) {
+            const a = document.getElementById("fw-chem-el");
+            const c = document.getElementById("fw-chem-chain");
+            if (a) a.textContent = sp.th + " (" + sp.el + ")" + (sp.nm ? " — เปล่งแสง " + sp.nm + " nm" : "");
+            if (c) c.textContent = (sp.reaction || "") + " → เปลว" + (sp.flame || "");
+            fwChemEl.hidden = false; fwChemEl.classList.remove("fade");
+            fwChemTimer = 6;
+          }
         } catch (e) { console.warn("[Launch3D] firework", e); }
       }
+      const fwDt = Math.min(dt * Math.min(simSpeed, 1.4), 0.04);
       for (let i = fx.length - 1; i >= 0; i--) {
-        if (!fx[i].update(dt * Math.min(simSpeed, 3))) { fx[i].dispose(); fx.splice(i, 1); }
+        if (!fx[i].update(fwDt)) { fx[i].dispose(); fx.splice(i, 1); }
+      }
+      if (fwFired && fx.length) simSpeed += (1 - simSpeed) * Math.min(1, dt * 2.5);   // ชะลอเวลาให้ชมพลู
+      if (fwChemTimer > 0) {
+        fwChemTimer -= dt;
+        if (fwChemTimer < 1.2 && fwChemEl) fwChemEl.classList.add("fade");
+        if (fwChemTimer <= 0 && fwChemEl) fwChemEl.hidden = true;
       }
 
       // world sink
@@ -1219,6 +1260,14 @@
       const ambDim = meta.lantern ? 0.6 : 1;
       hemi.intensity = (0.5 * (1 - spaceT * 0.7) * (1 - 0.55 * dark)) * ambDim + flash * 2.2;
       sun.intensity = (1.15 * (1 - 0.6 * dark)) * (meta.lantern ? 0.72 : 1) + flash * 1.6;
+      // Phase 12: หัวพลุ = กลางคืนตลอด ฟ้ามืดสนิท ดาวเต็มฟ้า พึ่ง bloom + point light ล้วน ๆ
+      if (nightFW) {
+        scene.background.setRGB(0.008, 0.012, 0.032);
+        scene.fog.density = 0.0007;
+        setStarOpacity(Math.max(0.9, spaceT * 1.4));
+        hemi.intensity = 0.14;
+        sun.intensity = 0.32;   // แสงจันทร์
+      }
       const orbitalView = alt > 60000;
       earth.visible = orbitalView;
       ground.material.opacity = 1;
@@ -1306,6 +1355,7 @@
       if (hud) hud.hidden = true;
       if (camTag) camTag.hidden = true;
       if (evEl) evEl.hidden = true;
+      if (fwChemEl) { fwChemEl.hidden = true; fwChemEl.classList.remove("fade"); }
       try {
         scene.traverse(o => {
           if (o.geometry) o.geometry.dispose();

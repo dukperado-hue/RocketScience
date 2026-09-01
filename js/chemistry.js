@@ -79,5 +79,59 @@
     };
   }
 
-  window.Chemistry = { evaluate, IDEAL, DEFAULT: Object.assign({}, IDEAL) };
+  // ─────────────────────────────────────────────────────────────────────────
+  //  Phase 12 · Atomic Emission Spectroscopy — สีเม็ดดาว (pyrotechnic stars)
+  //  โลหะที่เผาไหม้ในเปลวจะถูกกระตุ้นอิเล็กตรอนขึ้นชั้นพลังงานสูง เมื่อตกกลับ
+  //  จะคายโฟตอนที่ความยาวคลื่นเฉพาะตัว → สีพลุ (ยกเว้น Al/Mg = การแผ่รังสีความร้อน)
+  //    hex ตรงตามสเปกโทรสโกปีจริงตามที่โจทย์กำหนด
+  // ─────────────────────────────────────────────────────────────────────────
+  const SPECTRUM = {
+    strontium: {
+      el: "Sr", th: "สตรอนเชียม", hex: 0xff0000, nm: 641, emitter: "SrCl", spark: false,
+      flame: "แดง",
+      reaction: "SrCl* คายพลังงาน → เปล่งแสงแดง 605–682 nm (สีพลุคลาสสิก)"
+    },
+    lithium: {
+      el: "Li", th: "ลิเทียม", hex: 0xff0000, nm: 671, emitter: "Li", spark: false,
+      flame: "แดงเข้ม",
+      reaction: "เส้นเปล่งลิเทียม 670.8 nm → แดงเข้มอมชมพู"
+    },
+    barium: {
+      el: "Ba", th: "แบเรียม", hex: 0x00ff00, nm: 515, emitter: "BaCl", spark: false,
+      flame: "เขียว",
+      reaction: "BaCl* คายพลังงาน → แถบเปล่งเขียว 505–535 nm (ต้องคุมให้เป็นคลอไรด์)"
+    },
+    copper: {
+      el: "Cu", th: "ทองแดง", hex: 0x0044ff, nm: 450, emitter: "CuCl", spark: false,
+      flame: "น้ำเงิน",
+      reaction: "CuCl* คายพลังงาน → แถบเปล่งน้ำเงิน 420–460 nm (ร้อนไปสีเพี้ยน — ทำยากสุด)"
+    },
+    sodium: {
+      el: "Na", th: "โซเดียม", hex: 0xffcc00, nm: 589, emitter: "Na", spark: false,
+      flame: "เหลือง",
+      reaction: "เส้น D ของโซเดียม 589 nm → เหลืองสว่างจัดจนกลบสีอื่น"
+    },
+    calcium: {
+      el: "Ca", th: "แคลเซียม", hex: 0xff6600, nm: 622, emitter: "CaCl", spark: false,
+      flame: "ส้ม",
+      reaction: "CaCl* / CaOH* → เปล่งส้ม 590–630 nm"
+    },
+    aluminum: {
+      el: "Al", th: "อะลูมิเนียม", hex: 0xffffff, nm: 0, emitter: "Al₂O₃(s)", spark: true,
+      flame: "ขาว/เงิน",
+      reaction: "ผงอะลูมิเนียมเผาไหม้ ~3000 °C → แสงขาว + สะเก็ดเงิน (การแผ่รังสีความร้อน)"
+    },
+    magnesium: {
+      el: "Mg", th: "แมกนีเซียม", hex: 0xffffff, nm: 0, emitter: "MgO(s)", spark: true,
+      flame: "ขาวจ้า",
+      reaction: "แมกนีเซียมเผาไหม้ร้อนจัด → แสงขาวเต็มสเปกตรัม (blackbody) + ประกายไฟ"
+    }
+  };
+
+  function starChem(key) { return SPECTRUM[key] || SPECTRUM.strontium; }
+
+  window.Chemistry = {
+    evaluate, IDEAL, DEFAULT: Object.assign({}, IDEAL),
+    SPECTRUM, spectrum: SPECTRUM, starChem
+  };
 })();
