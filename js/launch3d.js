@@ -245,6 +245,32 @@
     horizon.rotation.x = -Math.PI / 2;
     worldGroup.add(horizon);
 
+    // ---------- Phase 14: กริดเพดาน NOTAM (เรืองแสงจาง ๆ — worldGroup จมลงจนกริดมาถึงจรวดเมื่อถึงเพดาน) ----------
+    let notamGrid = null;
+    const NOTAM_CFG = cfg.notam && cfg.notam.ceiling ? cfg.notam : null;
+    if (NOTAM_CFG && !nightFW) {
+      notamGrid = new THREE.GridHelper(260, 22, 0xffffff, 0xffffff);
+      notamGrid.material.transparent = true;
+      notamGrid.material.opacity = 0.24;
+      notamGrid.material.depthWrite = false;
+      notamGrid.material.color.setHex(0x6fb4ff);
+      notamGrid.position.y = altU(NOTAM_CFG.ceiling);
+      worldGroup.add(notamGrid);
+      const gp = new THREE.Mesh(
+        new THREE.PlaneGeometry(260, 260),
+        new THREE.MeshBasicMaterial({ color: 0x2f6fb8, transparent: true, opacity: 0.05, depthWrite: false, side: THREE.DoubleSide })
+      );
+      gp.rotation.x = -Math.PI / 2;
+      gp.position.y = notamGrid.position.y;
+      worldGroup.add(gp);
+      notamGrid.userData.glow = gp;
+    }
+    const notamHudEl = document.getElementById("notam-hud");
+    const nhCeilEl = document.getElementById("nh-ceil");
+    const nhRadEl = document.getElementById("nh-rad");
+    if (notamHudEl) notamHudEl.hidden = !NOTAM_CFG;
+    const mDispShort = m => m >= 1000 ? (m / 1000).toFixed(m >= 10000 ? 0 : 1) + "km" : Math.round(m) + "m";
+
     // ---------- Task 3: ชั้นเมฆอ้างอิงความสูง (มีเสมอ ไม่ใช่แค่ตอนอากาศแปรปรวน) ----------
     //   แผ่นเมฆกระจายที่ ~1.5 / 4 / 9 กม. — จรวดพุ่งผ่าน = รู้สึกถึงความเร็ว/ความสูงทันที
     const scaleCloudTex = track(cloudSprite());
@@ -1178,6 +1204,26 @@
       if (hudOn) window.FlightHUD.update(s, flight);
       if (window.Capcom) window.Capcom.feed(s, flight);
 
+      // Phase 14 — ติดตามกรอบ NOTAM (เพดาน / รัศมี)
+      if (NOTAM_CFG && notamHudEl && !notamHudEl.hidden) {
+        const drNow = Math.abs(s.x);
+        const bC = s.y > NOTAM_CFG.ceiling, bR = drNow > NOTAM_CFG.radius;
+        if (nhCeilEl) {
+          nhCeilEl.querySelector("b").textContent = mDispShort(Math.max(0, s.y)) + " / " + mDispShort(NOTAM_CFG.ceiling);
+          nhCeilEl.classList.toggle("breach", bC);
+        }
+        if (nhRadEl) {
+          nhRadEl.querySelector("b").textContent = mDispShort(drNow) + " / " + mDispShort(NOTAM_CFG.radius);
+          nhRadEl.classList.toggle("breach", bR);
+        }
+        notamHudEl.classList.toggle("breach", bC || bR);
+        if (notamGrid) {
+          notamGrid.material.color.setHex(bC ? 0xff5b6b : 0x6fb4ff);
+          notamGrid.material.opacity = 0.2 + (bC ? 0.28 : 0.08) + Math.sin(performance.now() * 0.004) * 0.05;
+          if (notamGrid.userData.glow) notamGrid.userData.glow.material.opacity = bC ? 0.16 : 0.05;
+        }
+      }
+
       // หัวพลุ: Time Fuse ถึง Bursting Charge — จุดหลัง apogee ตามความยาวชนวนที่เลือก
       if (!fwFired && meta.firework && window.Fireworks && s.vy <= 0 && s.t > 1 && alt > 20
         && s.phase !== "pad" && !s.landed) {
@@ -1440,6 +1486,7 @@
       if (window.Capcom) window.Capcom.unmount();
       if (window.Operator) window.Operator.unmount();
       if (hud) hud.hidden = true;
+      if (notamHudEl) { notamHudEl.hidden = true; notamHudEl.classList.remove("breach"); }
       if (camTag) camTag.hidden = true;
       if (evEl) evEl.hidden = true;
       if (fwChemEl) { fwChemEl.hidden = true; fwChemEl.classList.remove("fade"); }

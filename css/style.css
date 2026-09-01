@@ -698,3 +698,75 @@ select.vx-range{-webkit-appearance:menulist;appearance:menulist;height:auto;back
   .topbar-brand-sub{display:none}
   .screen-title{font-size:19px}
 }
+
+/* ================= Phase 14 · NOTAM / Airspace Management ================= */
+.notam-overlay{z-index:60}
+.notam-doc{
+  position:relative;width:100%;max-width:540px;max-height:92vh;overflow-y:auto;
+  background:var(--blueprint);color:#dbe9ff;border:1px solid rgba(255,255,255,.16);
+  border-radius:10px;padding:24px 26px 20px;
+  box-shadow:0 24px 70px rgba(0,0,0,.55);
+  background-image:
+    linear-gradient(var(--blueprint-line) 1px,transparent 1px) 0 0/26px 26px,
+    linear-gradient(90deg,var(--blueprint-line) 1px,transparent 1px) 0 0/26px 26px,
+    var(--blueprint);
+  font-family:'Sarabun',system-ui,sans-serif;
+}
+.notam-perf{position:absolute;top:0;bottom:0;width:14px;background-image:radial-gradient(circle at 7px 7px,rgba(0,0,0,.35) 2.5px,transparent 3px);background-size:14px 14px}
+.notam-perf-l{left:2px}.notam-perf-r{right:2px}
+.notam-head{border-bottom:1px dashed rgba(255,255,255,.28);padding-bottom:12px;margin-bottom:14px}
+.notam-stamp-hdr{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:2px;color:#9fc4ff;opacity:.8}
+.notam-head h3{margin:4px 0 6px;font-family:'JetBrains Mono',monospace;font-size:17px;font-weight:700;letter-spacing:1px;color:#fff;line-height:1.35}
+.notam-head h3 span{display:block;font-family:'Sarabun',sans-serif;font-size:12px;font-weight:600;letter-spacing:0;color:#a9c6ee;margin-top:2px}
+.notam-meta{display:flex;flex-wrap:wrap;gap:6px 16px;font-family:'JetBrains Mono',monospace;font-size:10px;color:#9fc4ff}
+.notam-meta b{color:#fff;font-weight:700}
+.notam-brief{display:flex;gap:12px;align-items:flex-start;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:10px;padding:12px;margin-bottom:16px}
+.notam-brief-img{width:46px;height:46px;border-radius:9px;object-fit:cover;flex:0 0 auto;background:rgba(255,255,255,.1)}
+.notam-brief-who{font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:1px;color:#9fc4ff;margin-bottom:3px}
+.notam-brief-text{margin:0;font-size:12.5px;line-height:1.65;color:#e4eeff}
+.notam-field{margin-bottom:16px}
+.notam-field>label{display:block;font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.5px;color:#cfe0ff;margin-bottom:8px}
+.notam-slider-row{display:flex;align-items:center;gap:12px}
+.notam-range{flex:1;accent-color:#6fb4ff;height:4px}
+.notam-slider-row output{font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:#fff;min-width:78px;text-align:right}
+.notam-hint{font-size:11px;color:#a9c6ee;margin-top:5px}
+.notam-ledger{border:1px solid rgba(255,255,255,.16);border-radius:10px;overflow:hidden;margin:16px 0 12px}
+.notam-ledger-row{display:flex;justify-content:space-between;gap:14px;padding:9px 12px;font-size:12px;border-bottom:1px solid rgba(255,255,255,.1)}
+.notam-ledger-row:last-child{border-bottom:0}
+.notam-ledger-row span{color:#c3d5f0}
+.notam-ledger-row b{font-family:'JetBrains Mono',monospace;font-weight:700;color:#fff;white-space:nowrap}
+.notam-ledger-row.neg b{color:#ffb3b3}
+.notam-ledger-row.pos b{color:#a8e6c4}
+.notam-ledger-row.warn b{color:#ff8a8a}
+.notam-risk{font-size:11.5px;line-height:1.55;border-radius:9px;padding:10px 12px;border:1px solid transparent}
+.notam-risk.lo{background:rgba(79,203,141,.14);border-color:rgba(79,203,141,.4);color:#c7f0da}
+.notam-risk.mid{background:rgba(224,189,115,.16);border-color:rgba(224,189,115,.42);color:#f2e2be}
+.notam-risk.hi{background:rgba(226,104,95,.18);border-color:rgba(226,104,95,.5);color:#ffd3cf}
+.notam-foot{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:16px}
+.notam-foot .btn{font-size:12.5px}
+@media(max-width:560px){
+  .notam-doc{padding:20px 20px 16px}
+  .notam-foot .btn{flex:1 1 100%}
+}
+
+/* in-flight NOTAM tracker */
+.notam-hud{position:absolute;right:16px;top:52px;z-index:7;background:var(--glass-bg,rgba(8,12,22,.6));border:1px solid var(--glass-line,rgba(255,255,255,.14));border-radius:12px;padding:9px 12px;font-family:'JetBrains Mono',monospace;font-size:11px;color:#eef3fb;min-width:184px;backdrop-filter:var(--glass-blur,blur(8px));-webkit-backdrop-filter:var(--glass-blur,blur(8px));box-shadow:0 8px 30px rgba(0,0,0,.35);transition:border-color .2s,box-shadow .2s}
+.notam-hud .nh-title{font-size:9.5px;letter-spacing:1px;color:#93b0e0;margin-bottom:5px}
+.notam-hud .nh-row{display:flex;justify-content:space-between;gap:12px;padding:2px 0}
+.notam-hud .nh-row span{color:#93b0e0}
+.notam-hud .nh-row.breach b{color:#ff6b7b}
+.notam-hud.breach{border-color:rgba(255,91,107,.7);box-shadow:0 0 22px rgba(255,91,107,.35)}
+#screen-launch .notam-hud{top:88px}
+@media(max-width:820px){.notam-hud{font-size:10px;min-width:150px;top:88px}}
+
+/* red violation stamp on report */
+.report-card{position:relative}
+.report-notam-stamp{
+  position:absolute;top:14px;right:10px;transform:rotate(9deg);
+  font-family:'JetBrains Mono',monospace;font-weight:800;font-size:15px;line-height:1.05;text-align:center;letter-spacing:1px;
+  color:#c62f2f;border:3px double #c62f2f;border-radius:6px;padding:6px 10px;
+  background:rgba(198,47,47,.06);text-transform:uppercase;pointer-events:none;
+  box-shadow:0 0 0 1px rgba(198,47,47,.15) inset;opacity:.92
+}
+:root[data-theme="dark"] .report-notam-stamp,:root[data-theme="horror"] .report-notam-stamp{color:#ff5b6b;border-color:#ff5b6b;background:rgba(255,91,107,.08)}
+@media(max-width:560px){.report-notam-stamp{font-size:12px;top:8px;right:6px}}

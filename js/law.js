@@ -36,7 +36,6 @@ const LegalFramework = {
     lawRefs: ["ข้อกำหนด CAAT ว่าด้วยการปล่อยจรวด", "Annex 15 – NOTAM"],
     requirements: [
       { id: "caat_permit", desc: "ขออนุญาตสำนักงานการบินพลเรือนแห่งประเทศไทย (CAAT)", isChecked: false, isRequired: true, minigame: "permit" },
-      { id: "notam_request", desc: "ออกประกาศ NOTAM เตือนอากาศยาน", isChecked: false, isRequired: true, minigame: "notam" },
       { id: "safety_officer", desc: "มีเจ้าหน้าที่ความปลอดภัย (RSO) คุมจุดปล่อย", isChecked: false, isRequired: true },
       { id: "airspace_closure", desc: "ขอปิดห้วงอากาศชั่วคราวเหนือพื้นที่ปล่อย", isChecked: false, isRequired: false, bonus: 800 }
     ],
@@ -51,7 +50,7 @@ const LegalFramework = {
     lawRefs: ["พ.ร.บ. ความมั่นคงฯ", "ข้อกำหนดห้วงอากาศหวงห้าม (Prohibited/Restricted Area)"],
     requirements: [
       { id: "security_clearance", desc: "ขอการรับรองด้านความมั่นคงแห่งชาติ (สมช.)", isChecked: false, isRequired: true, minigame: "permit" },
-      { id: "controlled_airspace", desc: "ประกาศเขตห้วงอากาศหวงห้าม + NOTAM ระดับชาติ", isChecked: false, isRequired: true, minigame: "notam" },
+      { id: "controlled_airspace", desc: "ประกาศเขตห้วงอากาศหวงห้าม (Prohibited Area) ระดับชาติเหนือฐานยิง", isChecked: false, isRequired: true },
       { id: "impact_assessment", desc: "จัดทำรายงานประเมินความเสี่ยงจุดตกกระทบภาคพื้น (Ground Impact / Range Safety)", isChecked: false, isRequired: true, minigame: "impact" },
       { id: "intl_notify", desc: "แจ้งเตือนประเทศเพื่อนบ้านตามธรรมเนียมปฏิบัติระหว่างประเทศ", isChecked: false, isRequired: false, bonus: 1500 }
     ],

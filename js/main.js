@@ -47,6 +47,8 @@
       stats: null,
       legalChecks: [],       // requirement ids completed
       legalResult: null,
+      notam: null,           // Phase 14 — คำขอ NOTAM { ceiling, radius, cost, complianceBonus, potentialBonus, violationPenalty }
+      notamResult: null,
       wind: 0,
       windDirDeg: 0,
       weather: null,         // ประจำวันภารกิจ — สุ่มตอนเลือกภารกิจ, ใช้ในบรีฟ + ตอนปล่อย
@@ -1017,6 +1019,12 @@
     const assembled = buildAssembledRocket();
     G.run.assembly = assembled;
     console.log("[RocketScience] Assembled rocket → law.js:", JSON.stringify(assembled, null, 2));
+
+    // Phase 14 — ยื่นคำขอ NOTAM ก่อนออกจากโรงประกอบ (เว้นภารกิจวงโคจร ซึ่งใช้กรอบสนธิสัญญาอวกาศแทน)
+    if (window.NOTAM && !G.run.mission.targetOrbit && !(G.run.stats && G.run.stats.orbital)) {
+      window.NOTAM.open(G.run, openLegalModal);
+      return;
+    }
     openLegalModal();
   }
 
@@ -1096,13 +1104,6 @@
       opt("ปล่อยห่างจากสนามบินมากกว่า 9 กม. และแจ้งหอบังคับการบิน", true);
       opt("ปล่อยห่าง 3 กม. ช่วงเครื่องบินพักเที่ยง", false);
       opt("ไม่ต้องเช็ก ลมพัดออกทะเลอยู่แล้ว", false);
-    } else if (req.minigame === "notam") {
-      title.textContent = "ออกประกาศ NOTAM";
-      body.appendChild(Object.assign(document.createElement("p"),
-        { textContent: "NOTAM (Notice to Airmen) แจ้งเตือนนักบินถึงกิจกรรมในห้วงอากาศ ต้องระบุอะไรบ้าง?" }));
-      opt("พิกัด ความสูงสูงสุด ช่วงเวลาเริ่ม–สิ้นสุด และหน่วยงานผู้รับผิดชอบ", true);
-      opt("แค่ชื่อทีมและเบอร์โทรก็พอ", false);
-      opt("โพสต์ลงเฟซบุ๊กกลุ่มจรวดสมัครเล่น", false);
     } else if (req.minigame === "permit") {
       title.textContent = "ยื่นคำร้องขออนุญาต";
       body.appendChild(Object.assign(document.createElement("p"),
@@ -1198,6 +1199,9 @@
           talaiWingDia: isTalai ? (s.talai.wingDia || null) : null }
       }, wxCommon);
     }
+
+    // Phase 14 — ส่งกรอบ NOTAM ให้ฉากปล่อยไปแสดงเป็นกริดเพดาน + ตัวชี้ HUD
+    if (G.run.notam) cfg.notam = { ceiling: G.run.notam.ceiling, radius: G.run.notam.radius };
 
     show("launch");
     const use3d = !!(window.Launch3D && window.THREE);
@@ -1359,6 +1363,14 @@
     let legalPen = 0;
     if (lr.status === "VIOLATION") { legalPen = lr.penaltyPoints || 0; rows.push(["ละเมิดกฎหมาย (ลักลอบปล่อย)", -legalPen, false]); }
 
+    // ---- Phase 14: ประเมินการปฏิบัติตาม NOTAM (เพดาน + รัศมี) ----
+    let notamAssess = null;
+    if (G.run.notam && window.NOTAM) {
+      notamAssess = window.NOTAM.assess(sum, G.run.notam);
+      G.run.notamResult = notamAssess.status;
+      notamAssess.rows.forEach(r => rows.push(r));
+    }
+
     let total = rows.reduce((a, [, v]) => a + v, 0);
     if (lr.gameOver && lr.status === "VIOLATION") total = -legalPen;
 
@@ -1368,10 +1380,12 @@
     $("#report-total").textContent = fmt(total);
 
     const cleared = lr.status === "CLEARED";
+    const notamViolation = !!(notamAssess && notamAssess.status === "VIOLATION");
     const success = cleared && missionGoalMet && !sum.burnedUp && (orbital ? sum.reachedOrbit : (expendable || !sum.crashed));
     const vEl = $("#report-verdict");
-    vEl.className = "report-verdict " + (success ? "ok" : "bad");
-    vEl.textContent = success ? "ภารกิจสำเร็จ 🎉"
+    vEl.className = "report-verdict " + (success && !notamViolation ? "ok" : "bad");
+    vEl.textContent = success && notamViolation ? "ภารกิจสำเร็จ แต่จรวดหลุดกรอบ NOTAM — Sky Hazard Violation ⚠"
+      : success ? "ภารกิจสำเร็จ 🎉"
       : lr.gameOver && !cleared ? "จบเกม — ผลจากการละเมิดกฎหมาย"
       : !cleared ? "ปล่อยได้ แต่ผิดกฎหมาย"
       : sum.failReason === "LANTERN_BURNUP" ? "โคมลอยไหม้กลางอากาศ 🔥"
@@ -1389,6 +1403,10 @@
       : "ยังไม่ถึงเป้าหมาย";
 
     $("#report-legal").textContent = "⚖️ " + lr.message;
+
+    // Phase 14 — ตราแดง "SKY HAZARD VIOLATION" บนรายงาน
+    const notamStamp = $("#report-notam-stamp");
+    if (notamStamp) notamStamp.hidden = !(notamAssess && notamAssess.status === "VIOLATION");
 
     // ---- persist score + unlock ----
     G.progress.totalScore = Math.max(0, G.progress.totalScore + total);

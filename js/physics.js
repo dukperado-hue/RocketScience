@@ -180,7 +180,7 @@ function createFlight(config) {
     mass: glow, stage: 0, stageCount, stageProp: stages[0].propMass,
     thrustNow: 0, mach: 0, fuelFrac: 1,
     q: 0, maxQ: 0, maxQAlt: 0, maxQReached: false, peakHeatFlux: 0,
-    apogee: 0,
+    apogee: 0, maxDrift: 0,
     skinTemp: thermal ? thermal.ambient : 0, skinTempPeak: 0,
     phase: "pad",   // pad | boost | coast | insertion | orbit | descent | reentry | done
     crashed: false, landed: false, burnedUp: false, reachedOrbit: false, reentryFlag: false,
@@ -734,7 +734,7 @@ function createFlight(config) {
     return state;
   }
 
-  function step(dt) {
+  function _step(dt) {
     if (state.phase === "done") return state;
     dt = Math.min(dt, 0.05);
     if (c.lantern) return stepLantern(dt);
@@ -743,6 +743,14 @@ function createFlight(config) {
       return stepOrbitalScripted(dt);
     }
     return stepForce(dt);
+  }
+
+  // Phase 14: ติดตามระยะเบี่ยงแนวราบสูงสุด (Drift) ตลอดเที่ยวบิน — ใช้ประเมิน NOTAM
+  function step(dt) {
+    const r = _step(dt);
+    const d = Math.abs(state.x);
+    if (d > state.maxDrift) state.maxDrift = d;
+    return r;
   }
 
   function runToEnd() {
@@ -754,9 +762,10 @@ function createFlight(config) {
   function summary() {
     const co = state.cutoff;
     return {
-      apogee: state.apogee, flightTime: state.t,
+      apogee: state.apogee, maxAltitude: state.apogee, flightTime: state.t,
       maxQ: state.maxQ, maxQAlt: state.maxQAlt,
       horizontalDrift: state.x, landingX: state.x,
+      maxDrift: Math.max(state.maxDrift, Math.abs(state.x)),
       crashed: state.crashed, landed: state.landed,
       targetAltitude: c.targetAltitude,
       altitudeRatio: c.targetAltitude > 0 ? state.apogee / c.targetAltitude : 0,
