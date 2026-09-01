@@ -34,6 +34,16 @@
     const x = $("vn-x");
     if (x && !x._wired) { x._wired = true; x.addEventListener("click", (e) => { e.stopPropagation(); end(); }); }
     if (!box._wired) { box._wired = true; box.addEventListener("click", advance); }
+    if (!document._vnKey) {
+      document._vnKey = true;
+      document.addEventListener("keydown", (e) => {
+        if (!box || box.hidden) return;
+        const tag = (e.target && e.target.tagName) || "";
+        if (tag === "INPUT" || tag === "TEXTAREA") return;
+        if (e.key === "Escape") { e.preventDefault(); end(); }
+        else if (e.key === "Enter" || e.key === " ") { e.preventDefault(); advance(); }
+      });
+    }
     return true;
   }
 
@@ -44,6 +54,7 @@
     if (!queue.length) { opts.onDone && opts.onDone(); return; }
     idx = 0; doneCb = opts.onDone || null;
     box.hidden = false;
+    document.body.classList.add("vn-open");   // กันเนื้อหา/ปุ่มไม่ให้ถูกกล่องบทสนทนาบัง
     step();
   }
 
@@ -102,6 +113,7 @@
   function end() {
     clearInterval(timer); typing = false;
     if (box) box.hidden = true;
+    document.body.classList.remove("vn-open");
     const cb = doneCb; doneCb = null;
     cb && cb();
   }

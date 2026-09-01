@@ -68,6 +68,7 @@
   function show(name) {
     if (name !== "vab" && window.VAB3D) window.VAB3D.unmount();   // คืน GL context ก่อนออกจากโรงประกอบ
     closeCodex();                                                 // ปิดหอจดหมายเหตุ + คืน GL context
+    if (window.VN && window.VN.skip) window.VN.skip();            // ปิดบทสนทนาค้างจากหน้าก่อน (ไม่ให้ลอยทับปุ่ม)
     SCREENS.forEach(s => { const el = $("#screen-" + s); if (el) el.hidden = (s !== name); });
     const bar = $("#stepbar");
     if (name === "home") { bar.hidden = true; }
@@ -82,7 +83,8 @@
         sp.classList.toggle("done", i > -1 && idx > -1 && i < idx);
       });
     }
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    // สลับทั้งหน้าจอ — เด้งขึ้นบนสุดทันที (smooth ทำให้หน้าใหม่ค้างอยู่กลาง/ล่างชั่วขณะ)
+    window.scrollTo(0, 0);
   }
 
   function toast(msg) {

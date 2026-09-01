@@ -58,6 +58,8 @@ a{color:var(--accent)}
 
 .wrap{max-width:1120px;margin:0 auto;padding:8px 18px 70px}
 .screen{animation:fade .3s ease}
+/* กล่องบทสนทนา VN ลอยตายตัวท้ายจอ ~220px — เว้นที่ให้เลื่อนเห็นปุ่ม/เนื้อหาที่มันบัง */
+body.vn-open .wrap{padding-bottom:clamp(220px,30vh,280px)}
 @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 .screen-title{font-size:22px;font-weight:900;margin:18px 0 14px}
 .screen-hint,.screen .screen-hint{color:var(--ink-soft);font-size:14px;margin:-6px 0 14px}
