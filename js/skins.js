@@ -144,8 +144,57 @@
         x.strokeStyle = "rgba(231,181,60,.5)"; x.lineWidth = 3;
         for (let i = 0; i < 5; i++) { const cy = H * (i + .5) / 5; x.beginPath(); x.arc(W * (.15 + (i % 2) * .7), cy, W * .09, .3, 3.2); x.stroke(); }
       }
+    },
+    // ---------- ตำนานผี (photo pack) — คอลเลกชันเปิดกว้าง จะทยอยเพิ่มทีหลังแบบ gacha ----------
+    {
+      id: "gh_pilot", th: "ผีนักบิน", en: "Ghost Pilot", families: ["bangfai", "khom"],
+      free: true, photo: true, img: "assets/skins/pilot_ghost.jpg",
+      desc: "ตำนานผีนักบินที่ยังห่วงน่านฟ้า — คอลเลกชันตำนานผี #1"
+    },
+    {
+      id: "gh_jar", th: "ผีสาวในไหปลาร้า", en: "Jar Ghost", families: ["bangfai", "khom"],
+      free: true, photo: true, img: "assets/skins/jar_ghost.jpg",
+      desc: "ตำนานผีพื้นบ้านชื่อดัง — คอลเลกชันตำนานผี #2"
+    },
+    {
+      id: "gh_granny", th: "ยายวรนาฎ", en: "Grandma Woranat", families: ["bangfai", "khom"],
+      free: true, photo: true, img: "assets/skins/granny_ghost.jpg",
+      desc: "ผู้เฒ่าผู้แก่คอยเฝ้าดูแลงานบุญ — คอลเลกชันตำนานผี #3"
+    },
+    {
+      id: "gh_oni", th: "โอนิ", en: "Oni", families: ["bangfai", "khom"],
+      free: true, photo: true, img: "assets/skins/oni.jpg",
+      desc: "ยักษ์แห่งตำนานญี่ปุ่น — คอลเลกชันตำนานผี #4"
     }
   ];
+
+  // ---------- photo pack: โหลดรูปจริงล่วงหน้า + วาดแบบ cover-fit ----------
+  const imgCache = new Map();
+  function getImg(url) {
+    let e = imgCache.get(url);
+    if (!e) { e = { img: new Image(), redraw: [] }; e.img.src = url; imgCache.set(url, e); }
+    return e;
+  }
+  // เริ่มโหลดทันทีตอนสคริปต์ทำงาน ให้พร้อมก่อนผู้เล่นถึงหน้า VAB
+  CATALOG.filter(s => s.photo).forEach(s => getImg(s.img));
+
+  function drawCover(x, img, W, H) {
+    const ir = img.naturalWidth / img.naturalHeight, tr = W / H;
+    let sw = img.naturalWidth, sh = img.naturalHeight, sx = 0, sy = 0;
+    if (ir > tr) { sw = sh * tr; sx = (img.naturalWidth - sw) / 2; }
+    else { sh = sw / tr; sy = (img.naturalHeight - sh) / 2; }
+    x.drawImage(img, sx, sy, sw, sh, 0, 0, W, H);
+  }
+  function drawPhoto(x, s, W, H, onLoaded) {
+    x.fillStyle = "#20242c"; x.fillRect(0, 0, W, H);
+    const e = getImg(s.img);
+    if (e.img.complete && e.img.naturalWidth > 0) { drawCover(x, e.img, W, H); return; }
+    if (!onLoaded) return;
+    e.redraw.push(onLoaded);
+    e.img.addEventListener("load", () => {
+      const cbs = e.redraw.splice(0); cbs.forEach(fn => { try { fn(); } catch (er) {} });
+    }, { once: true });
+  }
 
   const KEY = "rocketscience-skins";
   const DEFAULT_UNLOCKED = CATALOG.filter(s => s.free).map(s => s.id);
@@ -177,10 +226,16 @@
     const c = document.createElement("canvas");
     c.width = W; c.height = H;
     const x = c.getContext("2d");
-    try { s.draw(x, W, H); } catch (e) { console.warn("[Skins] draw", id, e); x.fillStyle = "#b98f57"; x.fillRect(0, 0, W, H); }
     const tex = new THREE.CanvasTexture(c);
-    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-    tex.repeat.set(s.repX || 1, s.repY || 1);
+    if (s.photo) {
+      drawPhoto(x, s, W, H, () => { tex.needsUpdate = true; });
+      tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+      tex.repeat.set(1, 1);
+    } else {
+      try { s.draw(x, W, H); } catch (e) { console.warn("[Skins] draw", id, e); x.fillStyle = "#b98f57"; x.fillRect(0, 0, W, H); }
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(s.repX || 1, s.repY || 1);
+    }
     tex.anisotropy = 4;
     if (THREE.sRGBEncoding != null) tex.encoding = THREE.sRGBEncoding;
     return tex;
@@ -213,7 +268,8 @@
       const s = byId(el.dataset.chip);
       const cc = document.createElement("canvas"); cc.width = 40; cc.height = 40;
       const cx = cc.getContext("2d");
-      try { s.draw(cx, 40, 40); } catch (e) {}
+      if (s.photo) drawPhoto(cx, s, 40, 40, () => { el.style.backgroundImage = `url(${cc.toDataURL()})`; });
+      else { try { s.draw(cx, 40, 40); } catch (e) {} }
       el.style.backgroundImage = `url(${cc.toDataURL()})`;
     });
     host.querySelectorAll("[data-skin]").forEach(b => b.addEventListener("click", () => {
