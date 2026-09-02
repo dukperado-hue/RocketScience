@@ -30,7 +30,7 @@
     pchang: { name: "พี่ช่าง", role: "CAPCOM · หัวหน้าวิศวกร", img: IMG + "pchang.png", accent: "#3B82C4", tone: "pchang", emoji: "🦆" },
     kapi:   { name: "น้องกะปิ", role: "ผู้ช่วยช่างฝึกงาน", img: IMG + "kapi.png", accent: "#8AA35C", tone: "kapi", emoji: "🦫" },
     // Phase 16.5: น้องชะอม — แมวสามสีจอมพลังในชุดอวกาศตัวโคร่ง · Payload Specialist / นักบินทดสอบ
-    chaom:  { name: "น้องชะอม", role: "Payload Specialist · นักบินทดสอบ", img: "assets/images/cha_om.png", accent: "#EE7A2D", tone: "chaom", emoji: "🐈" }
+    chaom:  { name: "น้องชะอม", role: "Payload Specialist · นักบินทดสอบ", img: IMG + "cha_om.png", accent: "#EE7A2D", tone: "chaom", emoji: "🐈" }
   };
 
   const NPC = (function () {
