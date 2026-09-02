@@ -106,6 +106,12 @@
       this.propulsion = null;
     }
 
+    // Structural envelope — the dynamic pressure (Pa) this part can take before
+    // it tears / buckles. Diagnostics compares Σ-min against the flight's MaxQ.
+    this.structural = {
+      maxDynamicPressure: num(def.structural && def.structural.maxDynamicPressure, Infinity)
+    };
+
     this.attachNodes = (def.attachNodes || []).map(function (n) {
       return {
         id: n.id,
@@ -145,7 +151,8 @@
 
   // ===========================================================================
   //  THE CATALOG
-  //  A flat registry keyed by id. Populated per-era. Task 4 seeds Era 0.
+  //  A flat registry keyed by id. Part DEFINITIONS live in js/data/parts.js and
+  //  register themselves at load time — this module owns only the schema + store.
   // ===========================================================================
   var _parts = {};
 
@@ -188,70 +195,6 @@
     /** Wipe the registry (tests / hot-reload). */
     _reset: function () { _parts = {}; }
   };
-
-  // ===========================================================================
-  //  TASK 4 — Era 0 · Khom Loy (proof of concept)
-  //  Three parts that assemble into a working sky lantern under the SAME schema
-  //  a Falcon 9 will use. Numbers are deliberately real-ish (a party lantern is
-  //  ~30 g of paper+wire and lofts on a few newtons of hot-air buoyancy).
-  // ===========================================================================
-  PartsCatalog.registerAll([
-    {
-      id: 'fuel_wax',
-      name: 'เชื้อเพลิงขี้ผึ้ง',
-      category: CATEGORY.PROPULSION,
-      icon: '🔥',
-      era: '0-khomloy',
-      blurb: 'ก้อนขี้ผึ้งชุบกระดาษ จุดแล้วให้ความร้อน — พยุงตัวโคมขึ้นช้า ๆ',
-      mass: 0.010,            // 10 g holder, dry
-      cost: 5,
-      size: { w: 1, h: 1 },
-      aerodynamics: { dragCoefficient: 0.9, crossSectionArea: 0.002 },
-      propulsion: {
-        mode: 'buoyancy',
-        thrust: 3.6,          // N peak hot-air buoyancy once the envelope is hot
-        burnTime: 200,        // ~3.5 min of usable flame
-        specificImpulse: 0,   // buoyancy: no exhaust
-        propellantMass: 0.012,// 12 g of wax burns off
-        spoolTime: 20         // seconds to heat the air column to full lift
-      },
-      attachNodes: [
-        // the wax cradle hangs UNDER the bamboo hoop, so its live node points up
-        { id: 'top', dx: 0.5, dy: 0, type: NODE.STACK, accepts: ['Structural'] }
-      ]
-    },
-    {
-      id: 'frame_bamboo',
-      name: 'โครงไม้ไผ่',
-      category: CATEGORY.STRUCTURAL,
-      icon: '🎋',
-      era: '0-khomloy',
-      blurb: 'วงแหวนไม้ไผ่เหลาบาง เบาแต่ให้รูปทรง — จุดยึดเชื้อเพลิงและเปลือก',
-      mass: 0.008,            // 8 g split-bamboo hoop + cross wires
-      cost: 8,
-      size: { w: 1, h: 1 },
-      aerodynamics: { dragCoefficient: 0.6, crossSectionArea: 0.004 },
-      attachNodes: [
-        { id: 'top', dx: 0.5, dy: 0, type: NODE.STACK, accepts: ['Aerodynamics'] },
-        { id: 'bottom', dx: 0.5, dy: 1, type: NODE.STACK, accepts: ['Propulsion'] }
-      ]
-    },
-    {
-      id: 'cover_paper',
-      name: 'เปลือกกระดาษสา',
-      category: CATEGORY.AERODYNAMICS,
-      icon: '🏮',
-      era: '0-khomloy',
-      blurb: 'ซองกระดาษสาบางเบา กักอากาศร้อนไว้ — ยิ่งใหญ่ยิ่งลอย แต่ก็ยิ่งต้านลม',
-      mass: 0.006,            // 6 g of sa paper
-      cost: 12,
-      size: { w: 1, h: 2 },
-      aerodynamics: { dragCoefficient: 1.1, crossSectionArea: 0.28 }, // big soft envelope
-      attachNodes: [
-        { id: 'bottom', dx: 0.5, dy: 2, type: NODE.STACK, accepts: ['Structural'] }
-      ]
-    }
-  ]);
 
   global.RS = global.RS || {};
   global.RS.PartsCatalog = PartsCatalog;

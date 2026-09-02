@@ -183,7 +183,7 @@
    *   com:{x:number,y:number}, cop:{x:number,y:number},
    *   comM:{x:number,y:number}, copM:{x:number,y:number},
    *   totalThrust:number, totalBuoyancy:number, motorMode:string,
-   *   dragArea:number, refArea:number, avgCd:number,
+   *   dragArea:number, refArea:number, avgCd:number, structuralLimitPa:number,
    *   burnTime:number, length:{w:number,h:number},
    *   stabilityMarginM:number, stable:boolean, weightN:number, twr:number
    * }}
@@ -199,7 +199,7 @@
       com: { x: 0, y: 0 }, cop: { x: 0, y: 0 },
       totalThrust: 0, totalBuoyancy: 0, motorMode: 'none',
       dragArea: 0, refArea: 0,
-      burnTime: 0,
+      burnTime: 0, structuralLimitPa: Infinity,
       minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity
     };
 
@@ -233,6 +233,10 @@
           s.motorMode = s.motorMode === 'buoyancy' ? 'mixed' : 'rocket';
         }
         s.burnTime = Math.max(s.burnTime, p.propulsion.burnTime);
+      }
+
+      if (p.structural && isFinite(p.structural.maxDynamicPressure)) {
+        s.structuralLimitPa = Math.min(s.structuralLimitPa, p.structural.maxDynamicPressure);
       }
 
       s.minX = Math.min(s.minX, inst.gx);
@@ -319,9 +323,12 @@
       totalMass: s.totalMass,
       dragArea: s.dragArea,          // Σ Cd·A  (m^2)
       refArea: s.refArea,            // Σ A     (m^2)
+      structuralLimitPa: s.structuralLimitPa,
       motors: motors,
       valid: s.valid,
-      stable: s.stable
+      stable: s.stable,
+      // full stats snapshot so Diagnostics needs only the model, never the graph
+      stats: s
     };
   };
 

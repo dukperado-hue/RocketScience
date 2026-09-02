@@ -4,19 +4,19 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FROM FIRE TO ORBIT — Blueprint Builder</title>
-<meta name="description" content="เกมจำลองวิศวกรรมจรวด: ระบบเดียว ประกอบได้ทุกอย่างตั้งแต่โคมลอยถึงจรวดวงโคจร — Reboot Phase 1: Unified Architecture & 2D Blueprint Builder">
+<meta name="description" content="เกมจำลองวิศวกรรมจรวด: ระบบเดียว ประกอบได้ทุกอย่างตั้งแต่โคมลอยถึงจรวดวงโคจร — Reboot Phase 1.1: Contract Lock, Event System & 3D Vehicle Preview">
 <meta name="theme-color" content="#0a1830">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/blueprint.css?v=1">
+<link rel="stylesheet" href="css/blueprint.css?v=4">
 </head>
 <body class="bp-body">
 
 <header class="bp-top">
   <h1>From Fire to Orbit</h1>
   <span class="bp-era" id="bp-era-tag">ERA 0 · KHOM LOY</span>
-  <span class="bp-tagline">Reboot Phase 1 — Unified Architecture &amp; 2D Blueprint Builder</span>
+  <span class="bp-tagline">Reboot Phase 1.1 — Contract Lock · Event System · 3D Vehicle Preview</span>
 </header>
 
 <div class="bp-stage">
@@ -27,23 +27,32 @@
     <div id="bp-catalog" class="bp-rail"></div>
   </section>
 
-  <!-- CENTER · 2D orthographic blueprint grid -->
-  <section class="bp-canvas-wrap">
-    <canvas id="bp-canvas"></canvas>
-    <div class="bp-legend">
-      <div><i style="background:#c79a6a"></i>Structural</div>
-      <div><i style="background:#e0765a"></i>Propulsion</div>
-      <div><i style="background:#63b6e0"></i>Aerodynamics</div>
-      <div><i style="background:#7fc27e"></i>Payload</div>
-      <div style="margin-top:3px">◉ CoM &nbsp; △ CoP</div>
-    </div>
-    <div class="bp-canvas-tools">
-      <button type="button" id="bp-zoom-out">–</button>
-      <button type="button" id="bp-zoom-in">+</button>
-      <button type="button" id="bp-reset">รีเซ็ต</button>
-      <button type="button" id="bp-sample">โคมตัวอย่าง</button>
-    </div>
-  </section>
+  <!-- CENTER · 2D orthographic blueprint grid + live 3D preview -->
+  <div class="bp-center">
+    <section class="bp-canvas-wrap">
+      <canvas id="bp-canvas"></canvas>
+      <div class="bp-legend">
+        <div><i style="background:#c79a6a"></i>Structural</div>
+        <div><i style="background:#e0765a"></i>Propulsion</div>
+        <div><i style="background:#63b6e0"></i>Aerodynamics</div>
+        <div><i style="background:#7fc27e"></i>Payload</div>
+        <div style="margin-top:3px">◉ CoM &nbsp; △ CoP</div>
+      </div>
+      <div class="bp-canvas-tools">
+        <button type="button" id="bp-zoom-out">–</button>
+        <button type="button" id="bp-zoom-in">+</button>
+        <button type="button" id="bp-reset">รีเซ็ต</button>
+        <button type="button" id="bp-sample">โคมตัวอย่าง</button>
+      </div>
+    </section>
+
+    <section class="bp-preview">
+      <span class="bp-preview-tag">3D PREVIEW · จาก graph เดียวกัน</span>
+      <canvas id="preview-canvas"></canvas>
+      <div class="bp-preview-empty" id="preview-empty">ยังไม่มีชิ้นส่วน</div>
+      <span class="bp-preview-hint">ลากหมุน · สกรอลล์ซูม</span>
+    </section>
+  </div>
 
   <!-- RIGHT · aggregate telemetry from Vehicle.computeStats() -->
   <section class="bp-col">
@@ -55,27 +64,61 @@
 
 <p class="bp-status" id="bp-status">ลากชิ้นส่วนจากด้านซ้ายมาวางบนกริด</p>
 
-<!-- Decoupled physics stub — reads the Vehicle, outputs y & v only -->
+<!-- Physics runs in core/ and returns a locked SimulationResult; render just plays it back -->
 <section class="bp-sim">
   <div class="bp-sim-head">
-    <h2>Physics Engine (stub · ยังไม่ผูกกับ 3D)</h2>
+    <h2>Simulation Contract · Physics → SimulationResult</h2>
     <button type="button" class="bp-btn" id="bp-run" disabled>▶ จำลองการบิน</button>
-    <span class="bp-sim-note">คำนวณระดับความสูง (y) และความเร็ว (v) จากมวล · แรงขับ/แรงพยุง · แรงต้านอากาศ</span>
+    <span class="bp-sim-note">core/ คำนวณ trajectory + events + diagnostics — render/ ไม่แตะฟิสิกส์</span>
   </div>
+
   <div class="bp-sim-out" id="bp-sim-out"></div>
+
+  <div class="bp-analysis">
+    <section>
+      <h3>เหตุการณ์การบิน (events[])</h3>
+      <ul class="bp-events" id="bp-events"><li><span></span><span class="bp-ev-type">— ยังไม่ได้จำลอง —</span></li></ul>
+    </section>
+    <section>
+      <h3>ผลวินิจฉัย · Physics Autopsy (diagnostics[])</h3>
+      <ul class="bp-diag" id="bp-diag"><li><span class="bp-chip">—</span><span>ยังไม่ได้จำลอง</span></li></ul>
+    </section>
+  </div>
+
   <canvas id="bp-trace"></canvas>
 </section>
 
 <footer class="bp-foot">
   Cool Uncle Lab · <a href="https://coolunclelab.com/lab.html">โปรเจกต์ทั้งหมด</a> ·
-  โค้ดเก่าถูกย้ายไป <code>archive/</code> — สถาปัตยกรรมใหม่อยู่ใน <code>js/core/</code>
+  <code>core/</code> ผลิตข้อมูล · <code>render/</code> บริโภคข้อมูล · โค้ดเก่าอยู่ใน <code>archive/</code>
 </footer>
 
-<!-- ONE unified system: catalog → vehicle → builder → physics -->
-<script src="js/core/PartsCatalog.js?v=1"></script>
-<script src="js/core/Vehicle.js?v=1"></script>
-<script src="js/core/PhysicsEngine.js?v=1"></script>
-<script src="js/core/Blueprint2D.js?v=1"></script>
-<script src="js/app.js?v=1"></script>
+<!-- ═══ core/ — ZERO dependency on render/ or Three.js ═══ -->
+<script src="js/core/PartsCatalog.js?v=4"></script>
+<script src="js/core/Vehicle.js?v=4"></script>
+<script src="js/core/SimulationEvents.js?v=4"></script>
+<script src="js/core/Diagnostics.js?v=4"></script>
+<script src="js/core/Physics.js?v=4"></script>
+<script src="js/core/Blueprint2D.js?v=4"></script>
+
+<!-- ═══ data/ — pure content ═══ -->
+<script src="js/data/parts.js?v=4"></script>
+<script src="js/data/eras.js?v=4"></script>
+<script src="js/data/missions.js?v=4"></script>
+
+<!-- ═══ game/ — rules, consumes the contract ═══ -->
+<script src="js/game/EraManager.js?v=4"></script>
+<script src="js/game/MissionEngine.js?v=4"></script>
+
+<!-- ═══ vendor ═══ -->
+<script src="vendor/three/three.min.js?v=4"></script>
+
+<!-- ═══ render/ — consumes data, needs Three.js ═══ -->
+<script src="js/render/Scene.js?v=4"></script>
+<script src="js/render/CameraController.js?v=4"></script>
+<script src="js/render/VehicleRenderer.js?v=4"></script>
+<script src="js/render/FlightRenderer.js?v=4"></script>
+
+<script src="js/app.js?v=4"></script>
 </body>
 </html>
