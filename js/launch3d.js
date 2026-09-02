@@ -1112,12 +1112,96 @@
     let camState = "pad";
     const camGoalPos = new THREE.Vector3();
     const camGoalLook = new THREE.Vector3();
+
+    // Phase 16.5: cinematic firework camera (liftoff → ascent tracking → burst pull-back → free orbit)
+    let fwCamPhase = "liftoff", fwBurstAge = 0, camFovGoal = camera.fov, camKcMul = 1;
+    const fwOrbit = { yaw: 0, pitch: 0, dist: 1, drag: false, lx: 0, ly: 0 };
+    if (nightFW && canvas) {
+      canvas.style.touchAction = "none";
+      const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+      canvas.addEventListener("pointerdown", e => {
+        fwOrbit.drag = true; fwOrbit.lx = e.clientX; fwOrbit.ly = e.clientY;
+        try { canvas.setPointerCapture(e.pointerId); } catch (x) {}
+      });
+      const endOrbit = e => { fwOrbit.drag = false; try { canvas.releasePointerCapture(e.pointerId); } catch (x) {} };
+      canvas.addEventListener("pointerup", endOrbit);
+      canvas.addEventListener("pointercancel", endOrbit);
+      canvas.addEventListener("pointermove", e => {
+        if (!fwOrbit.drag) return;
+        const dx = e.clientX - fwOrbit.lx, dy = e.clientY - fwOrbit.ly;
+        fwOrbit.lx = e.clientX; fwOrbit.ly = e.clientY;
+        // ก่อนพลุแตก = ขยับได้นิดเดียว (ไม่ให้หลุดช็อตซีเนแมติก) · หลังแตก = อิสระเต็มที่
+        const gain = fwCamPhase === "post" ? 1 : 0.32;
+        fwOrbit.yaw = clamp(fwOrbit.yaw - dx * 0.005 * gain, -1.15, 1.15);
+        fwOrbit.pitch = clamp(fwOrbit.pitch + dy * 0.004 * gain, -0.5, 0.72);
+      });
+      canvas.addEventListener("wheel", e => {
+        e.preventDefault();
+        fwOrbit.dist = clamp(fwOrbit.dist * (1 + Math.sign(e.deltaY) * 0.08), 0.6, 1.7);
+      }, { passive: false });
+    }
+
+    function updateFireworkCam(dt) {
+      const shellY = rocket.position.y;                       // scene units: ~-1.4 in mortar → ~40–46 at apogee
+      const burstY = fwBurstY != null ? fwBurstY : shellY;
+      const xJit = rocket.position.x;
+
+      if (!fwFired) {
+        fwCamPhase = (!fwArmed || shellY < 3.5) ? "liftoff" : "ascent";
+      } else {
+        fwBurstAge += dt;
+        fwCamPhase = fwBurstAge < 1.7 ? "burst" : "post";
+      }
+      if (camTag) camTag.textContent =
+        { liftoff: "SPECTATOR", ascent: "TRACKING ▲", burst: "◉ BURST", post: "SPECTATOR ⟲" }[fwCamPhase];
+
+      const base = new THREE.Vector3(), look = new THREE.Vector3();
+      if (fwCamPhase === "liftoff") {
+        // มุมต่ำติดพื้น เงยหน้าขึ้นหาแร็คท่อครก
+        base.set(6.2, 1.7, 27);
+        look.set(xJit * 0.3, 7.5, 0);
+        camFovGoal = 60; camKcMul = 1.05;
+      } else if (fwCamPhase === "ascent") {
+        // เครนกล้องขึ้นตามหางประกาย — กล้องอยู่ต่ำกว่าลูกพลุเสมอ เงยตาม
+        const t = Math.min(1, shellY / 42);
+        base.set(4.4 - t * 1.4, 1.7 + shellY * 0.44, 28 - t * 2.5);
+        look.set(xJit * 0.5, shellY + 3.4, 0);
+        camFovGoal = 58; camKcMul = 0.85;                     // ช้าลง = แพนนุ่ม
+      } else if (fwCamPhase === "burst") {
+        // จังหวะพลุแตก: ถอยกล้องตามแกน Z + ถ่างเลนส์ (FOV) ให้ดอกมัลติเบรกอยู่กลางเฟรม ไม่โดนตัดขอบ
+        const e = fwBurstAge / 1.7;
+        const ease = e < 0.5 ? 4 * e * e * e : 1 - Math.pow(-2 * e + 2, 3) / 2;   // easeInOutCubic
+        base.set(2, burstY * 0.5 + 4, 32 + ease * 50);
+        look.set(0, burstY, 0);
+        camFovGoal = 60 + ease * 24;                          // 60 → 84
+        camKcMul = 0.5 + ease * 0.42;                         // ไหลช้าตอนต้น แล้วนิ่ง
+      } else {
+        // ดาวร่วง: กล้องกว้าง ค้างไว้ ให้ผู้เล่นหมุน/แพนเองได้
+        base.set(1.5, burstY * 0.48 + 3, 82);
+        look.set(0, burstY * 0.95, 0);
+        camFovGoal = 82; camKcMul = 0.55;
+      }
+
+      // manual orbit offset — หมุนเวกเตอร์กล้อง→เป้ารอบแกน Y + เอียง pitch + ดอลลี่
+      const off = base.clone().sub(look);
+      const cy = Math.cos(fwOrbit.yaw), sy = Math.sin(fwOrbit.yaw);
+      const ox = off.x * cy - off.z * sy, oz = off.x * sy + off.z * cy;
+      off.x = ox; off.z = oz;
+      off.y += fwOrbit.pitch * off.length() * 0.55;
+      off.multiplyScalar(fwOrbit.dist);
+      camGoalPos.copy(look).add(off);
+      camGoalLook.copy(look);
+
+      camera.fov += (camFovGoal - camera.fov) * Math.min(1, dt * 2.2);
+      camera.updateProjectionMatrix();
+    }
+
     function vehicleMidY() {
       let sum = 0, n = 0;
       rParts.forEach(rp => { if (!rp.detached) { sum += rp.mesh.position.y; n++; } });
       return n ? sum / n : 4;
     }
-    function updateCameraGoal(alt) {
+    function updateCameraGoal(alt, dt) {
       const ry = vehicleMidY();
       if (alt < 12 && flight.state.t < 2.2) camState = "pad";
       else if (alt < 1600) camState = "ground";
@@ -1125,15 +1209,8 @@
       else camState = "orbital";
       if (camTag) camTag.textContent = { pad: "PAD", ground: "GROUND", chase: "CHASE", orbital: "ORBITAL" }[camState];
 
-      // Phase 12/13: กล้องมุมผู้ชม — ยืนบนพื้นไกลจากแร็คท่อครก เงยหน้าตามลูกพลุขึ้นฟ้า
-      if (nightFW) {
-        // ตามลูกพลุตอนขาขึ้น แล้วค้างที่จุดแตก
-        const focus = fwBurstY != null ? fwBurstY : rocket.position.y;
-        camGoalPos.set(5, 3.2, 62);
-        camGoalLook.set(0, Math.max(6, focus * 0.72 + 2), 0);
-        if (camTag) camTag.textContent = "SPECTATOR";
-        return;
-      }
+      // Phase 16.5: กล้องซีเนแมติกสำหรับพลุ (liftoff → tracking → burst pull-back → free orbit)
+      if (nightFW) { updateFireworkCam(dt || 0.016); return; }
 
       // จรวดพื้นบ้านลำเล็ก (บั้งไฟ/ตะไล/โคม) — ดึงกล้องเข้าใกล้ให้เห็นลำ+หางชัด
       const sm = meta.bangfai || meta.talai || tier === 1;
@@ -1411,8 +1488,10 @@
       }
 
       // camera
-      updateCameraGoal(alt);
-      const kc = Math.min(1, dt * (camState === "pad" ? 4 : 2.4));
+      updateCameraGoal(alt, dt);
+      const kc = nightFW
+        ? Math.min(1, dt * 2.6 * camKcMul)
+        : Math.min(1, dt * (camState === "pad" ? 4 : 2.4));
       camera.position.lerp(camGoalPos, kc);
       lookTarget.lerp(camGoalLook, kc);
       shake *= Math.exp(-dt * 3.2);

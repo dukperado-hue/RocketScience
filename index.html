@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+Thai:wght@500;600;700;900&family=Sarabun:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=61">
+<link rel="stylesheet" href="css/style.css?v=63">
 </head>
 <body>
 <script>
@@ -298,9 +298,9 @@
   </div>
 </div>
 
-<!-- Phase 16 · Persistent NPC companion (พี่ช่าง / น้องกะปิ) -->
+<!-- Phase 16 · Persistent NPC companion (พี่ช่าง / น้องกะปิ / น้องชะอม) -->
 <div id="npc" class="npc" data-who="pchang" hidden>
-  <div class="npc-portrait"><img id="npc-img" alt=""></div>
+  <div class="npc-portrait"><span id="npc-emoji" class="npc-emoji" hidden>🦆</span><img id="npc-img" alt=""></div>
   <div class="npc-main">
     <div class="npc-plate"><span id="npc-name" class="npc-name"></span><span id="npc-role" class="npc-role"></span></div>
     <p id="npc-text" class="npc-text"></p>
@@ -383,42 +383,42 @@
 </footer>
 
 <!-- Three.js r147 (UMD) + post-processing + GLTFLoader for the cinematic 3D launch -->
-<script src="vendor/three/three.min.js?v=61"></script>
-<script src="vendor/three/shaders/CopyShader.js?v=61"></script>
-<script src="vendor/three/shaders/LuminosityHighPassShader.js?v=61"></script>
-<script src="vendor/three/shaders/FilmShader.js?v=61"></script>
-<script src="vendor/three/postprocessing/EffectComposer.js?v=61"></script>
-<script src="vendor/three/postprocessing/MaskPass.js?v=61"></script>
-<script src="vendor/three/postprocessing/RenderPass.js?v=61"></script>
-<script src="vendor/three/postprocessing/ShaderPass.js?v=61"></script>
-<script src="vendor/three/postprocessing/UnrealBloomPass.js?v=61"></script>
-<script src="vendor/three/postprocessing/FilmPass.js?v=61"></script>
-<script src="vendor/three/loaders/GLTFLoader.js?v=61"></script>
+<script src="vendor/three/three.min.js?v=63"></script>
+<script src="vendor/three/shaders/CopyShader.js?v=63"></script>
+<script src="vendor/three/shaders/LuminosityHighPassShader.js?v=63"></script>
+<script src="vendor/three/shaders/FilmShader.js?v=63"></script>
+<script src="vendor/three/postprocessing/EffectComposer.js?v=63"></script>
+<script src="vendor/three/postprocessing/MaskPass.js?v=63"></script>
+<script src="vendor/three/postprocessing/RenderPass.js?v=63"></script>
+<script src="vendor/three/postprocessing/ShaderPass.js?v=63"></script>
+<script src="vendor/three/postprocessing/UnrealBloomPass.js?v=63"></script>
+<script src="vendor/three/postprocessing/FilmPass.js?v=63"></script>
+<script src="vendor/three/loaders/GLTFLoader.js?v=63"></script>
 
-<script src="js/data.js?v=61"></script>
-<script src="js/notam.js?v=61"></script>
-<script src="js/law.js?v=61"></script>
-<script src="js/chemistry.js?v=61"></script>
-<script src="js/fireworks.js?v=61"></script>
-<script src="js/codex.js?v=61"></script>
-<script src="js/physics.js?v=61"></script>
-<script src="js/ui.js?v=61"></script>
-<script src="js/vn.js?v=61"></script>
-<script src="js/narrative.js?v=61"></script>
-<script src="js/vab.js?v=61"></script>
-<script src="js/talai.js?v=61"></script>
-<script src="js/bangfai.js?v=61"></script>
-<script src="js/skins.js?v=61"></script>
-<script src="js/modelManager.js?v=61"></script>
-<script src="js/vab3d.js?v=61"></script>
-<script src="js/vehicleTree.js?v=61"></script>
-<script src="js/vabEditor.js?v=61"></script>
-<script src="js/codexViewer.js?v=61"></script>
-<script src="js/recovery.js?v=61"></script>
-<script src="js/textureManager.js?v=61"></script>
-<script src="js/launch2d.js?v=61"></script>
-<script src="js/launch3d.js?v=61"></script>
-<script src="js/main.js?v=61"></script>
-<script src="js/campaign.js?v=61"></script>
+<script src="js/data.js?v=63"></script>
+<script src="js/notam.js?v=63"></script>
+<script src="js/law.js?v=63"></script>
+<script src="js/chemistry.js?v=63"></script>
+<script src="js/fireworks.js?v=63"></script>
+<script src="js/codex.js?v=63"></script>
+<script src="js/physics.js?v=63"></script>
+<script src="js/ui.js?v=63"></script>
+<script src="js/vn.js?v=63"></script>
+<script src="js/narrative.js?v=63"></script>
+<script src="js/vab.js?v=63"></script>
+<script src="js/talai.js?v=63"></script>
+<script src="js/bangfai.js?v=63"></script>
+<script src="js/skins.js?v=63"></script>
+<script src="js/modelManager.js?v=63"></script>
+<script src="js/vab3d.js?v=63"></script>
+<script src="js/vehicleTree.js?v=63"></script>
+<script src="js/vabEditor.js?v=63"></script>
+<script src="js/codexViewer.js?v=63"></script>
+<script src="js/recovery.js?v=63"></script>
+<script src="js/textureManager.js?v=63"></script>
+<script src="js/launch2d.js?v=63"></script>
+<script src="js/launch3d.js?v=63"></script>
+<script src="js/main.js?v=63"></script>
+<script src="js/campaign.js?v=63"></script>
 </body>
 </html>

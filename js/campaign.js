@@ -27,20 +27,27 @@
   // ============================================================
   const IMG = "assets/images/characters/";
   const CH = {
-    pchang: { name: "พี่ช่าง", role: "CAPCOM · หัวหน้าวิศวกร", img: IMG + "pchang.png", accent: "#3B82C4", tone: "pchang" },
-    kapi:   { name: "น้องกะปิ", role: "ผู้ช่วยช่างฝึกงาน", img: IMG + "kapi.png", accent: "#8AA35C", tone: "kapi" }
+    pchang: { name: "พี่ช่าง", role: "CAPCOM · หัวหน้าวิศวกร", img: IMG + "pchang.png", accent: "#3B82C4", tone: "pchang", emoji: "🦆" },
+    kapi:   { name: "น้องกะปิ", role: "ผู้ช่วยช่างฝึกงาน", img: IMG + "kapi.png", accent: "#8AA35C", tone: "kapi", emoji: "🦫" },
+    // Phase 16.5: น้องชะอม — แมวสามสีจอมพลังในชุดอวกาศตัวโคร่ง · Payload Specialist / นักบินทดสอบ
+    chaom:  { name: "น้องชะอม", role: "Payload Specialist · นักบินทดสอบ", img: "assets/images/cha_om.png", accent: "#EE7A2D", tone: "chaom", emoji: "🐈" }
   };
 
   const NPC = (function () {
-    let box, img, nameEl, roleEl, textEl, contEl;
+    let box, img, emojiEl, nameEl, roleEl, textEl, contEl;
     let queue = [], idx = 0, typing = false, timer = null, autoT = null, doneCb = null, full = "";
     const SPEED = 16;
 
     function ensure() {
       box = el("npc");
       if (!box) return false;
-      img = el("npc-img"); nameEl = el("npc-name"); roleEl = el("npc-role");
+      img = el("npc-img"); emojiEl = el("npc-emoji"); nameEl = el("npc-name"); roleEl = el("npc-role");
       textEl = el("npc-text"); contEl = el("npc-cont");
+      if (img && !img._wired) {
+        img._wired = true;
+        img.addEventListener("load", () => { img.style.visibility = "visible"; if (emojiEl) emojiEl.hidden = true; });
+        img.addEventListener("error", () => { img.style.visibility = "hidden"; if (emojiEl) emojiEl.hidden = false; });
+      }
       if (!box._wired) {
         box._wired = true;
         box.addEventListener("click", advance);
@@ -52,7 +59,13 @@
       const c = CH[who] || CH.pchang;
       box.dataset.who = who in CH ? who : "pchang";
       box.style.setProperty("--npc-accent", c.accent);
-      if (img) { img.src = c.img; img.alt = c.name; }
+      if (emojiEl) { emojiEl.textContent = c.emoji || "🙂"; emojiEl.hidden = true; }
+      if (img) {
+        img.style.visibility = "hidden";   // ซ่อนจนกว่าจะโหลดเสร็จ (กันไอคอนรูปแตก)
+        img.src = c.img; img.alt = c.name;
+        if (img.complete && img.naturalWidth > 0) { img.style.visibility = "visible"; }
+        else if (img.complete) { if (emojiEl) emojiEl.hidden = false; }
+      }
       nameEl.textContent = c.name;
       roleEl.textContent = c.role;
     }
@@ -379,7 +392,8 @@
     NPC.show("kapi");
     NPC.play([
       { who: "kapi", text: "โรงประกอบครับพี่! ลากไอคอนขวามือมาวาง — เปลือกพลุก่อน แล้วค่อยยัดสารเคมี แล้วเสียบชนวน" },
-      { who: "kapi", text: "ชิ้นไหนวางผิดที่ก็ลากออกมาลอย ๆ ได้ครับ ไม่ต้องกลัว เดี๋ยวผมยืนดูเป็นกำลังใจ 👀" }
+      { who: "chaom", text: "พี่กะปิ! ผูกหนูติดกับพลุเลย หนูอยากบิน! 🚀" },
+      { who: "kapi", text: "ชะอม! เพย์โหลดคือเซนเซอร์ ไม่ใช่ตัวเธอ... พี่ครับ ชิ้นไหนวางผิดก็ลากออกมาลอย ๆ ได้ ไม่ต้องกลัว 👀" }
     ], { auto: 5200 });
   }
 
@@ -470,8 +484,10 @@
     NPC.show("pchang");
     NPC.play([
       { who: "pchang", text: "พี่ช่างรับช่วงต่อ — ระบบพร้อม สภาพอากาศฟ้าโปร่ง ทุกคนเข้าประจำที่" },
-      { who: "kapi", text: "ตื่นเต้นจังเลยครับ!" }
-    ], { auto: 3600 });
+      { who: "kapi", text: "ตื่นเต้นจังเลยครับ!" },
+      { who: "chaom", text: "ตื่นเต้นๆๆๆ จุดเลยๆๆ!" },
+      { who: "pchang", text: "ชะอม เงียบ. กด ARM SIMULATION เมื่อพร้อม แล้วนับถอยหลังจะเริ่มเอง" }
+    ], { auto: 3400 });
 
     startRoomTone();
     el("lc-arm").onclick = () => {
@@ -524,6 +540,7 @@
         dropRoomTone();
         NPC.flash("pchang", "T‑10 · ตัดเสียงรบกวน ห้องเงียบ");
       }
+      if (t === 7) NPC.flash("chaom", "เร็วๆ เร็วๆ! หนูจะเป็นลม! 😾");
       if (t === 5) {
         el("lc-lights").classList.add("on");
         NPC.flash("pchang", "T‑5 · ไฟเตือนห้องคอนโทรลติด — ยืนยันเคลียร์");
@@ -535,6 +552,7 @@
         lc.classList.remove("cut-wire", "cut-sky", "cut-tube");
         lc.classList.add(c.tint);
         if (t === 3) NPC.flash("kapi", "กลั้นหายใจ...");
+        if (t === 2) NPC.flash("chaom", "จุดดดดด!");
       }
       if (t === 0) {
         clearInterval(cdTimer); cdTimer = null;
@@ -617,6 +635,9 @@
   function safeDerived() { try { return FW().derived(); } catch (e) { return {}; } }
 
   function onFlightDone(sum) {
+    if (cdTimer) { clearInterval(cdTimer); cdTimer = null; }
+    dropRoomTone();
+    const lc = el("launch-control"); if (lc) { lc.hidden = true; lc.className = "launch-control"; }
     lastSummary = sum;
     lastScore = computeScorecard(sum);
     let res = { notes: [] };
@@ -668,7 +689,13 @@
       : sc.avg >= 55
         ? "ก็... ไม่แย่นะครับพี่ ครั้งหน้าผมจะไม่เสียบสายผิดแล้ว"
         : "ฮือ... ผมขอโทษครับพี่ 😢 ผมจะฝึกให้เก่งกว่านี้";
-    NPC.play([{ who: "pchang", text: pLine }, { who: "kapi", text: kLine }]);
+    const style = sc.metrics.style, acc = sc.metrics.accuracy;
+    const cLine = sc.avg >= 85
+      ? `ดอกใหญ่มากกก! ถ้าหนูอยู่บนนั้นคง ${Math.max(3, Math.round(acc / 12))}G เต็ม ๆ — ปีหน้าเอาหนูขึ้นนะ! 🚀`
+      : sc.avg >= 55
+        ? (style >= 80 ? "ระเบิดสวยเว่อร์! หนูดูจนคอเคล็ด 🤩" : "โอเคอยู่ ๆ แต่หนูว่าดอกน่าจะใหญ่กว่านี้ได้อีก!")
+        : "ตูม... เล็กจัง 😿 หนูนั่งรอเก้อเลย คราวหน้าอัดดินเยอะ ๆ นะพี่";
+    NPC.play([{ who: "pchang", text: pLine }, { who: "kapi", text: kLine }, { who: "chaom", text: cLine }]);
 
     el("debrief-home").onclick = () => { teardown(); RS().endCampaign(); RS().renderHome(); RS().show("home"); };
     el("debrief-next").onclick = () => { teardown(); RS().endCampaign(); RS().renderMissions(); RS().show("mission"); };
