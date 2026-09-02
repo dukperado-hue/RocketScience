@@ -599,5 +599,8 @@
     exploded = false; explodeT = 0;
   }
 
-  window.VABEditor = { mount, show, setExploded, toggleExploded, unmount };
+  // Phase 17: ส่งต้นไม้ยานที่ประกอบเสร็จให้ STATE_TESTING (อาจเป็น null ถ้ายังไม่ได้วางเปลือก)
+  function getTree() { return tree; }
+
+  window.VABEditor = { mount, show, setExploded, toggleExploded, unmount, getTree };
 })();

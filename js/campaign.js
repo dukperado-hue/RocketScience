@@ -406,7 +406,7 @@
   }
 
   // ============================================================
-  //  STATE_TESTING — System Check (บั๊กจากน้องกะปิ)
+  //  STATE_TESTING — Phase 17: Diagnostic console + mission mini-game
   // ============================================================
   const TEST_CHECKS = [
     { id: "energy", th: "ENERGY BUS", ok: "แรงขับ/มวล อยู่ในพิกัด" },
@@ -420,6 +420,32 @@
     NPC.show("kapi");
     testing.fixed = false;
 
+    const goBtn = el("testing-go");
+    goBtn.disabled = true;
+    goBtn.textContent = "แก้ระบบให้เสร็จก่อน →";
+
+    if (window.TestingGames) {
+      window.TestingGames.mount(el("testing-body"), {
+        missionId: mission.id,
+        fw: (FW() && FW().derived) ? safeDerived() : null,
+        mats: mats,
+        tree: (window.VABEditor && window.VABEditor.getTree) ? window.VABEditor.getTree() : null,
+        npc: NPC
+      }, () => {
+        testing.fixed = true;
+        goBtn.disabled = false;
+        goBtn.textContent = "ส่งต่อให้ LAUNCH CONTROL →";
+      });
+      goBtn.onclick = () => {
+        try { window.TestingGames.unmount(); } catch (e) {}
+        go(S.LAUNCH_CONTROL);
+      };
+      return;
+    }
+
+    // ---- fallback (js/testing.js ไม่โหลด): เช็กลิสต์ปุ่มเดียวแบบเดิม ----
+    goBtn.disabled = false;
+    goBtn.textContent = "ส่งต่อให้ LAUNCH CONTROL →";
     const body = el("testing-body");
     body.innerHTML = `
       <div class="cmp-test-card">
@@ -432,32 +458,20 @@
             </li>`).join("")}
         </ul>
         <button type="button" class="btn btn-primary cmp-fix-btn" id="cmp-fix-btn">🔧 สลับสายชนวนกลับให้ถูก (ช่วยกะปิ)</button>
-        <p class="cmp-test-note" id="cmp-test-note">พบ 1 รายการผิดปกติ — แก้ก่อนปล่อย ไม่งั้นจังหวะการแตกจะเพี้ยนและเสถียรภาพตก</p>
+        <p class="cmp-test-note" id="cmp-test-note">พบ 1 รายการผิดปกติ — แก้ก่อนปล่อย</p>
       </div>`;
-
     el("cmp-fix-btn").onclick = () => {
       const li = $('#cmp-test-list li[data-check="timing"]');
       if (li) { li.classList.remove("err"); li.classList.add("ok"); li.querySelector(".cmp-test-stat").textContent = "✓ ชนวนหน่วงเวลาซิงก์กับ apogee"; }
       el("cmp-fix-btn").disabled = true;
       el("cmp-fix-btn").textContent = "✓ แก้เรียบร้อย";
-      el("cmp-test-note").textContent = "ทุกระบบผ่าน — พร้อมส่งต่อให้พี่ช่างคุมการปล่อย";
       testing.fixed = true;
-      NPC.play([{ who: "kapi", text: "ขอบคุณครับพี่! ผมจะจำไว้เลย... สายฟ้าคือขั้วบวก 🙏" }]);
     };
-
     NPC.play([
       { who: "kapi", text: "พี่ครับ ผมเผลอเสียบสายสลับกัน กราฟ Timing เลยเพี้ยน ช่วยผมแก้หน่อย! 💦" },
-      { who: "pchang", text: "อย่าเพิ่งรีบปล่อย ดู timing ให้ครบก่อน งานนี้ไม่ได้แข่งว่าใครเร็ว แข่งว่าใครชัวร์" }
+      { who: "pchang", text: "อย่าเพิ่งรีบปล่อย ดู timing ให้ครบก่อน" }
     ]);
-
-    el("testing-go").onclick = () => {
-      if (!testing.fixed) {
-        NPC.play([{ who: "pchang", text: "ยังมีระบบค้างสถานะ ERROR อยู่ — จะปล่อยทั้งอย่างนี้จริงเหรอ? บันทึกไว้ว่าเตือนแล้ว" }],
-          { onDone: () => go(S.LAUNCH_CONTROL) });
-      } else {
-        go(S.LAUNCH_CONTROL);
-      }
-    };
+    goBtn.onclick = () => go(S.LAUNCH_CONTROL);
   }
 
   // ============================================================
@@ -703,6 +717,7 @@
 
   function teardown() {
     NPC.hide();
+    if (window.TestingGames) { try { window.TestingGames.unmount(); } catch (e) {} }
     if (cdTimer) { clearInterval(cdTimer); cdTimer = null; }
     dropRoomTone();
     const lc = el("launch-control"); if (lc) { lc.hidden = true; lc.className = "launch-control"; }
@@ -713,5 +728,6 @@
     state = null;
   }
 
-  window.Campaign = { wants, begin, assemblyDone, get state() { return state; } };
+  window.Campaign = { wants, begin, assemblyDone, get state() { return state; }, get mission() { return mission; } };
+  window.NPC = NPC;   // Phase 17: js/testing.js ใช้เรียกบทสนทนาระหว่างมินิเกม
 })();
