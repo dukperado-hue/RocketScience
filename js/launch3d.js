@@ -150,13 +150,15 @@
     const tier = meta.tier || 1;
     // Phase 12: หัวพลุ → บังคับฉากกลางคืน อากาศดีเสมอ + กล้องมุมผู้ชมบนพื้น
     const nightFW = !!meta.firework;
+    // Phase 18.5 · โคมลอย = บังคับ "คืนที่สมบูรณ์" เช่นเดียวกับพลุ (ฟ้าใสกลางคืน ดาวเต็มฟ้า พระจันทร์)
+    const nightSky = nightFW || !!meta.lantern;
     const propType = (cfg.stages && cfg.stages[0] && cfg.stages[0].propType) || "solid";
     const liquid = propType === "liquid";
     const stageCount = (cfg.stages && cfg.stages.length) || 1;
 
     // ---------- Phase 4: สภาพอากาศ + ตัวจัดการพื้นผิว ----------
-    const weather = nightFW
-      // Phase 12: จุดพลุต้องเป็นกลางคืน "อากาศดีเสมอ" — ฟ้าโปร่ง ลมนิ่ง
+    const weather = nightSky
+      // Phase 12/18.5: จุดพลุ + โคมลอย = กลางคืน "อากาศดีเสมอ" — ฟ้าโปร่ง ลมนิ่ง
       ? { type: "clear", cloudCover: 0.03, rainRate: 0, skyDark: 0, lightning: false, windGust: 0 }
       : (window.Physics && window.Physics.normalizeWeather)
         ? window.Physics.normalizeWeather(cfg.weather)
@@ -183,24 +185,24 @@
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.outputEncoding = THREE.sRGBEncoding;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = nightFW ? 1.18 : 1.05;
+    renderer.toneMappingExposure = nightSky ? 1.18 : 1.05;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(nightFW ? 0x02030a : 0x0a1830);
-    scene.fog = new THREE.FogExp2(nightFW ? 0x02030a : 0x0a1830, nightFW ? 0.0008 : 0.0016);
+    scene.background = new THREE.Color(nightSky ? 0x02030a : 0x0a1830);
+    scene.fog = new THREE.FogExp2(nightSky ? 0x02030a : 0x0a1830, nightSky ? 0.0008 : 0.0016);
 
-    const camera = new THREE.PerspectiveCamera(nightFW ? 68 : 52, 1, 0.1, 6000);
+    const camera = new THREE.PerspectiveCamera(nightFW ? 68 : meta.lantern ? 60 : 52, 1, 0.1, 6000);
     camera.position.set(10, 6, 18);
     const lookTarget = new THREE.Vector3(0, 4, 0);
 
     // ---------- lights ----------
-    const hemi = new THREE.HemisphereLight(nightFW ? 0x2a3a66 : 0x9ec8ff, 0x2a2016, nightFW ? 0.12 : 0.5);
+    const hemi = new THREE.HemisphereLight(nightSky ? 0x2a3a66 : 0x9ec8ff, 0x2a2016, nightSky ? 0.12 : 0.5);
     scene.add(hemi);
-    const sun = new THREE.DirectionalLight(0xfff2d8, nightFW ? 0 : 1.15);
+    const sun = new THREE.DirectionalLight(0xfff2d8, nightSky ? 0 : 1.15);
     sun.position.set(-30, 40, 20);
     scene.add(sun);
-    // Phase 12: กลางคืน — ใช้แสงจันทร์นวล ๆ ผ่าน sun ที่มีอยู่แล้ว (ไม่เพิ่ม light ใหม่ = ไม่ recompile)
-    if (nightFW) {
+    // Phase 12/18.5: กลางคืน — ใช้แสงจันทร์นวล ๆ ผ่าน sun ที่มีอยู่แล้ว (ไม่เพิ่ม light ใหม่ = ไม่ recompile)
+    if (nightSky) {
       sun.color.setHex(0xaec4ff);
       sun.position.set(24, 34, -18);
     }
@@ -213,7 +215,7 @@
     const groundTex = track(groundTexture());
     const ground = new THREE.Mesh(
       new THREE.CircleGeometry(600, 64),
-      new THREE.MeshStandardMaterial({ map: groundTex, color: 0xffffff, roughness: 1, metalness: 0 })
+      new THREE.MeshStandardMaterial({ map: groundTex, color: nightSky ? 0x39373f : 0xffffff, roughness: 1, metalness: 0 })
     );
     ground.rotation.x = -Math.PI / 2;
     worldGroup.add(ground);
@@ -245,25 +247,29 @@
     horizon.rotation.x = -Math.PI / 2;
     worldGroup.add(horizon);
 
-    // ---------- Phase 14: กริดเพดาน NOTAM (เรืองแสงจาง ๆ — worldGroup จมลงจนกริดมาถึงจรวดเมื่อถึงเพดาน) ----------
+    // ---------- Phase 14/18.5: เพดาน NOTAM — เลิกใช้ GridHelper (เส้นขาวเต็มพื้นทำลายบรรยากาศ)
+    //   แทนด้วยแผ่นเรืองแสงโปร่ง + วงขอบบาง ๆ ที่ระดับเพดาน (worldGroup จมลงจนแผ่นมาถึงจรวดเมื่อถึงเพดาน)
+    //   ข้ามทั้งหมดในฉากกลางคืน (พลุ/โคมลอย) — พึ่ง HUD ตัวเลขแทน
     let notamGrid = null;
     const NOTAM_CFG = cfg.notam && cfg.notam.ceiling ? cfg.notam : null;
-    if (NOTAM_CFG && !nightFW) {
-      notamGrid = new THREE.GridHelper(260, 22, 0xffffff, 0xffffff);
-      notamGrid.material.transparent = true;
-      notamGrid.material.opacity = 0.24;
-      notamGrid.material.depthWrite = false;
-      notamGrid.material.color.setHex(0x6fb4ff);
+    if (NOTAM_CFG && !nightSky) {
+      notamGrid = new THREE.Group();
       notamGrid.position.y = altU(NOTAM_CFG.ceiling);
-      worldGroup.add(notamGrid);
       const gp = new THREE.Mesh(
         new THREE.PlaneGeometry(260, 260),
-        new THREE.MeshBasicMaterial({ color: 0x2f6fb8, transparent: true, opacity: 0.05, depthWrite: false, side: THREE.DoubleSide })
+        new THREE.MeshBasicMaterial({ color: 0x2f6fb8, transparent: true, opacity: 0.06, depthWrite: false, side: THREE.DoubleSide })
       );
       gp.rotation.x = -Math.PI / 2;
-      gp.position.y = notamGrid.position.y;
-      worldGroup.add(gp);
+      notamGrid.add(gp);
+      const ringM = new THREE.Mesh(
+        new THREE.RingGeometry(120, 128, 64),
+        new THREE.MeshBasicMaterial({ color: 0x6fb4ff, transparent: true, opacity: 0.4, depthWrite: false, side: THREE.DoubleSide })
+      );
+      ringM.rotation.x = -Math.PI / 2;
+      notamGrid.add(ringM);
+      worldGroup.add(notamGrid);
       notamGrid.userData.glow = gp;
+      notamGrid.userData.ring = ringM;
     }
     const notamHudEl = document.getElementById("notam-hud");
     const nhCeilEl = document.getElementById("nh-ceil");
@@ -295,10 +301,10 @@
       }
       cloudDecks.push(deck);
     });
-    // Phase 13: พลุ — เอาเมฆออกให้หมด ท้องฟ้าเป็นผืนมืดสะอาด เห็นดอกพลุชัดทุกความสูง
-    if (nightFW) cloudDecks.forEach(d => { d.visible = false; });
+    // Phase 13/18.5: พลุ + โคมลอย — เอาเมฆออกให้หมด ท้องฟ้าเป็นผืนมืดสะอาด
+    if (nightSky) cloudDecks.forEach(d => { d.visible = false; });
     function updateCloudDecks(dt, alt, spaceT) {
-      if (nightFW) return;
+      if (nightSky) return;
       const wind = cfg.windSpeed || 0;
       const fade = Math.max(0, 1 - spaceT * 1.6);
       cloudDecks.forEach(deck => {
@@ -401,6 +407,70 @@
       stars.material.opacity = Math.max(0, v);
       milkyWay.material.opacity = Math.max(0, v * 0.7);
     }
+
+    // ---------- Phase 18.5 · พระจันทร์ (สุ่มเฟสต่อการปล่อย) — ฉากกลางคืน ----------
+    let moon = null;
+    function makeMoon() {
+      const phases = ["full", "gibbous", "crescent", "smiling", "new"];
+      const phase = phases[(Math.random() * phases.length) | 0];
+      const S = 256, c = document.createElement("canvas");
+      c.width = c.height = S;
+      const x = c.getContext("2d");
+      const cx = S / 2, cy = S / 2, R = S * 0.32;
+      const halo = x.createRadialGradient(cx, cy, R * 0.7, cx, cy, R * 2.3);
+      halo.addColorStop(0, "rgba(214,226,255,0.34)");
+      halo.addColorStop(1, "rgba(214,226,255,0)");
+      x.fillStyle = halo; x.fillRect(0, 0, S, S);
+      x.save();
+      x.beginPath(); x.arc(cx, cy, R, 0, 7); x.clip();
+      x.fillStyle = phase === "new" ? "#242c44" : "#eef1ff";
+      x.fillRect(0, 0, S, S);
+      if (phase !== "new") {
+        x.fillStyle = "rgba(150,165,205,0.5)";
+        [[-0.3, -0.22, 0.20], [0.26, 0.12, 0.16], [0.04, 0.42, 0.13], [-0.16, 0.30, 0.11], [0.34, -0.32, 0.12]]
+          .forEach(([dx, dy, r]) => { x.beginPath(); x.arc(cx + dx * R, cy + dy * R, r * R, 0, 7); x.fill(); });
+      }
+      if (phase === "crescent" || phase === "gibbous" || phase === "smiling") {
+        x.fillStyle = "#05060c";
+        const off = phase === "gibbous" ? -0.6 : 0.52;
+        x.beginPath(); x.arc(cx + off * R * 2, cy, R * 1.16, 0, 7); x.fill();
+      }
+      x.restore();
+      if (phase === "smiling") {
+        x.strokeStyle = "#c9d2ee"; x.lineWidth = S * 0.022; x.lineCap = "round";
+        x.beginPath(); x.arc(cx - R * 0.20, cy - R * 0.16, R * 0.07, 0, 7); x.stroke();
+        x.beginPath(); x.arc(cx + R * 0.10, cy - R * 0.16, R * 0.07, 0, 7); x.stroke();
+        x.beginPath(); x.arc(cx - R * 0.05, cy + R * 0.04, R * 0.42, 0.15 * Math.PI, 0.85 * Math.PI); x.stroke();
+      }
+      const m = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: track(new THREE.CanvasTexture(c)), transparent: true, depthWrite: false, toneMapped: false, opacity: 0
+      }));
+      m.scale.set(205, 205, 1);
+      // วางในซีกฟ้า "ด้านหน้า" (ทิศที่กล้องหันไป, −z) กวาดซ้าย/ขวา ±30° ที่มุมเงย ~22°
+      const th = (Math.random() - 0.5) * 1.05;
+      m.position.set(Math.sin(th) * 920, 300 + Math.random() * 150, -Math.cos(th) * 920);
+      m.renderOrder = -1;
+      scene.add(m);
+      moon = m;
+    }
+    if (nightSky) makeMoon();
+
+    // ---------- Phase 18.5 · เงาต้นไม้ขอบฟ้า — ไม่ให้พื้นเป็นที่ว่างเปล่าตอนแหงนมอง ----------
+    (function makeTreeline() {
+      const g = new THREE.Group();
+      const treeMat = new THREE.MeshBasicMaterial({ color: nightSky ? 0x05070e : 0x0b1912 });
+      const N = 48;
+      for (let i = 0; i < N; i++) {
+        const a = (i / N) * Math.PI * 2 + (Math.random() - 0.5) * 0.09;
+        const rr = 150 + Math.random() * 44;
+        const h = 9 + Math.random() * 24;
+        const cone = new THREE.Mesh(new THREE.ConeGeometry(2.2 + Math.random() * 2.8, h, 6), treeMat);
+        cone.position.set(Math.cos(a) * rr, h / 2, Math.sin(a) * rr);
+        g.add(cone);
+      }
+      g.renderOrder = -1;
+      worldGroup.add(g);
+    })();
 
     // ---------- โลกโค้ง + ชั้นบรรยากาศเรืองแสง (Fresnel) สำหรับมุมวงโคจร ----------
     const earthGroup = new THREE.Group();
@@ -1166,6 +1236,27 @@
     if (hud) hud.hidden = false;
     if (camTag) camTag.hidden = false;
 
+    // ---------- Phase 18.5 · ปุ่มสลับมุมกล้อง (โคมลอย: มุมแหงน ↔ มุมตาม) ----------
+    let lanternCamMode = "ground";
+    const camToggleBtn = document.getElementById("cam-toggle");
+    if (camToggleBtn) {
+      if (meta.lantern) {
+        camToggleBtn.hidden = false;
+        const syncLabel = () => {
+          camToggleBtn.textContent = lanternCamMode === "chase"
+            ? "🎥 มุมกล้อง: ตาม" : "🎥 มุมกล้อง: แหงน";
+        };
+        syncLabel();
+        camToggleBtn.onclick = (e) => {
+          e.stopPropagation();
+          lanternCamMode = lanternCamMode === "chase" ? "ground" : "chase";
+          syncLabel();
+        };
+      } else {
+        camToggleBtn.hidden = true;
+      }
+    }
+
     // ---------- FlightHUD (แถบล่าง + ปุ่มควบคุม gravity turn / STAGE) ----------
     //   โคมลอยบังคับทิศไม่ได้ (ลอยตามลม) — ซ่อนแผงควบคุมล่าง ไม่ให้บังตัวโคม
     const hudOn = !!window.FlightHUD && !meta.lantern && !meta.firework;   // พลุบังคับทิศไม่ได้ — ซ่อน D-pad
@@ -1299,24 +1390,40 @@
       camera.updateProjectionMatrix();
     }
 
-    // Phase 17.2 · กล้องโคมลอย — worm's-eye: จุดกล้องตรึงต่ำติดพื้น (y≈1.0) ไม่ขยับตามโคมขึ้น
-    //   เอียงหน้าเงยตามโคมที่ลอยสูง+ไกลออกไป · ผู้เล่นแพน/เงย/ซูมเองได้ (fwOrbit)
+    // Phase 18.5 · กล้องโคมลอย 2 โหมด สลับได้ด้วยปุ่มบนจอ
+    //   "ground" (มุมแหงน) — จุดกล้องตรึงต่ำติดพื้น เงยหน้าตามโคมที่หดเล็กลงไปในฟ้า
+    //   "chase"  (มุมตาม)  — กล้องลอยขึ้นเคียงข้างโคม ให้ตัวโคมใหญ่และอยู่กลางจอเสมอ
     function updateLanternCam(dt) {
       const lx = rocket.position.x, ly = rocket.position.y;
-      if (camTag) camTag.textContent = "🏮 GROUND TRACK";
+      const chase = lanternCamMode === "chase";
+      if (camTag) camTag.textContent = chase ? "🏮 CHASE" : "🏮 GROUND TRACK";
 
-      // แกนหมุนของกล้อง = จุดปล่อยระดับพื้น (ไม่ใช่ตัวโคม) → กล้องอยู่ต่ำเสมอ
-      const pivot = new THREE.Vector3(0, 1.0, 0);
-      const off = new THREE.Vector3(1.6, 0, 15);        // เยื้องข้าง+ถอยหลังนิด ระดับพื้น
       const cy = Math.cos(fwOrbit.yaw), sy = Math.sin(fwOrbit.yaw);
-      const ox = off.x * cy - off.z * sy, oz = off.x * sy + off.z * cy;
-      off.x = ox; off.z = oz;
-      off.y += fwOrbit.pitch * 7;                        // เงย/ก้มด้วยมือ
-      off.multiplyScalar(fwOrbit.dist);
-      camGoalPos.copy(pivot).add(off);
-      camGoalPos.y = Math.max(0.7, camGoalPos.y);        // กล้องห้ามจมใต้พื้น
-      camGoalLook.set(lx * 0.7, ly, 0);                  // มองเงยขึ้นหาโคม
-      camFovGoal = 55;
+      if (chase) {
+        // ลอยขึ้นเคียงข้าง — pivot ที่ตัวโคม, offset คงที่ (ไม่โตตามความสูง) → โคมใหญ่กลางจอ
+        const pivot = new THREE.Vector3(lx, ly + 0.4, 0);
+        const off = new THREE.Vector3(2.4, 1.1, 9.5);
+        const ox = off.x * cy - off.z * sy, oz = off.x * sy + off.z * cy;
+        off.x = ox; off.z = oz;
+        off.y += fwOrbit.pitch * off.length() * 0.5;
+        off.multiplyScalar(fwOrbit.dist);
+        camGoalPos.copy(pivot).add(off);
+        camGoalPos.y = Math.max(1.2, camGoalPos.y);
+        camGoalLook.set(lx, ly + 0.4, 0);
+        camFovGoal = 48;
+      } else {
+        // มุมแหงน — จุดกล้องตรึงระดับพื้น (y≈1.0) เอียง look ขึ้นหาโคมที่ลอยจากไป
+        const pivot = new THREE.Vector3(0, 1.0, 0);
+        const off = new THREE.Vector3(1.6, 0, 15);
+        const ox = off.x * cy - off.z * sy, oz = off.x * sy + off.z * cy;
+        off.x = ox; off.z = oz;
+        off.y += fwOrbit.pitch * 7;
+        off.multiplyScalar(fwOrbit.dist);
+        camGoalPos.copy(pivot).add(off);
+        camGoalPos.y = Math.max(0.7, camGoalPos.y);
+        camGoalLook.set(lx * 0.7, ly + 2.5, 0);   // เงยขึ้นนิด — เห็นพระจันทร์/ดาว/โคมพื้นหลัง
+        camFovGoal = 55;
+      }
       camera.fov += (camFovGoal - camera.fov) * Math.min(1, dt * 1.6);
       camera.updateProjectionMatrix();
     }
@@ -1433,9 +1540,13 @@
         }
         notamHudEl.classList.toggle("breach", bC || bR);
         if (notamGrid) {
-          notamGrid.material.color.setHex(bC ? 0xff5b6b : 0x6fb4ff);
-          notamGrid.material.opacity = 0.2 + (bC ? 0.28 : 0.08) + Math.sin(performance.now() * 0.004) * 0.05;
-          if (notamGrid.userData.glow) notamGrid.userData.glow.material.opacity = bC ? 0.16 : 0.05;
+          const pulse = Math.sin(performance.now() * 0.004) * 0.05;
+          const rg = notamGrid.userData.ring;
+          if (rg) {
+            rg.material.color.setHex(bC ? 0xff5b6b : 0x6fb4ff);
+            rg.material.opacity = 0.32 + (bC ? 0.34 : 0.12) + pulse;
+          }
+          if (notamGrid.userData.glow) notamGrid.userData.glow.material.opacity = bC ? 0.18 : 0.06;
         }
       }
 
@@ -1637,13 +1748,16 @@
       // Phase 17.5 · flash แค่แต้มแสงพื้นหลังบาง ๆ (was ×2.2 / ×1.6 → จอขาวโพลน)
       hemi.intensity = (0.5 * (1 - spaceT * 0.7) * (1 - 0.55 * dark)) * ambDim + flash * 0.55;
       sun.intensity = (1.15 * (1 - 0.6 * dark)) * (meta.lantern ? 0.72 : 1) + flash * 0.38;
-      // Phase 12: หัวพลุ = กลางคืนตลอด ฟ้ามืดสนิท ดาวเต็มฟ้า พึ่ง bloom + point light ล้วน ๆ
-      if (nightFW) {
+      // Phase 12/18.5: หัวพลุ + โคมลอย = กลางคืนตลอด ฟ้ามืดสนิท ดาวเต็มฟ้า พระจันทร์
+      if (nightSky) {
         scene.background.setRGB(0.008, 0.012, 0.032);
         scene.fog.density = 0.0007;
-        setStarOpacity(Math.max(0.9, spaceT * 1.4));
-        hemi.intensity = 0.14;
-        sun.intensity = 0.32;   // แสงจันทร์
+        setStarOpacity(Math.max(0.92, spaceT * 1.4));
+        hemi.intensity = 0.10;
+        sun.intensity = 0.20;   // แสงจันทร์นวล ๆ — พื้นมืดพอให้ไฟในโคมเด่น
+      }
+      if (moon) {
+        moon.material.opacity += ((nightSky ? 0.95 : 0) - moon.material.opacity) * Math.min(1, dt * 1.5);
       }
       const orbitalView = alt > 60000;
       earth.visible = orbitalView;
@@ -1659,7 +1773,7 @@
       const kc = nightFW
         ? Math.min(1, dt * 2.6 * camKcMul)
         : meta.lantern
-          ? Math.min(1, dt * 1.0)                 // Phase 17.2 · ตามโคมช้า ๆ สง่างาม
+          ? Math.min(1, dt * (lanternCamMode === "chase" ? 2.2 : 1.0))   // chase = ตามเร็วขึ้นให้โคมนิ่งกลางจอ
           : Math.min(1, dt * (camState === "pad" ? 4 : 2.4));
       camera.position.lerp(camGoalPos, kc);
       lookTarget.lerp(camGoalLook, kc);
@@ -1736,6 +1850,8 @@
       if (hud) hud.hidden = true;
       if (notamHudEl) { notamHudEl.hidden = true; notamHudEl.classList.remove("breach"); }
       if (camTag) camTag.hidden = true;
+      if (camToggleBtn) { camToggleBtn.hidden = true; camToggleBtn.onclick = null; }
+      moon = null;
       if (evEl) evEl.hidden = true;
       if (fwChemEl) { fwChemEl.hidden = true; fwChemEl.classList.remove("fade"); }
       if (fwIgniteBtn) { fwIgniteBtn.hidden = true; fwIgniteBtn.onclick = null; }

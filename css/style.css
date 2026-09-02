@@ -1088,3 +1088,110 @@ body.npc-open .wrap{padding-bottom:clamp(230px,32vh,300px)}
   .tc-big{font-size:19px}
   .tc-topbar{font-size:9px;gap:7px}
 }
+
+/* ============================================================
+   Phase 18.5 · UI POLISH — legibility, NPC placement, back buttons, cam toggle
+   ============================================================ */
+
+/* ---- Task 1a · bigger, bolder UI text (was requiring 125% browser zoom) ---- */
+.vab-panel h3{font-size:16px;font-weight:900}
+.vab-panel-hint{font-size:12.5px}
+.vab-part{font-size:13.5px}
+.vab-part .vp-name{font-weight:800}
+.vab-part .vp-stat{font-size:11px}
+.vab-khom-hint{font-size:14px;line-height:1.7}
+.vab-khom-hint ol{padding-left:22px;gap:8px}
+.telem>div{font-size:13.5px}
+.telem dd{font-size:13px}
+.telem-verdict{font-size:13.5px;font-weight:800}
+.vab-mode-tag{font-size:10px}
+
+/* node editor palette — the icons/labels were near-unreadable */
+.vabe-item{width:88px;padding:11px 7px 9px}
+.vabe-item-icon{font-size:27px}
+.vabe-item-name{font-size:12.5px;font-weight:800;line-height:1.3}
+.vabe-status{font-size:12px;font-weight:600;padding:7px 11px}
+.vab3d-hint{font-size:11px;font-weight:600}
+.vab3d-btn{font-size:12.5px}
+#vab3d-tip b,#vabeditor-tip b{font-size:13px}
+#vab3d-tip span,#vabeditor-tip span{font-size:11px}
+@media(max-width:720px){.vabe-item{width:70px}.vabe-item-icon{font-size:21px}.vabe-item-name{font-size:11px}}
+
+/* VAB extras (โครงสร้าง/เคมี/พลุ) — small print bump */
+.vx-title{font-size:14px}
+.vx-label{font-size:12.5px}
+.vx-hint{font-size:10.5px}
+.vx-seg-btn{font-size:12.5px;padding:8px 5px}
+.vx-sl-name,.vx-sl-val{font-size:12px}
+.fw-toggle{font-size:13px}
+.fw-step-h{font-size:12.5px;font-weight:800}
+.fw-pat b{font-size:12.5px}
+.fw-pat small,.fw-sw small{font-size:10.5px}
+.fw-sw-th{font-size:12px}
+
+/* menu / card text */
+.pick-card .pc-desc{font-size:13.5px}
+.pick-card .pc-meta{font-size:11.5px}
+.tier-row .ts{font-size:13px}
+.name-box label{font-size:14px}
+.name-suggest button{font-size:12.5px;padding:6px 12px}
+
+/* ---- Task 1b · VN dialogue box → compact corner card (was a wide centre bar
+       covering the 3D canvas + the Proceed button) ---- */
+/* #vn / #npc are body-level fixed elements (not inside any #screen-*) — so anchor
+   them BOTTOM-RIGHT globally: clears the fixed ‹ กลับ (bottom-left), the centred
+   Proceed bar, and the top-anchored telemetry panel on the full-screen VAB. */
+.vn{
+  left:auto;right:16px;bottom:16px;transform:none;
+  width:min(390px,calc(100vw - 32px));gap:12px;padding:12px 14px;
+  align-items:flex-start;
+}
+@keyframes vnup{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+.vn-portrait{flex:0 0 74px;width:74px;height:96px}
+.vn-text,.vn-stagedir{font-size:13.5px;min-height:2.6em}
+.vn-name{font-size:15px}
+body.vn-open .wrap{padding-bottom:clamp(140px,20vh,190px)}
+@media(max-width:560px){
+  .vn{left:8px;right:8px;bottom:8px;width:auto}
+}
+
+/* ---- Task 1b · NPC companion — bottom-right corner card, never a full-width bar ---- */
+.npc{left:auto;right:16px;bottom:16px;width:min(372px,calc(100vw - 32px))}
+@media(max-width:899px){
+  .npc{left:auto;right:10px;bottom:10px;width:min(340px,calc(100vw - 20px));padding:10px 11px}
+}
+.npc-name{font-size:15px}
+.npc-role{font-size:9.5px}
+.npc-text{font-size:13.5px}
+body.npc-open .wrap{padding-bottom:clamp(150px,22vh,220px)}
+/* the campaign content was being shoved right to dodge a bottom-LEFT npc — no longer needed */
+@media(min-width:900px){
+  body.npc-open .campaign-screen .cmp-body,
+  body.npc-open .campaign-screen .screen-nav{margin-left:auto;margin-right:auto}
+}
+
+/* ---- Task 4 · Back button — large, prominent, on every classic screen ---- */
+.screen-nav .btn{font-size:15px;padding:12px 24px;font-weight:800}
+.screen-nav .btn-ghost,
+.name-box .screen-nav .btn-ghost{
+  border:2px solid var(--accent);color:var(--accent);background:var(--card);
+}
+.screen-nav .btn-ghost:hover{background:var(--gold-soft)}
+#screen-name .screen-nav{margin-top:20px;gap:12px}
+#screen-name .screen-nav .btn{flex:1 1 auto}
+/* keep the sticky back-bar on name too */
+#screen-name .name-box .screen-nav{
+  position:sticky;bottom:10px;z-index:25;
+  background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px;
+}
+
+/* ---- Task 3 · in-flight camera-mode toggle ---- */
+.cam-toggle{position:absolute;top:50px;right:16px;z-index:24;
+  font-family:'Noto Serif Thai',serif;font-weight:800;font-size:13px;
+  padding:8px 15px;border-radius:999px;cursor:pointer;
+  color:#eef3fb;background:rgba(10,20,34,.78);border:1px solid rgba(255,255,255,.28);
+  -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+  box-shadow:0 6px 20px rgba(0,0,0,.34);transition:background .15s,transform .12s}
+.cam-toggle:hover{background:rgba(28,46,72,.92)}
+.cam-toggle:active{transform:scale(.96)}
+@media(max-width:560px){.cam-toggle{font-size:12px;padding:7px 12px;top:46px}}

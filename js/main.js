@@ -78,6 +78,14 @@
     }
     closeCodex();                                                 // ปิดหอจดหมายเหตุ + คืน GL context
     if (window.VN && window.VN.skip) window.VN.skip();            // ปิดบทสนทนาค้างจากหน้าก่อน (ไม่ให้ลอยทับปุ่ม)
+    // Phase 18.5 · RPG BGM during the prep flow; silence for launch/report/home
+    if (window.SoundStage) {
+      if (name === "mission" || name === "rocket" || name === "name" || name === "vab" || name === "legal") {
+        window.SoundStage.startBGM();
+      } else {
+        window.SoundStage.stopBGM();
+      }
+    }
     SCREENS.forEach(s => { const el = $("#screen-" + s); if (el) el.hidden = (s !== name); });
     const bar = $("#stepbar");
     if (name === "home") { bar.hidden = true; }

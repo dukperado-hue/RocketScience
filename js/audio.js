@@ -290,5 +290,101 @@
     };
   }
 
-  window.SoundStage = { ctx, thump, hiss, boom, crackle, startNight, SPEED_OF_SOUND };
+  // ---------------- Phase 18.5 · NPC typing blip ----------------
+  let _lastBlip = 0;
+  function blip() {
+    const a = ctx(); if (!a) return;
+    const now = a.currentTime;
+    if (now - _lastBlip < 0.028) return;          // throttle — text reveals fast
+    _lastBlip = now;
+    try {
+      const o = a.createOscillator();
+      o.type = "square";
+      o.frequency.setValueAtTime(430 + Math.random() * 90, now);
+      const g = a.createGain();
+      g.gain.setValueAtTime(0.028, now);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + 0.028);
+      o.connect(g); g.connect(a.destination);
+      o.start(now); o.stop(now + 0.05);
+    } catch (e) {}
+  }
+
+  // ---------------- Phase 18.5 · RPG background music (synth chiptune loop) ----------------
+  let _bgm = null;
+  function noteInto(a, dest, freq, t, dur, type, vol) {
+    try {
+      const o = a.createOscillator();
+      o.type = type || "square"; o.frequency.value = freq;
+      const g = a.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(vol || 0.04, t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g); g.connect(dest);
+      o.start(t); o.stop(t + dur + 0.05);
+    } catch (e) {}
+  }
+  function startBGM(opts) {
+    opts = opts || {};
+    if (_bgm) return _bgm;                          // singleton — safe to call every screen
+    const a = ctx();
+    if (!a) return { stop() {} };
+    let dead = false, loopTimer = null, step = 0, bar = 0;
+    let master, lp, pads = [];
+    try {
+      master = a.createGain();
+      master.gain.setValueAtTime(0.0001, a.currentTime);
+      master.gain.setTargetAtTime(opts.volume != null ? opts.volume : 0.14, a.currentTime, 1.6);
+      master.connect(a.destination);
+      lp = a.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 2400; lp.connect(master);
+      // warm sustained pad (Am9-ish)
+      [110.00, 164.81, 220.00, 329.63].forEach(f => {
+        const o = a.createOscillator(); o.type = "triangle"; o.frequency.value = f;
+        const g = a.createGain(); g.gain.value = 0.045;
+        const det = a.createOscillator(); det.type = "sine"; det.frequency.value = 0.07;
+        const detG = a.createGain(); detG.gain.value = 1.6;
+        det.connect(detG); detG.connect(o.detune);
+        o.connect(g); g.connect(lp); o.start(); det.start();
+        pads.push(o, det);
+      });
+    } catch (e) { return { stop() {} }; }
+
+    // gentle A-minor pentatonic arpeggio + walking bass
+    const arp = [220.00, 261.63, 329.63, 392.00, 440.00, 392.00, 329.63, 261.63];
+    const bass = [55.00, 65.41, 43.65, 49.00];      // A1 C2 F1 G1, one per bar
+    const beat = 0.36;
+    function tick() {
+      if (dead || !a) return;
+      const t = a.currentTime + 0.06;
+      const oct = bar % 4 === 3 ? 2 : 1;
+      noteInto(a, lp, arp[step % arp.length] * oct, t, beat * 0.85, "square", 0.03);
+      if (step % 2 === 0) noteInto(a, lp, bass[bar % bass.length], t, beat * 1.9, "triangle", 0.075);
+      if (step % 8 === 4) noteInto(a, lp, arp[(step + 2) % arp.length] * 2, t, beat * 0.5, "sine", 0.022);
+      step++;
+      if (step % 8 === 0) bar++;
+      loopTimer = setTimeout(tick, beat * 1000);
+    }
+    tick();
+
+    _bgm = {
+      stop() {
+        if (dead) return; dead = true;
+        if (loopTimer) { clearTimeout(loopTimer); loopTimer = null; }
+        try {
+          const n = a.currentTime;
+          master.gain.cancelScheduledValues(n);
+          master.gain.setValueAtTime(Math.max(0.0001, master.gain.value), n);
+          master.gain.exponentialRampToValueAtTime(0.0001, n + 0.6);
+          pads.forEach(o => { try { o.stop(n + 1.6); } catch (e) {} });
+          setTimeout(() => { try { master.disconnect(); } catch (e) {} }, 2400);
+        } catch (e) {}
+        _bgm = null;
+      }
+    };
+    return _bgm;
+  }
+  function stopBGM() { if (_bgm) _bgm.stop(); }
+
+  window.SoundStage = {
+    ctx, thump, hiss, boom, crackle, startNight, blip, startBGM, stopBGM, SPEED_OF_SOUND
+  };
 })();

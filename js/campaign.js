@@ -94,6 +94,8 @@
       clearInterval(timer);
       timer = setInterval(() => {
         textEl.textContent = full.slice(0, ++k);
+        const ch = full[k - 1];
+        if (window.SoundStage && ch && ch !== " " && ch !== "\n" && k % 2) window.SoundStage.blip();
         if (k >= full.length) { clearInterval(timer); typing = false; contEl.classList.add("show"); armAuto(); }
       }, SPEED);
     }
@@ -193,6 +195,14 @@
   function go(next) {
     state = next;
     markStep();
+    // Phase 18.5 · RPG BGM during prep phases; silence for the cinematic launch + debrief
+    if (window.SoundStage) {
+      if (next === S.BRIEFING || next === S.MATERIAL || next === S.ASSEMBLY || next === S.TESTING) {
+        window.SoundStage.startBGM();
+      } else {
+        window.SoundStage.stopBGM();
+      }
+    }
     switch (next) {
       case S.BRIEFING: renderBriefing(); break;
       case S.MATERIAL: renderMaterial(); break;

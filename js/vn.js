@@ -101,6 +101,8 @@
     clearInterval(timer);
     timer = setInterval(() => {
       txt.textContent = full.slice(0, ++k);
+      const ch = full[k - 1];
+      if (window.SoundStage && ch && ch !== " " && ch !== "\n" && k % 2) window.SoundStage.blip();
       if (k >= full.length) { clearInterval(timer); typing = false; cont.classList.add("show"); }
     }, SPEED);
   }
