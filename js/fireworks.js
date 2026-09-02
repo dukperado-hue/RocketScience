@@ -43,16 +43,18 @@
   };
 
   // รูปแบบการแตกของลูกพลุ (shell break)
+  //   Phase 17.1 · game feel — เม็ดดาวลอยค้างฟ้า 4–6 วิ (แรงโน้มถ่วงต่ำ + อายุยาว)
+  //   แทนที่จะร่วงหายใน ~1 วิ
   const PATTERNS = {
-    peony:      { th: "ลูกพุด", en: "Peony",         grav: 9.0,  life: 2.2, spread: 1.00, trailFrac: 0.00, breaks: false,
+    peony:      { th: "ลูกพุด", en: "Peony",         grav: 2.4,  life: 4.8, spread: 1.00, trailFrac: 0.00, breaks: false,
                   desc: "ทรงกลมเม็ดดาวกระจายแล้วหรี่ดับพร้อมกัน" },
-    chrysanth:  { th: "เบญจมาศ", en: "Chrysanthemum", grav: 8.5,  life: 2.7, spread: 1.00, trailFrac: 0.55, breaks: false,
+    chrysanth:  { th: "เบญจมาศ", en: "Chrysanthemum", grav: 2.2,  life: 5.2, spread: 1.00, trailFrac: 0.55, breaks: false,
                   desc: "เม็ดดาวลากหางประกายยาวเป็นทรงพัด" },
-    willow:     { th: "ต้นหลิว", en: "Willow",        grav: 5.0,  life: 3.6, spread: 0.74, trailFrac: 0.72, breaks: false, gold: true,
+    willow:     { th: "ต้นหลิว", en: "Willow",        grav: 1.5,  life: 6.2, spread: 0.74, trailFrac: 0.72, breaks: false, gold: true,
                   desc: "หางทองยาวลู่ลงช้า ๆ ค้างฟ้านานสุด" },
-    multibreak: { th: "มัลติเบรก", en: "Multi-Break", grav: 9.0,  life: 2.4, spread: 1.00, trailFrac: 0.30, breaks: true,
+    multibreak: { th: "มัลติเบรก", en: "Multi-Break", grav: 2.4,  life: 4.8, spread: 1.00, trailFrac: 0.30, breaks: true,
                   desc: "เม็ดดาวชั้นแรกจุดระเบิดซ้ำเป็นพวงเล็ก (ใช้กับพลุหลายสี)" },
-    crossette:  { th: "ครอสเซ็ตต์", en: "Crossette", grav: 9.0,  life: 2.3, spread: 0.92, trailFrac: 0.25, breaks: true, cross: true,
+    crossette:  { th: "ครอสเซ็ตต์", en: "Crossette", grav: 2.5,  life: 4.6, spread: 0.92, trailFrac: 0.25, breaks: true, cross: true,
                   desc: "เม็ดดาวแตกออกเป็นกากบาท 4 แฉก" }
   };
 
@@ -300,8 +302,8 @@
           cx, cy, cz,
           rr * Math.cos(ang) * sp, u * sp, rr * Math.sin(ang) * sp * 1.35,
           r, g, b,
-          pat.life * (0.8 + Math.random() * 0.4),
-          spark ? 0.16 : 0.11, pat.grav,
+          pat.life * (0.82 + Math.random() * 0.36),
+          spark ? 0.18 : 0.13, pat.grav,
           {
             trail: pat.trailFrac > 0 && Math.random() < pat.trailFrac,
             breakIn: pat.breaks ? 0.55 + Math.random() * 0.4 : 0,
@@ -374,7 +376,7 @@
                 }
                 makeStar(p.x, p.y, p.z,
                   p.vx * 0.35 + dx, p.vy * 0.35 + dy, p.vz * 0.35 + dz,
-                  p.r, p.g, p.b, 0.85 + Math.random() * 0.5, 0.10, p.grav * 1.1,
+                  p.r, p.g, p.b, 2.4 + Math.random() * 1.6, 0.12, p.grav * 1.1,
                   { kind: "spark", trail: Math.random() < 0.4 });
               }
             }
@@ -387,7 +389,7 @@
               p.tacc -= iv;
               const tp = alloc();
               if (tp) {
-                tp.life = pat.gold ? 0.9 : 0.5; tp.max = tp.life;
+                tp.life = pat.gold ? 1.8 : 1.1; tp.max = tp.life;
                 tp.x = p.x; tp.y = p.y; tp.z = p.z;
                 tp.vx = p.vx * 0.12; tp.vy = p.vy * 0.12 - 0.4; tp.vz = p.vz * 0.12;
                 if (pat.gold) { tp.r = 1.7; tp.g = 1.15; tp.b = 0.35; }
@@ -407,13 +409,13 @@
         geo.setDrawRange(0, n);
         geo.attributes.position.needsUpdate = true;
         geo.attributes.color.needsUpdate = true;
-        mat.size = (0.42 + 0.34 * Math.max(0, 1 - elapsed * 0.7)) * (0.9 + 0.25 * scale);
+        mat.size = (0.38 + 0.4 * Math.max(0, 1 - elapsed * 0.28)) * (0.9 + 0.25 * scale);
 
         lightHold *= Math.pow(0.02, dt);
         lightGlow *= Math.pow(0.25, dt);
         burstLight.intensity = lightHold + lightGlow;
 
-        return (aliveCount > 0 || shellIdx < shells.length) && elapsed < 9.5;
+        return (aliveCount > 0 || shellIdx < shells.length) && elapsed < 12;
       },
       dispose() {
         scene.remove(points);

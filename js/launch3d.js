@@ -546,10 +546,11 @@
       paperMat.color.setHex(0xf3dcae);
       paperMat.roughness = 0.95; paperMat.metalness = 0;
       paperMat.side = THREE.DoubleSide;
-      paperMat.transparent = true; paperMat.opacity = 0.72;   // โปร่งพอให้แสงไฟด้านในทะลุออกมา
+      // Phase 17.1 · โคมต้องเป็นกระดาษสาทึบ เห็นลาย/สีเต็ม ไม่ใช่ผี — เรืองแสงด้วย
+      // emissive สีส้มอุ่น + PointLight ด้านในแทนความโปร่งแสง
+      paperMat.transparent = false; paperMat.opacity = 1.0;
       applySkinL(paperMat, meta.skin, 0.92);                  // Phase 11: ลายข้างโคม
-      if (paperMat.map) paperMat.opacity = 0.8;
-      if (paperMat.emissive) { paperMat.emissive.setHex(0xff7b2e); paperMat.emissiveIntensity = 0.9; }
+      if (paperMat.emissive) { paperMat.emissive.setHex(0xff7b2e); paperMat.emissiveIntensity = 0.55; }
       // ลำโคม — ทรงกระบอกเรียวเล็กน้อย เปิดก้น (openEnded)
       const shell = new THREE.Mesh(
         new THREE.CylinderGeometry(KR * 1.04, KR, KH, 28, 1, true), paperMat);

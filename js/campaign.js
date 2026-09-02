@@ -78,6 +78,7 @@
       queue = (Array.isArray(lines) ? lines : [lines]).filter(l => l && l.text);
       idx = 0; doneCb = opts.onDone || null; box._auto = opts.auto || 0;
       box.hidden = false;
+      box.classList.remove("npc-dim");
       document.body.classList.add("npc-open");
       if (!queue.length) { finish(); return; }
       step();
@@ -132,17 +133,24 @@
 
     function hide() {
       clearInterval(timer); clearTimeout(autoT); typing = false;
-      if (box) box.hidden = true;
+      if (box) { box.hidden = true; box.classList.remove("npc-dim"); }
       document.body.classList.remove("npc-open");
     }
     function showPersist(who) {
       if (!ensure()) return;
       box.hidden = false;
+      box.classList.remove("npc-dim");           // Phase 17.1 · โผล่เต็มตัวเสมอเวลาเรียกโชว์
       document.body.classList.add("npc-open");
       if (who) setWho(who);
     }
+    // Phase 17.1 · หรี่กล่องบทสนทนาตอนปล่อย/บิน ไม่ให้บังฉาก (ยังอยู่ แค่จาง+ย่อ)
+    function dim(on) {
+      if (!ensure()) return;
+      box.hidden = false;
+      box.classList.toggle("npc-dim", on !== false);
+    }
 
-    return { play, flash, hide, show: showPersist };
+    return { play, flash, hide, dim, show: showPersist };
   })();
 
   // ============================================================
@@ -222,6 +230,53 @@
       sp.classList.toggle("done", i > -1 && i < cur);
     });
   }
+
+  // ---------- universal Back — ถอยสเตตแมชชีนทีละก้าว (Phase 17.1) ----------
+  function cancelLaunchInstance() {
+    try {
+      const G = RS() && RS().G;
+      if (G && G.launchInstance && G.launchInstance.cancel) G.launchInstance.cancel();
+      if (G) { G.launchInstance = null; G.__campaignOnDone = null; }
+    } catch (e) {}
+  }
+  function restoreVabNav() {
+    const nav = $("#screen-vab .screen-nav"); if (nav) nav.hidden = false;
+    const nb = $('#screen-vab .screen-nav [data-back]'); if (nb) nb.hidden = false;
+    const cb = el("vab-cmp-back"); if (cb) cb.hidden = true;
+  }
+  function campBack() {
+    if (!state) return;
+    const i = STEP_ORDER.indexOf(state);
+
+    // เก็บกวาดทรัพยากรของสเตตปัจจุบันก่อนถอย
+    if (state === S.TESTING && window.TestingGames) { try { window.TestingGames.unmount(); } catch (e) {} }
+    if (state === S.ASSEMBLY) {
+      if (window.VABEditor) { try { window.VABEditor.unmount(); } catch (e) {} }
+      if (window.VAB3D) { try { window.VAB3D.unmount(); } catch (e) {} }
+      restoreVabNav();
+    }
+    if (state === S.LAUNCH_CONTROL) {
+      if (cdTimer) { clearInterval(cdTimer); cdTimer = null; }
+      dropRoomTone();
+      cancelLaunchInstance();
+      const lc = el("launch-control"); if (lc) { lc.hidden = true; lc.className = "launch-control"; }
+      const lb = $("#screen-launch .launch-back"); if (lb) lb.hidden = false;
+    }
+
+    if (i <= 0) {   // ถอยจาก BRIEFING = ออกจากแคมเปญ กลับไปหน้าเลือกภารกิจ
+      teardown();
+      try { RS().endCampaign(); RS().renderMissions(); RS().show("mission"); } catch (e) {}
+      return;
+    }
+    go(STEP_ORDER[i - 1]);
+  }
+
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-cmp-back]");
+    if (!b || !state) return;
+    e.preventDefault();
+    campBack();
+  });
 
   // ============================================================
   //  STATE_BRIEFING — พี่ช่าง
@@ -388,7 +443,13 @@
     // ปรับ chrome ให้เป็นโหมดแคมเปญ
     el("stepbar").hidden = true;
     const cb = el("campaign-stepbar"); if (cb) cb.hidden = false;
-    const nav = $("#screen-vab .screen-nav"); if (nav) nav.hidden = true;
+    // Phase 17.1 · โชว์ปุ่ม "กลับ" ของแคมเปญบนจอประกอบ (แทนปุ่ม ← กลับ เดิมที่พาไปตั้งชื่อ)
+    const nav = $("#screen-vab .screen-nav");
+    if (nav) {
+      nav.hidden = false;
+      const nb = nav.querySelector("[data-back]"); if (nb) nb.hidden = true;
+      const bk = el("vab-cmp-back"); if (bk) bk.hidden = false;
+    }
     NPC.show("kapi");
     NPC.play([
       { who: "kapi", text: "โรงประกอบครับพี่! ลากไอคอนขวามือมาวาง — เปลือกพลุก่อน แล้วค่อยยัดสารเคมี แล้วเสียบชนวน" },
@@ -401,7 +462,7 @@
   function assemblyDone() {
     if (window.VABEditor) { try { window.VABEditor.unmount(); } catch (e) {} }
     if (window.VAB3D) { try { window.VAB3D.unmount(); } catch (e) {} }
-    const nav = $("#screen-vab .screen-nav"); if (nav) nav.hidden = false;
+    restoreVabNav();
     go(S.TESTING);
   }
 
@@ -490,6 +551,8 @@
     el("lc-lights").classList.remove("on");
     el("lc-arm").hidden = false;
     el("lc-arm").disabled = false;
+    const ig = el("lc-ignite"); if (ig) { ig.hidden = true; ig.disabled = false; }
+    const bk = el("lc-back"); if (bk) bk.hidden = false;
     el("lc-status").innerHTML = `
       <div class="lc-stat"><span>SYSTEM</span><b class="good">READY</b></div>
       <div class="lc-stat"><span>WEATHER</span><b class="good">CLEAR</b></div>
@@ -500,16 +563,28 @@
       { who: "pchang", text: "พี่ช่างรับช่วงต่อ — ระบบพร้อม สภาพอากาศฟ้าโปร่ง ทุกคนเข้าประจำที่" },
       { who: "kapi", text: "ตื่นเต้นจังเลยครับ!" },
       { who: "chaom", text: "ตื่นเต้นๆๆๆ จุดเลยๆๆ!" },
-      { who: "pchang", text: "ชะอม เงียบ. กด ARM SIMULATION เมื่อพร้อม แล้วนับถอยหลังจะเริ่มเอง" }
+      { who: "pchang", text: "ชะอม เงียบ. กด ARM SIMULATION ให้ระบบติดไฟ แล้วค่อยกด “จุดพลุ” เมื่อพร้อม" }
     ], { auto: 3400 });
 
     startRoomTone();
+
+    // ARM = พรีโหลดฉากปล่อยไว้หลังโอเวอร์เลย์ (ลูกพลุยังค้างในท่อครก) — ยังไม่นับถอยหลัง
     el("lc-arm").onclick = () => {
       el("lc-arm").hidden = true;
+      el("lc-lights").classList.add("on");
       RS().startCampaignLaunch(sum => onFlightDone(sum));
       el("stepbar").hidden = true;   // main.show("launch") เปิดสเตปบาร์เดิมกลับมา — ซ่อนอีกที
       const cb = el("campaign-stepbar"); if (cb) cb.hidden = false;
       const lb = $("#screen-launch .launch-back"); if (lb) lb.hidden = true;
+      if (ig) ig.hidden = false;
+      NPC.flash("pchang", "ระบบติดไฟแล้ว — กด “จุดพลุ” เพื่อเริ่มนับถอยหลัง T‑3");
+    };
+
+    // จุดพลุ = ผู้เล่นสั่งเริ่มเคาต์ดาวน์เอง (เคาต์ดาวน์ไม่เริ่มก่อนกดปุ่มนี้)
+    if (ig) ig.onclick = () => {
+      ig.hidden = true;
+      const b2 = el("lc-back"); if (b2) b2.hidden = true;   // เริ่มนับแล้ว — ถอยไม่ได้
+      NPC.dim(true);                                        // หรี่บทสนทนา เปิดทางฉากซีเนแมติก
       runCountdown();
     };
   }
@@ -540,33 +615,28 @@
     { th: "GROUND · ปากท่อครก", tint: "cut-tube" }
   ];
 
+  // Phase 17.1 · เคาต์ดาวน์สั้น กระชับ: T‑3 → T‑2 → T‑1 → IGNITION
   function runCountdown() {
     const lc = el("launch-control");
-    let t = 10;
+    let t = 3;
     const cutEl = el("lc-cut");
+    lc.classList.add("dim");
+    dropRoomTone();
+    el("lc-lights").classList.add("on");
     tick();
-    cdTimer = setInterval(tick, 1000);
+    cdTimer = setInterval(tick, 800);
 
     function tick() {
       el("lc-count").textContent = t > 0 ? "T‑" + t : "IGNITION";
-      if (t === 10) {
-        lc.classList.add("dim");
-        dropRoomTone();
-        NPC.flash("pchang", "T‑10 · ตัดเสียงรบกวน ห้องเงียบ");
-      }
-      if (t === 7) NPC.flash("chaom", "เร็วๆ เร็วๆ! หนูจะเป็นลม! 😾");
-      if (t === 5) {
-        el("lc-lights").classList.add("on");
-        NPC.flash("pchang", "T‑5 · ไฟเตือนห้องคอนโทรลติด — ยืนยันเคลียร์");
-      }
-      if (t <= 3 && t >= 1) {
+      if (t >= 1 && t <= 3) {
         const c = CUTS[(3 - t) % CUTS.length];
         cutEl.hidden = false;
         cutEl.textContent = c.th;
         lc.classList.remove("cut-wire", "cut-sky", "cut-tube");
         lc.classList.add(c.tint);
-        if (t === 3) NPC.flash("kapi", "กลั้นหายใจ...");
-        if (t === 2) NPC.flash("chaom", "จุดดดดด!");
+        if (t === 3) NPC.flash("pchang", "T‑3 · ทุกระบบพร้อม");
+        if (t === 2) NPC.flash("kapi", "กลั้นหายใจ...");
+        if (t === 1) NPC.flash("chaom", "จุดดดดด!");
       }
       if (t === 0) {
         clearInterval(cdTimer); cdTimer = null;
@@ -585,9 +655,9 @@
       lc.hidden = true;
       lc.className = "launch-control";
       const btn = el("fw-ignite");
-      if (btn && !btn.hidden) btn.click();
-      else if (btn) btn.click();
-      setTimeout(() => NPC.hide(), 1400);
+      if (btn) btn.click();
+      // Phase 17.1 · เก็บกล่องบทสนทนาให้ไวหลังจุด เพื่อไม่บังดอกพลุที่ค้างฟ้า 4–6 วิ
+      setTimeout(() => NPC.hide(), 400);
     }, 480);
   }
 
@@ -722,7 +792,7 @@
     dropRoomTone();
     const lc = el("launch-control"); if (lc) { lc.hidden = true; lc.className = "launch-control"; }
     const lb = $("#screen-launch .launch-back"); if (lb) lb.hidden = false;
-    const nav = $("#screen-vab .screen-nav"); if (nav) nav.hidden = false;
+    restoreVabNav();
     const cb = el("campaign-stepbar"); if (cb) cb.hidden = true;
     ["screen-briefing", "screen-material", "screen-testing", "screen-debrief"].forEach(id => { const s = el(id); if (s) s.hidden = true; });
     state = null;

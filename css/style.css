@@ -890,6 +890,10 @@ body.npc-open .wrap{padding-bottom:clamp(230px,32vh,300px)}
   border-radius:15px;padding:12px 14px;box-shadow:0 16px 44px rgba(0,0,0,.4);cursor:pointer;
   animation:npcUp .28s ease}
 @keyframes npcUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+/* Phase 17.1 · หลบให้พ้นทางตอนปล่อย/บิน — จาง 18% + เลื่อนลงมุมล่าง ไม่บังฉากซีเนแมติก */
+.npc.npc-dim{opacity:.18;transform:translateY(14px) scale(.82);pointer-events:none;
+  filter:saturate(.5);transition:opacity .5s ease,transform .5s ease}
+.npc.npc-dim:hover{opacity:.92;transform:none;pointer-events:auto;filter:none}
 .npc[data-who="kapi"]{background:linear-gradient(180deg,color-mix(in srgb,#8AA35C 10%,var(--card)),var(--card))}
 .npc[data-who="pchang"]{background:linear-gradient(180deg,color-mix(in srgb,#3B82C4 9%,var(--card)),var(--card))}
 .npc[data-who="chaom"]{background:linear-gradient(180deg,color-mix(in srgb,#EE7A2D 12%,var(--card)),var(--card))}
@@ -938,11 +942,26 @@ body.npc-open .wrap{padding-bottom:clamp(230px,32vh,300px)}
 .lc-stat b.warn{color:#ffcf7a}
 .lc-count{font-family:'Noto Serif Thai',serif;font-weight:900;font-size:52px;line-height:1;min-height:60px;margin-top:18px;color:#eafff2;text-shadow:0 0 24px rgba(141,255,176,.5)}
 .lc-cut{margin-top:12px;font-size:12px;letter-spacing:2px;color:#ffd9b0}
-.lc-arm{margin-top:auto;font-family:inherit;font-weight:700;font-size:14px;letter-spacing:2px;cursor:pointer;
+.lc-actions{margin-top:auto;display:flex;flex-direction:column;align-items:center;gap:12px;padding-top:14px}
+.lc-arm{font-family:inherit;font-weight:700;font-size:14px;letter-spacing:2px;cursor:pointer;
   padding:13px 26px;border-radius:10px;border:1px solid #8dffb0;background:rgba(141,255,176,.1);color:#8dffb0;
   transition:background .15s}
 .lc-arm:hover{background:rgba(141,255,176,.22)}
 .lc-arm:disabled{opacity:.4;cursor:default}
+/* Phase 17.1 · manual IGNITE — เคาต์ดาวน์ไม่เริ่มจนกว่าผู้เล่นจะกดปุ่มนี้ */
+.lc-ignite{display:flex;flex-direction:column;align-items:center;gap:1px;cursor:pointer;
+  font-family:'Noto Serif Thai',serif;font-weight:900;font-size:19px;color:#fff;
+  padding:14px 40px;border-radius:14px;border:1px solid rgba(255,220,150,.6);
+  background:linear-gradient(180deg,#ff7a3d,#e23c2c);
+  box-shadow:0 10px 40px rgba(226,60,44,.55);animation:fwPulse 1.5s ease-in-out infinite}
+.lc-ignite small{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:9px;letter-spacing:3px;opacity:.85}
+.lc-ignite:hover{filter:brightness(1.08)}
+.lc-ignite:active{transform:scale(.96)}
+.lc-back{position:absolute;top:14px;left:14px;font-family:'JetBrains Mono',monospace;font-size:11px;
+  letter-spacing:1px;cursor:pointer;padding:6px 12px;border-radius:8px;
+  border:1px solid rgba(141,255,176,.3);background:rgba(4,10,14,.5);color:#8dffb0;transition:background .15s}
+.lc-back:hover{background:rgba(141,255,176,.16)}
+.lc-frame{position:relative}
 @media(max-width:560px){.lc-count{font-size:40px}.lc-head{letter-spacing:3px}}
 
 /* ============================================================
