@@ -24,8 +24,16 @@
   let tipEl = null, paletteEl = null, statusEl = null, explodeBtn = null;
   let mounted = false, started = false, alive = false, webglFailed = false;
   let root3d = null;                                // THREE.Group = "ห้องประกอบ" (world space สำหรับ node ที่ไม่มี parent)
-  let tree = null;                                   // VehicleTree instance (root = เปลือกพลุ หรือ null ถ้ายังไม่วาง)
+  let tree = null;                                   // VehicleTree instance (root = เปลือกพลุ / เชื้อเพลิงโคม หรือ null ถ้ายังไม่วาง)
   let exploded = false, explodeT = 0;
+
+  // Phase 17.5 · โหมดการประกอบ: "firework" (เปลือก→เคมี→ชนวน) | "khom" (เชื้อเพลิง→โครงไผ่→กระดาษสา)
+  let currentMode = "firework";
+  const MODE_PARTS = {
+    firework: ["shell", "chemical", "fuse"],
+    khom: ["fuel_ring", "bamboo_frame", "sa_paper"]
+  };
+  const ROOT_TYPE = { firework: "shell", khom: "fuel_ring" };
 
   const recs = new Map();                            // nodeId -> { node, wrap, mesh, markers:{slotName:mesh} }
   const disposables = [];
@@ -48,6 +56,7 @@
       emissive: o.emis != null ? o.emis : 0x000000, emissiveIntensity: o.emisI != null ? o.emisI : 1,
       side: o.side || T().FrontSide
     });
+    if (o.depthWrite != null) m.depthWrite = o.depthWrite;
     disposables.push(m);
     return m;
   }
@@ -249,8 +258,89 @@
     return 0xff2d2d;
   }
 
+  // Phase 17.5 · ลายกระดาษสาจาก window.Skins (โคมลอย) — ทึบเสมอ
+  function khomPaperTexture() {
+    try {
+      const id = window.Skins && window.Skins.state ? window.Skins.state.khom : null;
+      if (window.Skins && id && id !== "plain") {
+        const tex = window.Skins.texture(T(), id);
+        disposables.push(tex);
+        return tex;
+      }
+    } catch (e) { console.warn("[VABEditor] khom skin", e); }
+    return null;
+  }
+
   function buildMeshFor(node) {
     const THREE = T();
+
+    // ───── โคมลอย ─────
+    if (node.type === "fuel_ring") {
+      const g = new THREE.Group();
+      const ring = new THREE.Mesh(geo(new THREE.TorusGeometry(1.15, 0.16, 10, 30)),
+        mat(0xe9dcc0, { rough: 0.85 }));
+      ring.rotation.x = Math.PI / 2;
+      g.add(ring);
+      // ก้อนขี้ผึ้ง 4 จุดบนวงแหวน
+      for (let i = 0; i < 4; i++) {
+        const a = i * Math.PI / 2;
+        const w = new THREE.Mesh(geo(new THREE.BoxGeometry(0.34, 0.2, 0.5)), mat(0xd8c690, { rough: 0.7 }));
+        w.position.set(Math.cos(a) * 1.15, 0, Math.sin(a) * 1.15);
+        g.add(w);
+      }
+      // เป้า raycast ครอบ (วงแหวนบางเล็งยาก)
+      const hit = new THREE.Mesh(geo(new THREE.CylinderGeometry(1.35, 1.35, 0.5, 12)),
+        mat(0x000000, { transparent: true, opacity: 0.001 }));
+      g.add(hit);
+      return g;
+    }
+    if (node.type === "bamboo_frame") {
+      const g = new THREE.Group();
+      const R = 1.18, H = 0.55;
+      const bmat = mat(0xb8863f, { rough: 0.75 });
+      // วงแหวนไผ่ บน–ล่าง
+      [-H / 2, H / 2].forEach(y => {
+        const rr = new THREE.Mesh(geo(new THREE.TorusGeometry(R, 0.045, 8, 28)), bmat);
+        rr.rotation.x = Math.PI / 2; rr.position.y = y; g.add(rr);
+      });
+      // ซี่ตั้ง
+      for (let i = 0; i < 6; i++) {
+        const a = i * Math.PI / 3;
+        const st = new THREE.Mesh(geo(new THREE.CylinderGeometry(0.035, 0.035, H, 6)), bmat);
+        st.position.set(Math.cos(a) * R, 0, Math.sin(a) * R);
+        g.add(st);
+      }
+      // กากบาทลวดยึดเชื้อเพลิงใต้โครง
+      const wmat = mat(0x8a6a3a, { rough: 0.9, metal: 0.3 });
+      [0, Math.PI / 2].forEach(a => {
+        const w = new THREE.Mesh(geo(new THREE.CylinderGeometry(0.028, 0.028, R * 2.05, 5)), wmat);
+        w.rotation.z = Math.PI / 2; w.rotation.y = a; w.position.y = -H / 2; g.add(w);
+      });
+      const hit = new THREE.Mesh(geo(new THREE.CylinderGeometry(R * 1.06, R * 1.06, H + 0.1, 12)),
+        mat(0x000000, { transparent: true, opacity: 0.001 }));
+      g.add(hit);
+      return g;
+    }
+    if (node.type === "sa_paper") {
+      const g = new THREE.Group();
+      const R = 1.24, H = 3.6;
+      // Phase 17.5 · กระดาษสาทึบสนิท — transparent:false · depthWrite:true · opacity:1
+      const paper = mat(0xf3dcae, { rough: 0.95, side: THREE.DoubleSide, emis: 0xd9531e, emisI: 0.28, depthWrite: true });
+      const tex = khomPaperTexture();
+      if (tex) { paper.map = tex; paper.color.setHex(0xffffff); paper.needsUpdate = true; }
+      const shell = new THREE.Mesh(geo(new THREE.CylinderGeometry(R * 1.02, R * 1.06, H, 28, 1, true)), paper);
+      shell.position.y = H / 2;
+      g.add(shell);
+      const domeMat = mat(0xecd0a0, { rough: 0.95, side: THREE.DoubleSide, depthWrite: true });
+      if (tex) { domeMat.map = tex; domeMat.color.setHex(0xffffff); domeMat.needsUpdate = true; }
+      const dome = new THREE.Mesh(geo(new THREE.SphereGeometry(R * 1.02, 26, 10, 0, Math.PI * 2, 0, Math.PI / 2)), domeMat);
+      dome.position.y = H; dome.scale.y = 0.44;
+      g.add(dome);
+      g.userData.paperMat = paper;
+      g.userData.domeMat = domeMat;
+      return g;
+    }
+
     if (node.type === "shell") {
       const m = new THREE.Mesh(geo(new THREE.SphereGeometry(1.05, 26, 18)),
         mat(0x8a3a2c, { rough: 0.9, transparent: true, opacity: 0.5, side: THREE.DoubleSide }));
@@ -332,7 +422,7 @@
   // ---------- palette (spawn drag) ----------
   function renderPalette() {
     if (!paletteEl) return;
-    const order = ["shell", "chemical", "fuse"];
+    const order = MODE_PARTS[currentMode] || MODE_PARTS.firework;
     paletteEl.innerHTML = order.map(type => {
       const def = VT().PART_DEFS[type];
       return `<button type="button" class="vabe-item" data-part="${type}" title="${def.nameSub}">
@@ -351,8 +441,10 @@
 
   function startSpawn(type, e, btnEl) {
     if (!mounted || webglFailed) return;
-    if (type === "shell" && tree && tree.root) { toast("มีเปลือกพลุอยู่แล้ว — ถอด/ย้ายอันเดิมก่อน"); return; }
-    if (type !== "shell" && (!tree || !tree.root)) { toast("ต้องวางเปลือกพลุก่อน"); return; }
+    const def = VT().PART_DEFS[type];
+    const rootLabel = currentMode === "khom" ? "เชื้อเพลิง (วงแหวนขี้ผึ้ง)" : "เปลือกพลุ";
+    if (def && def.isRoot && tree && tree.root) { toast("มี" + rootLabel + "อยู่แล้ว — ถอด/ย้ายอันเดิมก่อน"); return; }
+    if (def && !def.isRoot && (!tree || !tree.root)) { toast("ต้องวาง" + rootLabel + "ก่อน"); return; }
     const node = VT().createNode(type);
     const rec = makeRec(node);
     root3d.add(rec.wrap);
@@ -454,8 +546,8 @@
     const snap = drag.snap;
     clearMarkers();
 
-    if (spawn && node.type === "shell") {
-      tree = VT().createTree("shell", { position: { x: rec.wrap.position.x, y: rec.wrap.position.y, z: rec.wrap.position.z } });
+    if (spawn && node.def.isRoot) {
+      tree = VT().createTree(node.type, { position: { x: rec.wrap.position.x, y: rec.wrap.position.y, z: rec.wrap.position.z } });
       // แทน node ชั่วคราวด้วย root ของ tree จริง (คงตำแหน่ง 3D เดิมไว้)
       destroyRec(rec);
       const rootRec = makeRec(tree.root);
@@ -493,11 +585,27 @@
   // ---------- status / toast ----------
   function updateStatus() {
     if (!statusEl) return;
+    if (currentMode === "khom") {
+      if (!tree || !tree.root) { statusEl.textContent = "ลาก 🕯️ เชื้อเพลิง (วงแหวนขี้ผึ้ง) มาวางเป็นฐาน แล้วต่อขึ้นบน"; VABEditorSync(); return; }
+      const hasFrame = VT().allNodes(tree).some(n => n.type === "bamboo_frame" && n.parent);
+      const hasCover = VT().allNodes(tree).some(n => n.type === "sa_paper" && n.parent);
+      let m = 0; VT().allNodes(tree).forEach(n => m += n.mass);
+      statusEl.textContent = `เชื้อเพลิง ✓ · โครงไม้ไผ่ ${hasFrame ? "✓" : "—"} · กระดาษสา ${hasCover ? "✓" : "—"} · น้ำหนักรวม ${m.toFixed(2)} kg`;
+      VABEditorSync();
+      return;
+    }
     if (!tree || !tree.root) { statusEl.textContent = "ลากเปลือกพลุจากพาเลทมาวางกลางห้องก่อน"; return; }
     const hasChem = VT().allNodes(tree).some(n => n.type === "chemical" && n.parent);
     const hasFuse = VT().allNodes(tree).some(n => n.type === "fuse" && n.parent);
     let totalMass = 0; VT().allNodes(tree).forEach(n => totalMass += n.mass);
     statusEl.textContent = `เปลือก ✓ · สารเคมี ${hasChem ? "✓" : "—"} · ชนวน ${hasFuse ? "✓" : "—"} · น้ำหนักรวม ${totalMass.toFixed(2)} kg`;
+  }
+
+  // แจ้ง main.js ให้คำนวณสถิติโคมใหม่ (เปิด/ปิดปุ่ม "ไปขั้นตอนขออนุญาต")
+  function VABEditorSync() {
+    if (currentMode === "khom" && window.VAB && typeof window.VAB.computeStats === "function") {
+      try { window.VAB.computeStats(); } catch (e) {}
+    }
   }
   function toast(msg) { if (window.toast) { try { window.toast(msg); return; } catch (e) {} } if (statusEl) statusEl.textContent = msg; }
 
@@ -562,17 +670,67 @@
     return true;
   }
 
-  function show() {
+  function show(mode) {
     if (!mounted || webglFailed) return;
+    currentMode = mode === "khom" ? "khom" : "firework";
     resize();
+    renderPalette();
     // เริ่มห้องว่างใหม่ทุกครั้งที่เข้าโหมดนี้
     recs.forEach(rec => destroyRec(rec));
     recs.clear();
     tree = null;
     drag = null;
     setExploded(false);
-    cam.theta = 0.55; cam.phi = 1.1; cam.dist = cam.distGoal = 8.5; cam.tgt.set(0, 2.6, 0);
+    if (currentMode === "khom") {
+      cam.theta = 0.6; cam.phi = 1.0; cam.dist = cam.distGoal = 10.5; cam.tgt.set(0, 3.2, 0);
+    } else {
+      cam.theta = 0.55; cam.phi = 1.1; cam.dist = cam.distGoal = 8.5; cam.tgt.set(0, 2.6, 0);
+    }
     updateStatus();
+  }
+
+  // Phase 17.5 · เรียกใหม่ลายกระดาษสาเมื่อผู้เล่นเปลี่ยนแพตเทิร์นจากแผง Skins
+  function applyKhomSkin() {
+    if (currentMode !== "khom") return;
+    const tex = khomPaperTexture();
+    recs.forEach(rec => {
+      if (rec.node.type !== "sa_paper") return;
+      const pm = rec.mesh.userData.paperMat, dm = rec.mesh.userData.domeMat;
+      [pm, dm].forEach(m => {
+        if (!m) return;
+        m.map = tex || null;
+        m.color.setHex(tex ? 0xffffff : (m === dm ? 0xecd0a0 : 0xf3dcae));
+        m.needsUpdate = true;
+      });
+    });
+  }
+
+  // Phase 17.5 · สถิติโคมลอยจากต้นไม้ที่ประกอบ — ป้อนให้ main.js (computeKhom)
+  function getBuild() {
+    if (currentMode !== "khom" || !tree || !tree.root) {
+      return { mode: "khom", complete: false, hasRing: false, hasFrame: false, hasCover: false,
+        thrust: 0, fuelMass: 0, extraDryMass: 0, dragCoef: 0.09, paperRisk: 0, pattern: "plain", totalMass: 0 };
+    }
+    const nodes = VT().allNodes(tree);
+    const hasRing = true;
+    const hasFrame = nodes.some(n => n.type === "bamboo_frame" && n.parent);
+    const hasCover = nodes.some(n => n.type === "sa_paper" && n.parent);
+    let totalMass = 0; nodes.forEach(n => totalMass += n.mass);
+    const pattern = (window.Skins && window.Skins.state) ? (window.Skins.state.khom || "plain") : "plain";
+    // ลายที่ลงหมึกหนา (phi_ta_khon/naga/kranok_fai) → กระดาษหนักกว่าเล็กน้อย + ทนไฟกว่านิด
+    const inked = pattern && pattern !== "plain" && pattern !== "lai_thai";
+    return {
+      mode: "khom",
+      complete: hasRing && hasFrame && hasCover,
+      hasRing, hasFrame, hasCover,
+      thrust: 46,                 // ความร้อนวงแหวนขี้ผึ้ง (แทน "แรงขับ" ในฟิสิกส์โคม)
+      fuelMass: 0.9,
+      extraDryMass: totalMass,    // มวลชิ้นส่วนโคม (ไผ่+กระดาษ+ขี้ผึ้ง)
+      dragCoef: 0.085 + (hasCover ? 0.02 : 0),
+      paperRisk: hasCover ? (inked ? 0.34 : 0.42) : 0.9,   // ยังไม่หุ้มกระดาษ = เปลวโดนโครงตรง ๆ เสี่ยง
+      pattern,
+      totalMass
+    };
   }
 
   function unmount() {
@@ -602,5 +760,5 @@
   // Phase 17: ส่งต้นไม้ยานที่ประกอบเสร็จให้ STATE_TESTING (อาจเป็น null ถ้ายังไม่ได้วางเปลือก)
   function getTree() { return tree; }
 
-  window.VABEditor = { mount, show, setExploded, toggleExploded, unmount, getTree };
+  window.VABEditor = { mount, show, setExploded, toggleExploded, unmount, getTree, getBuild, applyKhomSkin, get mode() { return currentMode; } };
 })();

@@ -64,10 +64,19 @@ a{color:var(--accent)}
 .screen{animation:fade .3s ease}
 /* กล่องบทสนทนา VN ลอยตายตัวท้ายจอ ~220px — เว้นที่ให้เลื่อนเห็นปุ่ม/เนื้อหาที่มันบัง */
 body.vn-open .wrap{padding-bottom:clamp(220px,30vh,280px)}
-@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+/* Phase 17.5 · opacity-only — เลี่ยง transform ค้างบน .screen ที่ทำให้ลูก position:fixed เพี้ยน */
+@keyframes fade{from{opacity:0}to{opacity:1}}
 .screen-title{font-size:22px;font-weight:900;margin:18px 0 14px}
 .screen-hint,.screen .screen-hint{color:var(--ink-soft);font-size:14px;margin:-6px 0 14px}
 .screen-nav{display:flex;gap:10px;justify-content:space-between;margin-top:22px;flex-wrap:wrap}
+
+/* Phase 17.5 · ปุ่ม [ ‹ กลับ ] ต้องเห็น/กดได้เสมอในโฟลว์ปกติ — sticky ไว้ท้ายจอ */
+#screen-mission .screen-nav,
+#screen-rocket .screen-nav{
+  position:sticky;bottom:10px;z-index:25;margin-top:18px;
+  background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px;
+  box-shadow:0 6px 24px rgba(0,0,0,.14);
+}
 
 /* ---------- hero ---------- */
 .hero{padding:40px 0 24px;text-align:center;max-width:640px;margin:0 auto}
@@ -196,7 +205,17 @@ body.vn-open .wrap{padding-bottom:clamp(220px,30vh,280px)}
     width:min(540px,86vw);margin:0;
     background:var(--glass-bg);border:1px solid var(--glass-line);border-radius:14px;padding:8px;
     backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur)}
-  #screen-vab .screen-nav{max-width:1120px;margin:10px auto 0;padding:0 18px}
+  /* Phase 17.5 · ปุ่ม ‹ กลับ ของโรงประกอบเต็มจอ — ตรึงมุมล่างซ้ายจอ (เดิมหล่นใต้ fold) */
+  #screen-vab{position:relative}
+  #screen-vab .screen-nav{
+    position:fixed;left:16px;bottom:16px;z-index:70;margin:0;max-width:none;width:auto;padding:0;
+    justify-content:flex-start;
+  }
+  #screen-vab .screen-nav .btn{
+    background:rgba(10,20,34,.74);border:1px solid rgba(255,255,255,.2);color:#eef3fb;font-weight:700;
+    -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+  }
+  #screen-vab .screen-nav .btn:hover{background:rgba(20,36,58,.92)}
 }
 .vab-panel h3{margin:0 0 4px;font-size:15px}
 .vab-panel-hint{font-size:11.5px;color:var(--ink-soft);margin:0 0 10px}
@@ -218,6 +237,13 @@ body.vn-open .wrap{padding-bottom:clamp(220px,30vh,280px)}
 .vab-part .vp-name{font-weight:700}
 .vab-part .vp-stat{margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--ink-faint);text-align:right}
 .vab-part-type{display:inline-block;font-family:'JetBrains Mono',monospace;font-size:9px;text-transform:uppercase;color:var(--accent);background:var(--gold-soft);border-radius:4px;padding:1px 4px;margin-right:4px}
+
+/* Phase 17.5 · คำแนะนำประกอบโคมลอย (แทนคลังชิ้นส่วนแบบลาก) */
+.vab-khom-hint{font-size:12.5px;line-height:1.6;color:var(--ink-soft)}
+.vab-khom-hint b{color:var(--ink)}
+.vab-khom-hint p{margin:6px 0}
+.vab-khom-hint ol{margin:6px 0 0;padding-left:20px;display:flex;flex-direction:column;gap:6px}
+.vab-khom-hint li{padding-left:2px}
 
 /* Phase 7: 3D interactive inspection */
 #vab3d-wrap{position:relative;height:370px;border-radius:12px;overflow:hidden;border:1px solid #2b5da0;
@@ -623,9 +649,10 @@ select.vx-range{-webkit-appearance:menulist;appearance:menulist;height:auto;back
 .fw-shells,.fw-fuses{grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}
 
 /* universal back button on the launch screen */
-.launch-back{position:absolute;top:14px;left:16px;z-index:11;font-size:11px;padding:5px 12px;
-  background:var(--glass-bg);border:1px solid var(--glass-line);
-  -webkit-backdrop-filter:var(--glass-blur);backdrop-filter:var(--glass-blur)}
+.launch-back{position:absolute;top:14px;left:14px;z-index:22;font-size:12.5px;font-weight:700;padding:8px 15px;
+  color:#eef3fb;background:rgba(10,20,34,.74);border:1px solid rgba(255,255,255,.22);border-radius:10px;
+  -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+.launch-back:hover{background:rgba(20,36,58,.9)}
 #screen-launch .launch-hud{top:52px}
 
 /* IGNITE button — the firework sits in the mortar until this is pressed */

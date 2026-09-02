@@ -560,11 +560,12 @@
       paperMat.color.setHex(0xf3dcae);
       paperMat.roughness = 0.95; paperMat.metalness = 0;
       paperMat.side = THREE.DoubleSide;
-      // Phase 17.1 · โคมต้องเป็นกระดาษสาทึบ เห็นลาย/สีเต็ม ไม่ใช่ผี — เรืองแสงด้วย
-      // emissive สีส้มอุ่น + PointLight ด้านในแทนความโปร่งแสง
-      paperMat.transparent = false; paperMat.opacity = 1.0;
+      // Phase 17.5 · กระดาษสาทึบสนิท (absolute fix) — transparent:false · opacity:1 · depthWrite
+      // เรืองแสงด้วย emissive อุ่น ๆ + PointLight ด้านใน (ไม่ใช้ความโปร่งแสง) · emissive ต่ำลงกันขาวโพลน
+      paperMat.transparent = false; paperMat.opacity = 1.0; paperMat.depthWrite = true;
+      paperMat.alphaTest = 0; paperMat.blending = THREE.NormalBlending;
       applySkinL(paperMat, meta.skin, 0.92);                  // Phase 11: ลายข้างโคม
-      if (paperMat.emissive) { paperMat.emissive.setHex(0xff7b2e); paperMat.emissiveIntensity = 0.55; }
+      if (paperMat.emissive) { paperMat.emissive.setHex(0xd9531e); paperMat.emissiveIntensity = 0.32; }
       // ลำโคม — ทรงกระบอกเรียวเล็กน้อย เปิดก้น (openEnded)
       const shell = new THREE.Mesh(
         new THREE.CylinderGeometry(KR * 1.04, KR, KH, 28, 1, true), paperMat);
@@ -597,11 +598,11 @@
       const flame = new THREE.Mesh(new THREE.ConeGeometry(0.28, 0.95, 12), flameMat);
       flame.position.y = coreY + 0.55;
       rocket.add(flame);
-      const lamp = new THREE.PointLight(0xff7700, 4.5, 15, 2);
+      const lamp = new THREE.PointLight(0xff7700, 3.4, 14, 2);
       lamp.position.y = coreY;
       rocket.add(lamp);
-      // แสงเสริมกลางลำ ให้กระดาษสาทั้งใบเรืองอุ่น
-      const glow = new THREE.PointLight(0xffb45a, 3.0, 17, 2);
+      // แสงเสริมกลางลำ ให้กระดาษสาทั้งใบเรืองอุ่น (ลดลงกันกระดาษขาวโพลน)
+      const glow = new THREE.PointLight(0xffb45a, 2.0, 16, 2);
       glow.position.y = CY;
       rocket.add(glow);
       rocket.userData.khomLamp = lamp;
@@ -943,26 +944,30 @@
       }
 
       // ฟ้าผ่า
-      wx.flash *= Math.pow(0.015, dt);
+      // Phase 17.5 · ฟ้าผ่า — clamp ความสว่างไม่ให้ bloom ทำจอขาวโพลนบังลูกโคม/พลุ
+      //   flash เป็นแค่ "แสงวาบพื้นหลัง" ไม่ใช่ระเบิดปรมาณู
+      wx.flash *= Math.pow(0.02, dt);
       if (weather.lightning && alt < 14000) {
         wx.boltNext -= dt;
         if (wx.boltNext <= 0) {
-          wx.boltNext = 1.6 + Math.random() * 5.5;
+          wx.boltNext = 1.8 + Math.random() * 6;
           const L = Math.random() > 0.5 ? wx.bolt1 : wx.bolt2;
           L.position.set((Math.random() - 0.5) * 150, 50 + Math.random() * 46, (Math.random() - 0.5) * 150);
-          L.intensity = 10 + Math.random() * 16;
-          wx.flash = 0.55 + Math.random() * 0.45;
-          shake = Math.max(shake, 0.05);
+          L.intensity = 2.6 + Math.random() * 3;                    // was 10..26
+          wx.flash = 0.18 + Math.random() * 0.14;                   // was 0.55..1.0
+          shake = Math.max(shake, 0.04);
           if (window.Operator && Math.random() > 0.6) window.Operator.event && window.Operator.event("maxq");
         }
       }
       [wx.bolt1, wx.bolt2].forEach(L => {
         if (L.intensity > 0.02) {
           L.intensity *= Math.pow(0.0009, dt);
-          if (L.intensity > 3 && Math.random() < dt * 14) L.intensity *= 2.1;   // re-strike flicker
+          if (L.intensity > 2 && Math.random() < dt * 12) L.intensity *= 1.35;   // re-strike flicker
+          L.intensity = Math.min(L.intensity, 7);                                // hard cap
         } else L.intensity = 0;
       });
-      return wx.flash * atmoFade;
+      // เพดานแฟลชแข็ง ๆ + หรี่ครึ่งหนึ่งสำหรับฉากโคมลอย (โหมดสงบ)
+      return Math.min(0.32, wx.flash * atmoFade) * (meta.lantern ? 0.5 : 1);
     }
 
     function emitFlame(px, py, pz, power) {
@@ -1444,8 +1449,8 @@
         const tt = s.t;
         const breathe = 0.80 + 0.20 * Math.sin(tt * 2.7) + 0.07 * Math.sin(tt * 9.3 + 1.1);
         const flick = breathe + Math.random() * 0.10;
-        if (lamp) lamp.intensity = litK ? 4.6 * flick + 0.7 : Math.max(0, lamp.intensity * 0.92);
-        if (glowL) glowL.intensity = litK ? 3.1 * flick : Math.max(0, glowL.intensity * 0.93);
+        if (lamp) lamp.intensity = litK ? 3.4 * flick + 0.5 : Math.max(0, lamp.intensity * 0.92);
+        if (glowL) glowL.intensity = litK ? 2.0 * flick : Math.max(0, glowL.intensity * 0.93);
         if (fl) { fl.visible = litK; fl.scale.y = 1.2 + 0.35 * Math.sin(tt * 6.1) + Math.random() * 0.35; fl.scale.x = fl.scale.z = 0.82 + 0.12 * Math.sin(tt * 4.3) + Math.random() * 0.18; }
         if (core) { core.visible = litK; core.scale.setScalar(0.88 + 0.14 * Math.sin(tt * 7.7) + Math.random() * 0.22); }
       }
@@ -1520,15 +1525,16 @@
       const dark = weather.skyDark * (1 - spaceT);
       const gr = 0.04 + (0.011 - 0.04) * dark, gg = 0.09 + (0.016 - 0.09) * dark, gb = 0.19 + (0.03 - 0.19) * dark;
       scene.background.setRGB(
-        gr + (0.02 - gr) * spaceT + flash * 0.5,
-        gg + (0.02 - gg) * spaceT + flash * 0.55,
-        gb + (0.05 - gb) * spaceT + flash * 0.6);
+        gr + (0.02 - gr) * spaceT + flash * 0.14,
+        gg + (0.02 - gg) * spaceT + flash * 0.16,
+        gb + (0.05 - gb) * spaceT + flash * 0.2);
       scene.fog.density = (0.0016 + 0.0032 * weather.cloudCover * (1 - spaceT)) * (1 - spaceT);
       setStarOpacity(spaceT * 1.4 - 0.15);
       // โคมลอย: หรี่แสงกลางวันลงหน่อย ให้ไฟในโคมเรืองเด่น (เหมือนปล่อยตอนพลบค่ำ)
       const ambDim = meta.lantern ? 0.6 : 1;
-      hemi.intensity = (0.5 * (1 - spaceT * 0.7) * (1 - 0.55 * dark)) * ambDim + flash * 2.2;
-      sun.intensity = (1.15 * (1 - 0.6 * dark)) * (meta.lantern ? 0.72 : 1) + flash * 1.6;
+      // Phase 17.5 · flash แค่แต้มแสงพื้นหลังบาง ๆ (was ×2.2 / ×1.6 → จอขาวโพลน)
+      hemi.intensity = (0.5 * (1 - spaceT * 0.7) * (1 - 0.55 * dark)) * ambDim + flash * 0.55;
+      sun.intensity = (1.15 * (1 - 0.6 * dark)) * (meta.lantern ? 0.72 : 1) + flash * 0.38;
       // Phase 12: หัวพลุ = กลางคืนตลอด ฟ้ามืดสนิท ดาวเต็มฟ้า พึ่ง bloom + point light ล้วน ๆ
       if (nightFW) {
         scene.background.setRGB(0.008, 0.012, 0.032);

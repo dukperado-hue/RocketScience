@@ -58,6 +58,7 @@
       mat: mesh.material,
       baseEmis: mesh.material.emissive ? mesh.material.emissive.getHex() : 0,
       baseOpacity: mesh.material.opacity,
+      baseTransparent: !!mesh.material.transparent,
       ghost: !!opt.ghost                            // ลำ/เปลือก — โปร่งแสงตอนแยกชิ้นส่วน
     };
     parts.push(rec);
@@ -258,8 +259,11 @@
         p.home.x + p.ex.x * e, p.home.y + p.ex.y * e, p.home.z + p.ex.z * e
       );
       if (p.ghost && p.mat) {
-        p.mat.transparent = true;
-        p.mat.opacity = p.baseOpacity + (0.14 - p.baseOpacity) * e;
+        // Phase 17.5 · โปร่งแสงเฉพาะตอน X-Ray — ตอนพักต้องทึบสนิท (opacity 1 · depthWrite)
+        const xray = explodeT > 0.015;
+        p.mat.transparent = xray ? true : !!p.baseTransparent;
+        p.mat.depthWrite = !xray;
+        p.mat.opacity = xray ? (p.baseOpacity + (0.14 - p.baseOpacity) * e) : p.baseOpacity;
       }
     });
 
@@ -564,7 +568,9 @@
   // ===== โคมลอย =====
   function buildKhom(r) {
     const CY = 3.6, KH = 3.4;
-    const paper = mat(0xf3dcae, { rough: 0.95, transparent: true, opacity: 0.82, side: T().DoubleSide, emis: 0xff9a3c, emisI: 0.6 });
+    // Phase 17.5 · กระดาษสาต้องทึบสนิท (opacity 1 · transparent:false · depthWrite) เห็นลายชัด
+    const paper = mat(0xf3dcae, { rough: 0.95, transparent: false, opacity: 1.0, side: T().DoubleSide, emis: 0xff9a3c, emisI: 0.35 });
+    paper.depthWrite = true;
     applySkin(paper, "khom", 0.9);
     const shell = new (T().Mesh)(geo(new (T().CylinderGeometry)(1.36, 1.5, KH, 26, 1, true)), paper);
     shell.position.y = CY;
@@ -572,7 +578,7 @@
     tag(shell, "โครงกระดาษสา", "ติดไฟที่ ~233°C — คุมความร้อนอย่าให้เกิน", V3(0, 1.4, 0), { ghost: true });
 
     const top = new (T().Mesh)(geo(new (T().SphereGeometry)(1.36, 22, 8, 0, Math.PI * 2, 0, Math.PI / 2)),
-      mat(0xecd0a0, { rough: 0.95, transparent: true, opacity: 0.85 }));
+      mat(0xecd0a0, { rough: 0.95, transparent: false, opacity: 1.0 }));
     top.position.y = CY + KH / 2; top.scale.y = 0.42;
     root.add(top);
     tag(top, "ยอดโคม", "", V3(0, 1.6, 0), { ghost: true });

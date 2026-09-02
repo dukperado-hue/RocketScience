@@ -20,8 +20,9 @@
   // ---------- แคตตาล็อกชนิดชิ้นส่วน ----------
   // attachmentPoints: ชื่อจุดยึด → { x,y,z (สัมพัทธ์กับศูนย์กลาง node นี้), accepts:[type...] }
   const PART_DEFS = {
+    // ───── พลุ (firework) ─────
     shell: {
-      type: "shell", nameTh: "เปลือกพลุ", nameSub: "Spherical Shell", icon: "🎆", mass: 0.5,
+      type: "shell", family: "firework", nameTh: "เปลือกพลุ", nameSub: "Spherical Shell", icon: "🎆", mass: 0.5,
       geometry: { kind: "sphere", radius: 1.05 },
       isRoot: true,   // ไม่ต้องมี parent — วางลอยในห้องได้อิสระ
       attachmentPoints: {
@@ -30,13 +31,36 @@
       }
     },
     chemical: {
-      type: "chemical", nameTh: "สารเคมีเม็ดดาว", nameSub: "Chemical Stars", icon: "✨", mass: 0.2,
+      type: "chemical", family: "firework", nameTh: "สารเคมีเม็ดดาว", nameSub: "Chemical Stars", icon: "✨", mass: 0.2,
       geometry: { kind: "points", radius: 0.72 },
       attachmentPoints: {}
     },
     fuse: {
-      type: "fuse", nameTh: "ชนวนหน่วงเวลา", nameSub: "Time Fuse", icon: "🧵", mass: 0.05,
+      type: "fuse", family: "firework", nameTh: "ชนวนหน่วงเวลา", nameSub: "Time Fuse", icon: "🧵", mass: 0.05,
       geometry: { kind: "cylinder", radius: 0.055, height: 0.9 },
+      attachmentPoints: {}
+    },
+
+    // ───── โคมลอย (Khom Loy) — ประกอบล่างขึ้นบนตามแกน Y ─────
+    //   เชื้อเพลิง (วงแหวนขี้ผึ้ง) → โครงไม้ไผ่ → กระดาษสา   (ไม่มีดินขับ/หัวเผา)
+    fuel_ring: {
+      type: "fuel_ring", family: "khom", nameTh: "เชื้อเพลิง", nameSub: "วงแหวนขี้ผึ้ง/พาราฟิน", icon: "🕯️", mass: 0.18,
+      geometry: { kind: "torus", radius: 1.15, tube: 0.16 },
+      isRoot: true,
+      attachmentPoints: {
+        top: { x: 0, y: 0.2, z: 0, accepts: ["bamboo_frame"], explode: { x: 0, y: 1.3, z: 0 } }
+      }
+    },
+    bamboo_frame: {
+      type: "bamboo_frame", family: "khom", nameTh: "โครงไม้ไผ่", nameSub: "Bamboo Frame", icon: "🎋", mass: 0.12,
+      geometry: { kind: "frame", radius: 1.18, height: 0.55 },
+      attachmentPoints: {
+        top: { x: 0, y: 0.62, z: 0, accepts: ["sa_paper"], explode: { x: 0, y: 2.6, z: 0 } }
+      }
+    },
+    sa_paper: {
+      type: "sa_paper", family: "khom", nameTh: "กระดาษสา", nameSub: "Sa Paper Cover", icon: "📜", mass: 0.09,
+      geometry: { kind: "cover", radius: 1.24, height: 3.6 },
       attachmentPoints: {}
     }
   };

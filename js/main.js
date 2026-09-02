@@ -71,7 +71,11 @@
   // ---------------- screen routing ----------------
   function show(name) {
     if (name !== "vab" && window.VAB3D) window.VAB3D.unmount();   // คืน GL context ก่อนออกจากโรงประกอบ
-    if (name !== "vab" && window.VABEditor) window.VABEditor.unmount();
+    if (name !== "vab" && window.VABEditor) {
+      window.VABEditor.unmount();
+      // Phase 17.5: editor ถูก unmount แล้ว — ครั้งหน้าต้อง show() ใหม่ (ไม่งั้นได้ฉากว่างครึ่ง ๆ)
+      VAB._editorInited = false; VAB._editorMode = null;
+    }
     closeCodex();                                                 // ปิดหอจดหมายเหตุ + คืน GL context
     if (window.VN && window.VN.skip) window.VN.skip();            // ปิดบทสนทนาค้างจากหน้าก่อน (ไม่ให้ลอยทับปุ่ม)
     SCREENS.forEach(s => { const el = $("#screen-" + s); if (el) el.hidden = (s !== name); });
@@ -368,6 +372,24 @@
       const r = G.run.rocket;
       const list = $("#vab-parts");
       list.innerHTML = "";
+
+      // Phase 17.5 · โคมลอย = ประกอบแบบ node (VABEditor) — ไม่มีคลังชิ้นส่วนแบบลากลงกริด
+      if (r.lantern) {
+        list.innerHTML = `<div class="vab-khom-hint">
+          <b>🏮 ประกอบโคมลอยในห้อง 3 มิติ</b>
+          <p>ลากชิ้นส่วนจากพาเลทขวามือมาต่อกันจากล่างขึ้นบน:</p>
+          <ol>
+            <li>🕯️ <b>เชื้อเพลิง</b> — วงแหวนขี้ผึ้ง/พาราฟิน (ฐาน)</li>
+            <li>🎋 <b>โครงไม้ไผ่</b> — สแนปบนวงแหวนเชื้อเพลิง</li>
+            <li>📜 <b>กระดาษสา</b> — หุ้มบนโครง แล้วเลือกลายด้านล่าง</li>
+          </ol>
+        </div>`;
+        const ex = $("#vab-extras"); if (ex) { ex.hidden = true; ex.innerHTML = ""; }
+        VAB.renderRecovery();
+        VAB.renderGridClassic();
+        return;
+      }
+
       const talai = r.id === "talai";
       const bangfai = r.id === "bangfai";
       PARTS.filter(p => p.tierMin <= tierN(r.tierKey) && ["engine", "propellant", "fin", "nosecone", "payload"].includes(p.type) && p.tierMin <= 2
@@ -479,11 +501,24 @@
         const anchor = $("#vab-firework") || $("#vab-recovery") || $("#vab-extras") || $("#vab-parts");
         anchor.parentElement.insertBefore(host, anchor.nextSibling);
       }
-      window.Skins.render(host, fam, () => VAB.computeStats());
+      window.Skins.render(host, fam, () => {
+        if (window.VABEditor && window.VABEditor.applyKhomSkin) window.VABEditor.applyKhomSkin();
+        VAB.computeStats();
+      });
     },
     renderGridClassic() {
       const grid = $("#vab-grid");
       grid.querySelectorAll(".vab-slot, .vab-stage").forEach(n => n.remove());
+
+      // Phase 17.5 · โคมลอย = ประกอบใน VABEditor, ไม่มีกริด
+      if (G.run.rocket && G.run.rocket.lantern) {
+        $("#vab-grid-empty").hidden = true;
+        VAB.renderSkins();
+        VAB.computeStats();
+        VAB.sync3d();
+        return;
+      }
+
       $("#vab-grid-empty").hidden = VAB.slots.length > 0;
       VAB.slots.forEach((pid, idx) => {
         const p = partById(pid);
@@ -516,7 +551,9 @@
         window.__vabPayloadMass = VAB.payloadId ? (partById(VAB.payloadId).mass || 0) : (r.defaultPayload || 0);
       }
       const wrap = $("#vab3d-wrap"), editorWrap = $("#vabeditor-wrap"), grid = $("#vab-grid");
-      const useEditor = r.id === "phu" && window.VABEditor;
+      // Phase 15: พลุ · Phase 17.5: โคมลอย ก็ใช้ node editor (โหมด "khom")
+      const useEditor = (r.id === "phu" || r.lantern) && window.VABEditor;
+      const editorMode = r.lantern ? "khom" : "firework";
 
       if (useEditor) {
         if (window.VAB3D) window.VAB3D.unmount();
@@ -526,7 +563,10 @@
         if (editorWrap) editorWrap.hidden = !ok;
         if (grid) grid.hidden = !keepGrid;
         const eh = $("#vab-grid-empty"); if (eh && !keepGrid) eh.hidden = true;
-        if (ok && !VAB._editorInited) { window.VABEditor.show(); VAB._editorInited = true; }
+        if (ok && (!VAB._editorInited || VAB._editorMode !== editorMode)) {
+          window.VABEditor.show(editorMode);
+          VAB._editorInited = true; VAB._editorMode = editorMode;
+        }
         return;
       }
       if (editorWrap) editorWrap.hidden = true;
@@ -625,6 +665,7 @@
 
     computeClassic() {
       const r = G.run.rocket;
+      if (r.lantern) return VAB.computeKhom();
       if (r.id === "talai" && window.Talai) return VAB.computeTalai();
       if (r.id === "bangfai" && window.Bangfai) return VAB.computeBangfai();
       const parts = VAB.slots.map(partById);
@@ -724,6 +765,49 @@
         : riskHint ? [riskHint, ""]
         : ["พร้อมปล่อย ✓ TWR > 1", "ok"]);
       $("#vab-proceed").disabled = !ok;
+    },
+
+    // ===== โคมลอย (Khom Loy) — Phase 17.5 · ประกอบ node (เชื้อเพลิง→โครงไผ่→กระดาษสา) =====
+    computeKhom() {
+      const r = G.run.rocket;
+      const b = (window.VABEditor && window.VABEditor.getBuild) ? window.VABEditor.getBuild()
+        : { complete: false, hasRing: false, hasFrame: false, hasCover: false, thrust: 0, fuelMass: 0, extraDryMass: 0.4, dragCoef: r.dragCoef, paperRisk: 0.9, pattern: "plain", totalMass: 0 };
+
+      const thrust = b.thrust || 46;                     // ความร้อนวงแหวนขี้ผึ้ง (ใช้แทน "แรงขับ")
+      const fuelMass = b.fuelMass || 0.9;
+      const dryMass = r.dryMass + (b.extraDryMass || 0.4);
+      const wetMass = dryMass + fuelMass;
+      const dragCoef = Math.max(0.05, b.dragCoef || r.dragCoef);
+      const twr = wetMass > 0 ? thrust / (wetMass * 9.81) : 0;
+      const paperRisk = b.paperRisk != null ? b.paperRisk : 0.5;
+
+      G.run.stats = {
+        staged: false, thrust, fuelMass, dryMass, wetMass, dragCoef, spin: false,
+        burnTime: 3.0, twr, deltaV: 0, scoreBonusParts: 0, wobble: 0, paperRisk,
+        partCount: b.complete ? 3 : (b.hasFrame ? 2 : b.hasRing ? 1 : 0),
+        hasEngine: true, hasFuel: true,
+        casingCapMul: 1, catoRisk: 0, chemIgnitionRisk: 0, chem: null, body: null, recovery: null,
+        khom: b
+      };
+
+      renderTelem([
+        ["มวลรวม", fmt(wetMass, 2) + " kg"],
+        ["ความร้อนเชื้อเพลิง", fmt(thrust) + " (heat)"],
+        ["แรงลอยตัว (อาร์คิมิดีส)", twr >= 1.2 ? "พอลอย" : "อ่อน", twr >= 1.2 ? "ok" : "warn"],
+        ["ลายกระดาษสา", b.pattern === "plain" ? "ยังไม่เลือก" : b.pattern],
+        ["ความเสี่ยงกระดาษไหม้", paperRisk > 0.7 ? "สูง" : paperRisk > 0.45 ? "กลาง" : "ต่ำ",
+          paperRisk > 0.7 ? "bad" : paperRisk > 0.45 ? "warn" : "ok"]
+      ]);
+
+      setVerdict(
+        !b.hasRing ? ["วาง 🕯️ เชื้อเพลิง (วงแหวนขี้ผึ้ง) เป็นฐานก่อน", "bad"]
+        : !b.hasFrame ? ["ต่อ 🎋 โครงไม้ไผ่บนวงแหวนเชื้อเพลิง", "bad"]
+        : !b.hasCover ? ["หุ้ม 📜 กระดาษสาบนโครงไม้ไผ่", "bad"]
+        : paperRisk > 0.7 ? ["⚠️ เปลวใกล้พิกัดกระดาษสา — เสี่ยงไหม้กลางอากาศ", ""]
+        : ["พร้อมปล่อย ✓ โคมประกอบครบ", "ok"]);
+
+      $("#vab-proceed").disabled = !b.complete;
+      return G.run.stats;
     },
 
     // ===== ตะไล (Talai) — ภูมิปัญญาบ้านตาลิน =====
@@ -893,6 +977,7 @@
       $("#vab-proceed").disabled = !pl || twr1 < 1.02;
     }
   };
+  window.VAB = VAB;   // Phase 17.5: ให้ VABEditor เรียก computeStats กลับได้เมื่อผู้เล่นต่อชิ้นส่วนโคม
 
   // Easter egg: ตรวจว่านี่คือจรวด "หวันหู่" ไหม
   function isWanHu(r, s) {
@@ -949,8 +1034,11 @@
     const r = G.run.rocket;
     VAB.slots = []; VAB.payloadId = null; VAB.upgrades = [];
     VAB._editorInited = false;   // Phase 15: บังคับให้ห้องประกอบ node editor เริ่มใหม่เมื่อเข้าโรงประกอบรอบใหม่
+    VAB._editorMode = null;      // Phase 17.5: บังคับเลือกโหมด editor ใหม่ (firework/khom)
     if (isStaged(r)) {
       VAB.payloadId = (r.payloads && r.payloads[0]) || null;   // เพย์โหลดเบาสุดเป็นค่าเริ่มต้น
+    } else if (r.lantern) {
+      VAB.slots = [];             // Phase 17.5: โคมลอยประกอบใน node editor ล้วน ๆ
     } else if (r.tierKey === "tier1") {
       VAB.slots = ["burner_l", "prop_s"];
     } else if (r.id === "talai") {
@@ -961,6 +1049,7 @@
       VAB.slots = ["motor_pvc", "prop_l", "fin_light"];
     }
     $("#vab-mode-tag").textContent = isStaged(r) ? "STAGED VEHICLE"
+      : r.lantern ? "โคมลอย · ประกอบ node"
       : r.id === "talai" ? "TALAI · จานหมุน"
       : r.id === "bangfai" ? "บั้งไฟ · ช่างบั้งไฟ" : "SINGLE STAGE";
     VAB.render();
