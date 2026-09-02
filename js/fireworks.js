@@ -43,18 +43,18 @@
   };
 
   // รูปแบบการแตกของลูกพลุ (shell break)
-  //   Phase 17.1 · game feel — เม็ดดาวลอยค้างฟ้า 4–6 วิ (แรงโน้มถ่วงต่ำ + อายุยาว)
-  //   แทนที่จะร่วงหายใน ~1 วิ
+  //   Phase 17.2 · cinematic — เม็ดดาวค้างฟ้า ~20–28 วิ เหมือนเนบิวลาเรืองแสง ค่อย ๆ จางหาย
+  //   แรงโน้มถ่วงต่ำมาก (≤0.5) + แรงต้านอากาศสูง (drag base ต่ำ) → ความเร็วปลายดิ่งเกือบ 0
   const PATTERNS = {
-    peony:      { th: "ลูกพุด", en: "Peony",         grav: 2.4,  life: 4.8, spread: 1.00, trailFrac: 0.00, breaks: false,
+    peony:      { th: "ลูกพุด", en: "Peony",         grav: 0.50, life: 20, spread: 1.00, trailFrac: 0.00, breaks: false,
                   desc: "ทรงกลมเม็ดดาวกระจายแล้วหรี่ดับพร้อมกัน" },
-    chrysanth:  { th: "เบญจมาศ", en: "Chrysanthemum", grav: 2.2,  life: 5.2, spread: 1.00, trailFrac: 0.55, breaks: false,
+    chrysanth:  { th: "เบญจมาศ", en: "Chrysanthemum", grav: 0.45, life: 22, spread: 1.00, trailFrac: 0.55, breaks: false,
                   desc: "เม็ดดาวลากหางประกายยาวเป็นทรงพัด" },
-    willow:     { th: "ต้นหลิว", en: "Willow",        grav: 1.5,  life: 6.2, spread: 0.74, trailFrac: 0.72, breaks: false, gold: true,
+    willow:     { th: "ต้นหลิว", en: "Willow",        grav: 0.30, life: 27, spread: 0.74, trailFrac: 0.72, breaks: false, gold: true,
                   desc: "หางทองยาวลู่ลงช้า ๆ ค้างฟ้านานสุด" },
-    multibreak: { th: "มัลติเบรก", en: "Multi-Break", grav: 2.4,  life: 4.8, spread: 1.00, trailFrac: 0.30, breaks: true,
+    multibreak: { th: "มัลติเบรก", en: "Multi-Break", grav: 0.50, life: 20, spread: 1.00, trailFrac: 0.30, breaks: true,
                   desc: "เม็ดดาวชั้นแรกจุดระเบิดซ้ำเป็นพวงเล็ก (ใช้กับพลุหลายสี)" },
-    crossette:  { th: "ครอสเซ็ตต์", en: "Crossette", grav: 2.5,  life: 4.6, spread: 0.92, trailFrac: 0.25, breaks: true, cross: true,
+    crossette:  { th: "ครอสเซ็ตต์", en: "Crossette", grav: 0.50, life: 19, spread: 0.92, trailFrac: 0.25, breaks: true, cross: true,
                   desc: "เม็ดดาวแตกออกเป็นกากบาท 4 แฉก" }
   };
 
@@ -234,7 +234,7 @@
     const specs = opts.specs || (opts.spec ? [opts.spec] : []);
     const spark = specs.some(s => s && s.spark);
 
-    const MAX = 3400;
+    const MAX = 7600;   // Phase 17.2 · pool bigger — long-lived nebula + more trails
     const posArr = new Float32Array(MAX * 3);
     const colArr = new Float32Array(MAX * 3);
     const geo = new THREE.BufferGeometry();
@@ -285,10 +285,10 @@
       lightGlow = Math.max(lightGlow, intensity * 0.42);
     }
 
-    // ---- primary burst — ทรงกลม 3 มิติ + ดันออกทาง Z (เข้าหากล้อง) ----
+    // ---- primary burst — ทรงกลม 3 มิติ + เอียงเวกเตอร์เข้าหากล้อง (Z บวก) ----
     function burst(cx, cy, cz, s, colIdx) {
       const emit = emitList[colIdx % emitList.length];
-      const N = Math.round((spark ? 240 : 190) * s);
+      const N = Math.round((spark ? 380 : 320) * s);
       const v0 = (spark ? 16 : 21) * (pat.spread || 1) * s;
       for (let i = 0; i < N; i++) {
         const u = Math.random() * 2 - 1, ang = Math.random() * Math.PI * 2;
@@ -297,13 +297,13 @@
         let r = emit.r, g = emit.g, b = emit.b;
         if (spark && Math.random() < 0.28) { r = 1.6; g = 1.4; b = 0.8; }
         else { const t = 0.82 + Math.random() * 0.32; r *= t; g *= t; b *= t; }
-        // แกน Z คูณ 1.35 = ดอกป่องเข้าหาผู้ชม (3D pop) แทนที่จะแบนบนระนาบจอ
+        // Phase 17.2 · แกน Z คูณ 1.7 + ดันหน้า (bias +Z) → ดอกป่องทะลุจอเข้าหาผู้ชม
         makeStar(
           cx, cy, cz,
-          rr * Math.cos(ang) * sp, u * sp, rr * Math.sin(ang) * sp * 1.35,
+          rr * Math.cos(ang) * sp, u * sp, rr * Math.sin(ang) * sp * 1.7 + sp * 0.42,
           r, g, b,
           pat.life * (0.82 + Math.random() * 0.36),
-          spark ? 0.18 : 0.13, pat.grav,
+          spark ? 0.09 : 0.07, pat.grav,
           {
             trail: pat.trailFrac > 0 && Math.random() < pat.trailFrac,
             breakIn: pat.breaks ? 0.55 + Math.random() * 0.4 : 0,
@@ -372,11 +372,11 @@
                 } else {
                   const uu = Math.random() * 2 - 1, aa = Math.random() * Math.PI * 2, r2 = Math.sqrt(1 - uu * uu);
                   const s2 = 4 + Math.random() * 5;
-                  dx = r2 * Math.cos(aa) * s2; dy = uu * s2; dz = r2 * Math.sin(aa) * s2 * 1.3;
+                  dx = r2 * Math.cos(aa) * s2; dy = uu * s2; dz = r2 * Math.sin(aa) * s2 * 1.6 + s2 * 0.4;
                 }
                 makeStar(p.x, p.y, p.z,
                   p.vx * 0.35 + dx, p.vy * 0.35 + dy, p.vz * 0.35 + dz,
-                  p.r, p.g, p.b, 2.4 + Math.random() * 1.6, 0.12, p.grav * 1.1,
+                  p.r, p.g, p.b, 9 + Math.random() * 6, 0.06, p.grav * 1.1,
                   { kind: "spark", trail: Math.random() < 0.4 });
               }
             }
@@ -384,12 +384,12 @@
 
           if (p.trail && p.kind === "star") {
             p.tacc += dt;
-            const iv = 0.05;
+            const iv = 0.14;   // Phase 17.2 · หางถี่น้อยลง (เม็ดดาวอยู่นาน 20+ วิ) กัน pool ล้น
             while (p.tacc >= iv) {
               p.tacc -= iv;
               const tp = alloc();
               if (tp) {
-                tp.life = pat.gold ? 1.8 : 1.1; tp.max = tp.life;
+                tp.life = pat.gold ? 4.0 : 2.6; tp.max = tp.life;
                 tp.x = p.x; tp.y = p.y; tp.z = p.z;
                 tp.vx = p.vx * 0.12; tp.vy = p.vy * 0.12 - 0.4; tp.vz = p.vz * 0.12;
                 if (pat.gold) { tp.r = 1.7; tp.g = 1.15; tp.b = 0.35; }
@@ -409,13 +409,14 @@
         geo.setDrawRange(0, n);
         geo.attributes.position.needsUpdate = true;
         geo.attributes.color.needsUpdate = true;
-        mat.size = (0.38 + 0.4 * Math.max(0, 1 - elapsed * 0.28)) * (0.9 + 0.25 * scale);
+        // ขนาดเม็ด: พองตอนแตก แล้วคงเม็ดนุ่มใหญ่ตลอด ~28 วิ (เนบิวลาเรืองแสง เบลอรวมกันด้วย bloom)
+        mat.size = (0.42 + 0.6 * Math.max(0, 1 - elapsed * 0.06)) * (0.95 + 0.3 * scale);
 
         lightHold *= Math.pow(0.02, dt);
         lightGlow *= Math.pow(0.25, dt);
         burstLight.intensity = lightHold + lightGlow;
 
-        return (aliveCount > 0 || shellIdx < shells.length) && elapsed < 12;
+        return (aliveCount > 0 || shellIdx < shells.length) && elapsed < 30;
       },
       dispose() {
         scene.remove(points);

@@ -537,6 +537,20 @@
 
     if (tier === 1) { tower.visible = false; }   // โคม/พลุ ไม่ได้ยิงจากร้านบั้งไฟ/เสาปล่อย
 
+    // ─────────────────────────────────────────────────────────────────────────
+    //  TODO (Phase 18 · "Yi Peng" / ยี่เป็ง) — spawnYiPengBackground()
+    //  เติมท้องฟ้าด้วยโคมลอยพื้นหลังหลายร้อยดวงระหว่างปล่อย Khom เพื่อบรรยากาศงานยี่เป็ง
+    //  แผน implementation:
+    //   • สร้าง THREE.InstancedMesh (ทรงกระบอกกระดาษสาย่อ ~0.3 หน่วย) 200–400 อินสแตนซ์
+    //     กระจายในโดม r≈80–260, y≈8–120, พร้อม emissive สีส้มอุ่น + ต่อ 1 PointLight รวม (แชร์)
+    //   • ต่อเป็นลูกของ worldGroup? — ไม่: ต้องลอยขึ้นอิสระ ใช้ group แยก + ต่อ scene
+    //   • อัปเดตต่อเฟรม: y += drift 0.15–0.5 u/s, ส่าย x/z เบา ๆ (sin), ดวงที่พ้น y>140 รีไซเคิลลงล่าง
+    //   • ความสว่างหายใจต่อดวง: instanceColor *= (0.8 + 0.2·sin(t·rate + phase))
+    //   • เรียกจาก run() เมื่อ meta.lantern (และอาจ meta.firework กลางคืน); dispose ใน cleanup()
+    //   • ผูกจำนวนกับ performance budget / มี flag ปิดสำหรับเครื่องช้า
+    //  function spawnYiPengBackground(count) { /* not yet implemented */ }
+    // ─────────────────────────────────────────────────────────────────────────
+
     if (tier === 1 && meta.lantern) {
       // ---- โคมลอย: ทรงกระบอกกระดาษสา เปิดก้น มีไฟเรืองข้างใน ยืนใกล้พื้น ----
       pad.visible = false;                        // โคมลอยปล่อยจากมือ/พื้น ไม่มีแท่นเหล็ก
@@ -1117,7 +1131,8 @@
     // Phase 16.5: cinematic firework camera (liftoff → ascent tracking → burst pull-back → free orbit)
     let fwCamPhase = "liftoff", fwBurstAge = 0, camFovGoal = camera.fov, camKcMul = 1;
     const fwOrbit = { yaw: 0, pitch: 0, dist: 1, drag: false, lx: 0, ly: 0 };
-    if (nightFW && canvas) {
+    // Phase 17.2 · manual pan/tilt/dolly — enabled for firework post-burst AND the Khom drift
+    if ((nightFW || meta.lantern) && canvas) {
       canvas.style.touchAction = "none";
       const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
       canvas.addEventListener("pointerdown", e => {
@@ -1131,8 +1146,8 @@
         if (!fwOrbit.drag) return;
         const dx = e.clientX - fwOrbit.lx, dy = e.clientY - fwOrbit.ly;
         fwOrbit.lx = e.clientX; fwOrbit.ly = e.clientY;
-        // ก่อนพลุแตก = ขยับได้นิดเดียว (ไม่ให้หลุดช็อตซีเนแมติก) · หลังแตก = อิสระเต็มที่
-        const gain = fwCamPhase === "post" ? 1 : 0.32;
+        // ก่อนพลุแตก = ขยับได้นิดเดียว (ไม่ให้หลุดช็อตซีเนแมติก) · หลังแตก / โคมลอย = อิสระเต็มที่
+        const gain = (meta.lantern || fwCamPhase === "post") ? 1 : 0.32;
         fwOrbit.yaw = clamp(fwOrbit.yaw - dx * 0.005 * gain, -1.15, 1.15);
         fwOrbit.pitch = clamp(fwOrbit.pitch + dy * 0.004 * gain, -0.5, 0.72);
       });
@@ -1151,10 +1166,10 @@
         fwCamPhase = (!fwArmed || shellY < 3.5) ? "liftoff" : "ascent";
       } else {
         fwBurstAge += dt;
-        fwCamPhase = fwBurstAge < 1.7 ? "burst" : "post";
+        fwCamPhase = fwBurstAge < 2.6 ? "burst" : "post";
       }
       if (camTag) camTag.textContent =
-        { liftoff: "SPECTATOR", ascent: "TRACKING ▲", burst: "◉ BURST", post: "SPECTATOR ⟲" }[fwCamPhase];
+        { liftoff: "SPECTATOR", ascent: "TRACKING ▲", burst: "◉ CLOSE-UP", post: "◉ DOLLY IN ⟲" }[fwCamPhase];
 
       const base = new THREE.Vector3(), look = new THREE.Vector3();
       if (fwCamPhase === "liftoff") {
@@ -1169,18 +1184,21 @@
         look.set(xJit * 0.5, shellY + 3.4, 0);
         camFovGoal = 58; camKcMul = 0.85;                     // ช้าลง = แพนนุ่ม
       } else if (fwCamPhase === "burst") {
-        // จังหวะพลุแตก: ถอยกล้องตามแกน Z + ถ่างเลนส์ (FOV) ให้ดอกมัลติเบรกอยู่กลางเฟรม ไม่โดนตัดขอบ
-        const e = fwBurstAge / 1.7;
+        // Phase 17.2 · ไม่ถอยกล้อง — ดัน CLOSE-UP เข้าหาศูนย์กลางดอกตามแกน Z + หุบเลนส์เล็กน้อย
+        const e = fwBurstAge / 2.6;
         const ease = e < 0.5 ? 4 * e * e * e : 1 - Math.pow(-2 * e + 2, 3) / 2;   // easeInOutCubic
-        base.set(2, burstY * 0.5 + 4, 32 + ease * 50);
+        base.set(0.6, burstY * 0.62 + 2.2, 26 - ease * 8);   // 26 → 18 (ดันเข้า)
         look.set(0, burstY, 0);
-        camFovGoal = 60 + ease * 24;                          // 60 → 84
-        camKcMul = 0.5 + ease * 0.42;                         // ไหลช้าตอนต้น แล้วนิ่ง
+        camFovGoal = 52 - ease * 6;                           // 52 → 46 (หุบเลนส์)
+        camKcMul = 0.55 + ease * 0.3;
       } else {
-        // ดาวร่วง: กล้องกว้าง ค้างไว้ ให้ผู้เล่นหมุน/แพนเองได้
-        base.set(1.5, burstY * 0.48 + 3, 82);
-        look.set(0, burstY * 0.95, 0);
-        camFovGoal = 82; camKcMul = 0.55;
+        // Phase 17.2 · ดอลลี่-อินช้ามาก ตลอด ~28 วิ ที่เม็ดดาวค้างฟ้า — ชื่นชมเนบิวลาเรืองแสง
+        const d = Math.min(1, (fwBurstAge - 2.6) / 26);      // 0 → 1 across the hang time
+        const dd = 1 - Math.pow(1 - d, 2);                    // easeOut
+        base.set(0.3, burstY * 0.66 + 1.4, 18 - dd * 10);    // 18 → 8 (นิ่ง ๆ เข้าไปเรื่อย ๆ)
+        look.set(0, burstY * 0.99, 0);
+        camFovGoal = 46 - dd * 5;                             // 46 → 41
+        camKcMul = 0.16;                                      // ตามช้ามาก = นุ่มนวล
       }
 
       // manual orbit offset — หมุนเวกเตอร์กล้อง→เป้ารอบแกน Y + เอียง pitch + ดอลลี่
@@ -1194,6 +1212,28 @@
       camGoalLook.copy(look);
 
       camera.fov += (camFovGoal - camera.fov) * Math.min(1, dt * 2.2);
+      camera.updateProjectionMatrix();
+    }
+
+    // Phase 17.2 · กล้องโคมลอย — worm's-eye: จุดกล้องตรึงต่ำติดพื้น (y≈1.0) ไม่ขยับตามโคมขึ้น
+    //   เอียงหน้าเงยตามโคมที่ลอยสูง+ไกลออกไป · ผู้เล่นแพน/เงย/ซูมเองได้ (fwOrbit)
+    function updateLanternCam(dt) {
+      const lx = rocket.position.x, ly = rocket.position.y;
+      if (camTag) camTag.textContent = "🏮 GROUND TRACK";
+
+      // แกนหมุนของกล้อง = จุดปล่อยระดับพื้น (ไม่ใช่ตัวโคม) → กล้องอยู่ต่ำเสมอ
+      const pivot = new THREE.Vector3(0, 1.0, 0);
+      const off = new THREE.Vector3(1.6, 0, 15);        // เยื้องข้าง+ถอยหลังนิด ระดับพื้น
+      const cy = Math.cos(fwOrbit.yaw), sy = Math.sin(fwOrbit.yaw);
+      const ox = off.x * cy - off.z * sy, oz = off.x * sy + off.z * cy;
+      off.x = ox; off.z = oz;
+      off.y += fwOrbit.pitch * 7;                        // เงย/ก้มด้วยมือ
+      off.multiplyScalar(fwOrbit.dist);
+      camGoalPos.copy(pivot).add(off);
+      camGoalPos.y = Math.max(0.7, camGoalPos.y);        // กล้องห้ามจมใต้พื้น
+      camGoalLook.set(lx * 0.7, ly, 0);                  // มองเงยขึ้นหาโคม
+      camFovGoal = 55;
+      camera.fov += (camFovGoal - camera.fov) * Math.min(1, dt * 1.6);
       camera.updateProjectionMatrix();
     }
 
@@ -1213,7 +1253,10 @@
       // Phase 16.5: กล้องซีเนแมติกสำหรับพลุ (liftoff → tracking → burst pull-back → free orbit)
       if (nightFW) { updateFireworkCam(dt || 0.016); return; }
 
-      // จรวดพื้นบ้านลำเล็ก (บั้งไฟ/ตะไล/โคม) — ดึงกล้องเข้าใกล้ให้เห็นลำ+หางชัด
+      // Phase 17.2 · โคมลอย = กล้อง worm's-eye ตรึงติดพื้น เงยหน้าตามโคมที่ลอยจากไป
+      if (meta.lantern) { updateLanternCam(dt || 0.016); return; }
+
+      // จรวดพื้นบ้านลำเล็ก (บั้งไฟ/ตะไล) — ดึงกล้องเข้าใกล้ให้เห็นลำ+หางชัด
       const sm = meta.bangfai || meta.talai || tier === 1;
       if (camState === "pad") {
         camGoalPos.set(meta.lantern ? 4.2 : sm ? 5 : 7, meta.lantern ? 2.4 : sm ? 3 : 2.5, meta.lantern ? 6.5 : sm ? 8 : 11);
@@ -1232,15 +1275,18 @@
 
     // ---------- loop ----------
     let raf = 0, last = performance.now(), canceled = false, done = false, holdF = 0, simSpeed = 1.5;
+    let flightRealT = 0;   // Phase 17.2 · เวลาจริงที่ผ่านไปในฉากปล่อย (gate ความยาว Khom/พลุ)
 
     function frame(now) {
       if (canceled) return;
       let dt = (now - last) / 1000; last = now;
       dt = Math.min(dt, 0.1);
+      flightRealT += dt;
 
       // sim-speed ramp
       const alt = flight.state.y;
-      const targetSpeed = flight.state.phase === "insertion" || flight.state.phase === "orbit" ? 34
+      const targetSpeed = meta.lantern ? 1.0    // Phase 17.2 · โคมลอย = เรียลไทม์ ช้า สงบ
+        : flight.state.phase === "insertion" || flight.state.phase === "orbit" ? 34
         : alt < 2500 ? 2.2 : alt < 30000 ? 7 : 16;
       simSpeed += (targetSpeed - simSpeed) * Math.min(1, dt * 1.5);
 
@@ -1255,7 +1301,8 @@
         for (let i = 0; i < steps; i++) flight.step(simDt / steps);
       } else {
         holdF++;
-        if (holdF > 42 && !fx.length) { finish(); return; }
+        // Phase 17.2 · Khom "1-นาที": ห้ามจบก่อน ~56 วิจริง แม้ฟิสิกส์จะหยุดแล้ว
+        if (holdF > 42 && !fx.length && (!meta.lantern || flightRealT > 56)) { finish(); return; }
       }
       const s = flight.state;
 
@@ -1356,12 +1403,20 @@
         const tgt = !fwArmed ? -1.4 : (fwFired ? rocket.position.y : riseU);
         rocket.position.y += (tgt - rocket.position.y) * Math.min(1, dt * 6);
         yOff = rocket.position.y;
+      } else if (meta.lantern) {
+        // Phase 17.2 · พื้นตรึงอยู่กับที่ โคมลอยขึ้นจริงในซีน (worm's-eye tracking)
+        worldGroup.position.y = 0;
+        const riseU = alt * 0.24;                       // ~150 ม. ≈ 36 หน่วยฉาก
+        rocket.position.y += (riseU - rocket.position.y) * Math.min(1, dt * 2.2);
+        yOff = rocket.position.y;
       } else {
         worldGroup.position.y = -u;
       }
 
       // rocket subtle drift with wind / spin
-      rocket.position.x = Math.max(-3, Math.min(3, s.x * 0.0006));
+      rocket.position.x = meta.lantern
+        ? Math.max(-16, Math.min(16, s.x * 0.02))       // Phase 17.2 · โคมลอยพัดไปไกลให้เห็นชัด
+        : Math.max(-3, Math.min(3, s.x * 0.0006));
       rocket.rotation.z = -rocket.position.x * 0.04;
       rocket.rotation.x = 0;
       if (meta.talai) {
@@ -1385,11 +1440,14 @@
         const lamp = rocket.userData.khomLamp, glowL = rocket.userData.khomGlow;
         const fl = rocket.userData.khomFlame, core = rocket.userData.khomCore;
         const litK = s.thrustNow > 0;
-        const flick = 0.8 + Math.random() * 0.45;
-        if (lamp) lamp.intensity = litK ? 4.5 * flick + 0.8 : Math.max(0, lamp.intensity * 0.92);
-        if (glowL) glowL.intensity = litK ? 3.0 * flick : Math.max(0, glowL.intensity * 0.93);
-        if (fl) { fl.visible = litK; fl.scale.y = 1.3 + Math.random() * 0.8; fl.scale.x = fl.scale.z = 0.8 + Math.random() * 0.35; }
-        if (core) { core.visible = litK; core.scale.setScalar(0.85 + Math.random() * 0.4); }
+        // Phase 17.2 · ไฟในโคม "มีชีวิต" — หายใจด้วย sin หลายความถี่ + สั่นสุ่มบาง ๆ
+        const tt = s.t;
+        const breathe = 0.80 + 0.20 * Math.sin(tt * 2.7) + 0.07 * Math.sin(tt * 9.3 + 1.1);
+        const flick = breathe + Math.random() * 0.10;
+        if (lamp) lamp.intensity = litK ? 4.6 * flick + 0.7 : Math.max(0, lamp.intensity * 0.92);
+        if (glowL) glowL.intensity = litK ? 3.1 * flick : Math.max(0, glowL.intensity * 0.93);
+        if (fl) { fl.visible = litK; fl.scale.y = 1.2 + 0.35 * Math.sin(tt * 6.1) + Math.random() * 0.35; fl.scale.x = fl.scale.z = 0.82 + 0.12 * Math.sin(tt * 4.3) + Math.random() * 0.18; }
+        if (core) { core.visible = litK; core.scale.setScalar(0.88 + 0.14 * Math.sin(tt * 7.7) + Math.random() * 0.22); }
       }
 
       // จุดปลายท่อ (nozzle) = ใต้ท่อนล่างสุดที่ยังติดอยู่ (+yOff = ลูกพลุยกตัวขึ้นในฉากกลางคืน)
@@ -1492,7 +1550,9 @@
       updateCameraGoal(alt, dt);
       const kc = nightFW
         ? Math.min(1, dt * 2.6 * camKcMul)
-        : Math.min(1, dt * (camState === "pad" ? 4 : 2.4));
+        : meta.lantern
+          ? Math.min(1, dt * 1.0)                 // Phase 17.2 · ตามโคมช้า ๆ สง่างาม
+          : Math.min(1, dt * (camState === "pad" ? 4 : 2.4));
       camera.position.lerp(camGoalPos, kc);
       lookTarget.lerp(camGoalLook, kc);
       shake *= Math.exp(-dt * 3.2);

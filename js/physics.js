@@ -724,8 +724,9 @@ function createFlight(config) {
     }
 
     // จบเที่ยวบิน: แตะพื้น (ร่อนลงเบา ๆ — ไม่ "ตก"), หรือลอยหาย/หมดเวลา
-    const drifted = Math.abs(state.x) > 4500;
-    if ((state.y <= 0 && state.t > 0.6) || state.t > 95 || drifted) {
+    //   Phase 17.2 · ยืดเป็น ~66 วิ (เรียลไทม์ในฉากปล่อย) เพื่อ "1-นาที สงบ"
+    const drifted = Math.abs(state.x) > 6000;
+    if ((state.y <= 0 && state.t > 0.6) || state.t > 66 || drifted) {
       state.landed = true; state.crashed = false;
       state.recoveryDrift = Math.abs(state.x);
       state.events.push({ t: state.t, k: "landing" });

@@ -1210,7 +1210,8 @@
           : (r.blackPowder || tierN(r.tierKey) === 2 ? "blackpowder" : null)),
         // โคมลอย: ลอยด้วยแรงลอยตัวความร้อน (ไม่ใช่แรงขับจรวด) + ลอยตามลมง่ายมาก
         lantern: isLantern,
-        lanternBurnSec: isLantern ? (7 + s.fuelMass * 8 + s.thrust * 0.06) : 0,
+        // Phase 17.2 · ไฟติดยาวคลุมทั้งเที่ยวบิน ~66 วิ → โคมลอยนิ่ง ๆ ลอยสูง+ไกล ไม่ร่วงกลางคัน
+        lanternBurnSec: isLantern ? (52 + s.fuelMass * 10 + s.thrust * 0.08) : 0,
         buoyPower: isLantern ? Math.max(0, Math.min(1.5, (s.thrust - 25) / 55)) : 0,
         casingCapMul: s.casingCapMul || 1, catoRisk: isTalai ? 0 : (s.catoRisk || 0), chemIgnitionRisk: s.chemIgnitionRisk || 0,
         talai: isTalai ? s.talai : null,
