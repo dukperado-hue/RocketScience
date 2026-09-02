@@ -330,40 +330,40 @@
     const CHEM_TH = (k) => (window.Chemistry && window.Chemistry.starChem ? window.Chemistry.starChem(k).th : k);
     const color = mission.requiredChems
       ? [
-          { id: "theme", th: "ชุดสีธีมงาน", sub: "แนะนำ · " + mission.requiredChems.map(CHEM_TH).join("/"), chems: mission.requiredChems.slice() },
-          { id: "red", th: "แดงล้วน", sub: CHEM_TH("strontium"), chems: ["strontium"] },
-          { id: "blue", th: "น้ำเงินล้วน", sub: CHEM_TH("copper"), chems: ["copper"] }
+          { id: "theme", ic: "🎆", th: "ชุดสีธีมงาน", sub: "แนะนำ · " + mission.requiredChems.map(CHEM_TH).join("/"), chems: mission.requiredChems.slice() },
+          { id: "red", ic: "🔴", th: "แดงล้วน", sub: CHEM_TH("strontium"), chems: ["strontium"] },
+          { id: "blue", ic: "🔵", th: "น้ำเงินล้วน", sub: CHEM_TH("copper"), chems: ["copper"] }
         ]
       : [
-          { id: "red", th: "แดง", sub: "สตรอนเชียม", chems: ["strontium"] },
-          { id: "green", th: "เขียว", sub: "แบเรียม", chems: ["barium"] },
-          { id: "blue", th: "น้ำเงิน", sub: "ทองแดง", chems: ["copper"] },
-          { id: "gold", th: "ทอง", sub: "โซเดียม", chems: ["sodium"] }
+          { id: "red", ic: "🔴", th: "แดง", sub: "สตรอนเชียม", chems: ["strontium"] },
+          { id: "green", ic: "🟢", th: "เขียว", sub: "แบเรียม", chems: ["barium"] },
+          { id: "blue", ic: "🔵", th: "น้ำเงิน", sub: "ทองแดง", chems: ["copper"] },
+          { id: "gold", ic: "🟡", th: "ทอง", sub: "โซเดียม", chems: ["sodium"] }
         ];
     return {
       energy: {
-        label: "พลังงาน (ดินขับ / เปลือก)", key: "energy",
+        label: "พลังงาน", icon: "🔋", key: "energy",
         opts: [
-          { id: "small", th: "ดินน้อย", sub: "~240 ม. · ปลอดภัยกว่า", shell: "small" },
-          { id: "medium", th: "ดินมาตรฐาน", sub: "~360 ม. · งานเทศกาล", shell: "medium" },
-          { id: "large", th: "ดินอัดแน่น", sub: "~520 ม. · เสี่ยง CATO", shell: "large" }
+          { id: "small", ic: "🟩", th: "ดินน้อย", sub: "~240 ม. · ปลอดภัยกว่า", shell: "small" },
+          { id: "medium", ic: "🟨", th: "ดินมาตรฐาน", sub: "~360 ม. · งานเทศกาล", shell: "medium" },
+          { id: "large", ic: "🟥", th: "ดินอัดแน่น", sub: "~520 ม. · เสี่ยง CATO", shell: "large" }
         ]
       },
-      color: { label: "สี (สารเปล่งแสงเชิงอะตอม)", key: "color", opts: color },
+      color: { label: "สี", icon: "🎨", key: "color", opts: color },
       timing: {
-        label: "จังหวะ (ชนวนหน่วงเวลา)", key: "timing",
+        label: "จังหวะ", icon: "⏱️", key: "timing",
         opts: [
-          { id: "short", th: "ชนวนสั้น", sub: "แตกทันทีที่ apogee", fuse: "short" },
-          { id: "medium", th: "ชนวนกลาง", sub: "แตกหลัง apogee นิด — ดอกกางเต็ม", fuse: "medium" },
-          { id: "long", th: "ชนวนยาว", sub: "หน่วงนาน เห็นหางยาว", fuse: "long" }
+          { id: "short", ic: "⚡", th: "ชนวนสั้น", sub: "แตกทันทีที่ apogee", fuse: "short" },
+          { id: "medium", ic: "🎇", th: "ชนวนกลาง", sub: "แตกหลัง apogee นิด — ดอกกางเต็ม", fuse: "medium" },
+          { id: "long", ic: "🌠", th: "ชนวนยาว", sub: "หน่วงนาน เห็นหางยาว", fuse: "long" }
         ]
       },
       casing: {
-        label: "เปลือก (รูปแบบการแตก)", key: "casing",
+        label: "เปลือก", icon: "🧨", key: "casing",
         opts: [
-          { id: "peony", th: "ลูกพุด (Peony)", sub: "ทรงกลม หรี่ดับพร้อมกัน", pattern: "peony" },
-          { id: "willow", th: "ต้นหลิว (Willow)", sub: "หางทองลู่ลง ค้างฟ้านานสุด", pattern: "willow" },
-          { id: "multibreak", th: "มัลติเบรก", sub: "หลายสีในดอกเดียว", pattern: "multibreak" }
+          { id: "peony", ic: "🌸", th: "ลูกพุด (Peony)", sub: "ทรงกลม หรี่ดับพร้อมกัน", pattern: "peony" },
+          { id: "willow", ic: "🎋", th: "ต้นหลิว (Willow)", sub: "หางทองลู่ลง ค้างฟ้านานสุด", pattern: "willow" },
+          { id: "multibreak", ic: "🎆", th: "มัลติเบรก", sub: "หลายสีในดอกเดียว", pattern: "multibreak" }
         ]
       }
     };
@@ -387,14 +387,15 @@
 
     const groups = materialGroups();
     const body = el("material-body");
-    body.innerHTML = Object.values(groups).map(g => `
+    body.innerHTML = `<div class="cmp-mat-lab">` + Object.values(groups).map(g => `
       <div class="cmp-mat-group" data-group="${g.key}">
-        <div class="cmp-mat-label">${g.label}</div>
+        <div class="cmp-mat-label"><span class="cmp-mat-gicon">${g.icon || "•"}</span>${g.label}</div>
         <div class="cmp-mat-chips">
           ${g.opts.map(o => `<button type="button" class="cmp-chip" data-opt="${o.id}">
+            <span class="cmp-chip-ic">${o.ic || "▫"}</span>
             <b>${o.th}</b><small>${o.sub || ""}</small></button>`).join("")}
         </div>
-      </div>`).join("");
+      </div>`).join("") + `</div>`;
 
     body.querySelectorAll(".cmp-mat-group").forEach(grp => {
       const key = grp.dataset.group;

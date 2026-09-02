@@ -1,0 +1,343 @@
+/* ==================================================================
+   PHASE 19 · FULL UI/UX REBOOT — "THE SIMULATOR AESTHETIC"
+   Fullscreen 3D · zero white headers · dark-glass chrome that
+   floats over the canvas · icon-first toolbars · minimal text.
+   Loaded AFTER style.css — intentionally overrides earlier VAB/launch CSS.
+   ================================================================== */
+
+:root{
+  --sim-glass:rgba(9,14,24,.62);
+  --sim-glass-solid:rgba(9,14,24,.88);
+  --sim-line:rgba(255,255,255,.16);
+  --sim-line-hot:rgba(224,189,115,.8);
+  --sim-ink:#eef4ff;
+  --sim-ink-soft:#9fb2cf;
+  --sim-blur:blur(12px);
+}
+
+/* ==================================================================
+   19.1 · LAUNCH SCREEN — true 100vw / 100vh canvas
+   ================================================================== */
+#screen-launch{margin:0;position:static}
+#screen-launch > .screen-title{display:none !important}
+
+.launch-wrap{
+  position:fixed;inset:0;width:100vw;height:100vh;height:100dvh;
+  margin:0;border:0;border-radius:0;z-index:38;background:#04050a;overflow:hidden;
+}
+#launch-canvas{
+  display:block;width:100vw !important;height:100vh !important;height:100dvh !important;
+}
+#screen-launch .launch-caption{
+  position:fixed;left:50%;bottom:10px;transform:translateX(-50%);z-index:46;
+  margin:0;max-width:92vw;padding:5px 16px;border-radius:999px;
+  font-family:'JetBrains Mono',monospace;font-size:11px;color:#cfe0f5;
+  background:var(--sim-glass);border:1px solid var(--sim-line);
+  -webkit-backdrop-filter:var(--sim-blur);backdrop-filter:var(--sim-blur);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;
+}
+#screen-launch .launch-hud{top:64px;left:14px}
+#screen-launch .launch-back{top:14px;left:14px}
+#screen-launch .notam-hud{top:64px}
+
+/* ==================================================================
+   19.2 · VAB / ASSEMBLY — fullscreen stage, twin icon rails
+   ================================================================== */
+#screen-vab{position:static}
+
+#screen-vab .vab{
+  display:block;position:fixed;inset:0;width:100vw;height:100vh;height:100dvh;
+  margin:0;overflow:hidden;z-index:36;grid-template-columns:none;gap:0;
+  background:radial-gradient(135% 105% at 50% 0%,#1b3358 0%,#0e2038 55%,#0a1626 100%);
+}
+#screen-vab .vab-assembly{
+  position:absolute;inset:0;margin:0;padding:0;border:0;border-radius:0;
+  background:transparent;box-shadow:none;
+}
+#screen-vab .vab-assembly > h3{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);margin:0}
+#screen-vab #vab3d-wrap,
+#screen-vab #vabeditor-wrap{position:absolute;inset:0;height:auto;width:auto;margin:0;border:0;border-radius:0}
+#screen-vab #vab3d-canvas,
+#screen-vab #vabeditor-canvas{width:100% !important;height:100% !important}
+
+/* --- floating title: tiny pill, top-centre --- */
+#screen-vab > .screen-title{
+  position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:44;
+  margin:0;padding:5px 14px;border-radius:999px;pointer-events:none;
+  font-size:11.5px;font-weight:700;line-height:1;letter-spacing:.3px;color:var(--sim-ink);
+  white-space:nowrap;background:var(--sim-glass);border:1px solid var(--sim-line);
+  -webkit-backdrop-filter:var(--sim-blur);backdrop-filter:var(--sim-blur);
+  box-shadow:0 6px 20px rgba(0,0,0,.34);
+}
+#screen-vab > .screen-title .vab-blueprint-tag{font-size:8.5px;padding:2px 6px;margin-left:3px}
+
+/* --- RIGHT RAIL · parts inventory (classic 3D flow) — compact dark panel --- */
+#screen-vab .vab-inventory{
+  position:fixed;right:8px;left:auto;top:8px;bottom:8px;width:238px;z-index:40;
+  transform:none !important;opacity:1 !important;
+  display:flex;flex-direction:column;gap:4px;padding:10px 10px 12px;
+  color:var(--sim-ink);background:var(--sim-glass);border:1px solid var(--sim-line);
+  border-radius:16px;-webkit-backdrop-filter:var(--sim-blur);backdrop-filter:var(--sim-blur);
+  box-shadow:0 14px 44px rgba(0,0,0,.45);overflow-y:auto;overscroll-behavior:contain;
+}
+#screen-vab .vab-inventory h3{
+  position:sticky;top:0;z-index:2;margin:0;padding:0 0 7px;cursor:default;
+  font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:1.2px;
+  text-transform:uppercase;color:var(--sim-ink-soft);
+  border-bottom:1px solid var(--sim-line);background:transparent;display:block;
+}
+#screen-vab .vab-inventory h3::after{display:none !important}
+#screen-vab .vab-inventory .vab-mode-tag{margin-left:6px;font-size:8px}
+#screen-vab .vab-inventory .vab-panel-hint{display:none}
+#screen-vab .vab-inventory .vab-sub-hd{
+  font-size:8px;letter-spacing:.6px;margin:8px 0 2px;color:var(--sim-ink-soft);
+}
+#screen-vab .vab-parts-list{display:flex;flex-direction:column;gap:5px;max-height:none;overflow:visible}
+#screen-vab .vab-part{
+  position:relative;flex:0 0 auto;display:flex;flex-direction:row;align-items:center;gap:8px;
+  padding:7px 9px;border-radius:10px;background:rgba(255,255,255,.05);
+  border:1px solid rgba(255,255,255,.12);transition:border-color .14s,background .14s;font-size:11px;
+}
+#screen-vab .vab-part:hover{border-color:var(--sim-line-hot);background:rgba(224,189,115,.12);transform:none}
+#screen-vab .vab-part.picked{border-color:var(--sim-line-hot);background:rgba(224,189,115,.18)}
+#screen-vab .vab-part .vp-icon{font-size:19px;line-height:1;flex:0 0 auto}
+#screen-vab .vab-part .vp-name{
+  font-weight:600;font-size:10.5px;line-height:1.2;color:var(--sim-ink);
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+}
+#screen-vab .vab-part .vab-part-type,
+#screen-vab .vab-part .vp-stat{display:none}
+#screen-vab .vab-part.picked::after{position:absolute;top:4px;right:6px;margin:0;font-size:9px}
+
+/* compact the rich recovery / pyrotechnics sub-panels so they fit the rail */
+#screen-vab .vab-inventory .vab-extras{
+  margin-top:8px;padding:8px;border-radius:10px;border:1px dashed var(--sim-line);
+  background:rgba(255,255,255,.03);font-size:10px;
+}
+#screen-vab .vab-inventory .vab-extras .vx-title{font-size:9px;letter-spacing:.6px;color:var(--sim-ink-soft)}
+#screen-vab .vab-inventory .vab-extras .vx-note{font-size:9px;color:var(--sim-ink-soft);line-height:1.4}
+#screen-vab .vab-inventory .vab-extras .rc-grid{grid-template-columns:1fr}
+#screen-vab .vab-inventory .vab-extras .fw-body{font-size:9.5px}
+#screen-vab .vab-inventory .vab-stage,
+#screen-vab .vab-inventory .vab-slot{width:auto;max-width:100%;font-size:10px;padding:7px 9px}
+#screen-vab .vab-inventory .vab-stage .vst-sub{font-size:8.5px}
+
+/* the khom/firework "wall of text" hint panel — gone; parts live in the node palette */
+#screen-vab .vab:has(#vabeditor-wrap:not([hidden])) .vab-inventory{display:none}
+#screen-vab .vab-inventory .vab-khom-hint{display:none}
+
+/* --- RIGHT RAIL · node-editor palette (khom / firework flow) --- */
+#screen-vab .vabe-palette{
+  position:fixed;right:8px;left:auto;top:8px;bottom:8px;width:104px;z-index:40;
+  display:flex;flex-direction:column;gap:6px;padding:8px 6px;
+  background:var(--sim-glass);border:1px solid var(--sim-line);border-radius:16px;
+  -webkit-backdrop-filter:var(--sim-blur);backdrop-filter:var(--sim-blur);
+  box-shadow:0 14px 44px rgba(0,0,0,.45);overflow-y:auto;overscroll-behavior:contain;
+}
+#screen-vab .vabe-item{width:auto;padding:8px 4px 6px}
+#screen-vab .vabe-item-icon{font-size:22px}
+#screen-vab .vabe-item-name{font-size:8.5px;line-height:1.15}
+
+/* --- LEFT RAIL · tools (back · trash · x-ray) --- */
+#screen-vab .screen-nav{
+  position:fixed;left:8px;bottom:8px;top:auto;z-index:48;
+  margin:0;padding:0;width:auto;max-width:none;justify-content:flex-start;gap:0;
+}
+#screen-vab .screen-nav .btn[data-back],
+#screen-vab .screen-nav #vab-cmp-back{
+  font-size:0;line-height:0;width:46px;height:46px;padding:0;border-radius:12px;
+  display:flex;align-items:center;justify-content:center;
+  color:var(--sim-ink);background:var(--sim-glass-solid);border:1px solid var(--sim-line);
+  -webkit-backdrop-filter:var(--sim-blur);backdrop-filter:var(--sim-blur);font-weight:700;
+}
+#screen-vab .screen-nav .btn[data-back]::before,
+#screen-vab .screen-nav #vab-cmp-back::before{content:"\2190";font-size:20px}
+#screen-vab .screen-nav .btn:hover{background:rgba(28,46,72,.95)}
+
+#screen-vab #vab-reset{
+  position:fixed;left:8px;bottom:62px;z-index:48;
+  font-size:0;line-height:0;width:46px;height:46px;padding:0;border-radius:12px;
+  display:flex;align-items:center;justify-content:center;flex:0 0 auto;
+  color:var(--sim-ink);background:var(--sim-glass-solid);border:1px solid var(--sim-line);
+  -webkit-backdrop-filter:var(--sim-blur);backdrop-filter:var(--sim-blur);
+}
+#screen-vab #vab-reset::before{content:"\1F5D1";font-size:18px}
+#screen-vab #vab-reset:hover{background:rgba(226,104,95,.32);border-color:#e2685f}
+
+#screen-vab .vab3d-bar{
+  position:fixed;left:8px;right:auto;top:auto;bottom:116px;z-index:48;
+  width:auto;flex-direction:column;gap:6px;padding:0;background:none;border:0;transform:none;
+  justify-content:flex-start;
+}
+#screen-vab .vab3d-bar .vab3d-hint{display:none}
+#screen-vab .vab3d-btn{
+  font-size:0;line-height:0;width:46px;height:46px;padding:0;border-radius:12px;
+  display:flex;align-items:center;justify-content:center;
+  color:var(--sim-ink);background:var(--sim-glass-solid);border:1px solid var(--sim-line);
+  -webkit-backdrop-filter:var(--sim-blur);backdrop-filter:var(--sim-blur);
+}
+#screen-vab .vab3d-btn::before{content:"\1F50D";font-size:18px}
+#screen-vab .vab3d-btn:hover{background:rgba(28,46,72,.95)}
+
+/* --- TELEMETRY · collapsed puck, top-left; expands on hover --- */
+#screen-vab .vab-telemetry{
+  position:fixed;left:8px;top:8px;right:auto;bottom:auto;z-index:42;
+  width:auto;min-width:132px;max-width:210px;max-height:30px;overflow:hidden;
+  padding:0 12px;border-radius:12px;
+  color:var(--sim-ink);background:var(--sim-glass);border:1px solid var(--sim-line);
+  -webkit-backdrop-filter:var(--sim-blur);backdrop-filter:var(--sim-blur);
+  box-shadow:0 10px 30px rgba(0,0,0,.4);
+  transition:max-height .26s ease,background .26s ease;cursor:pointer;
+}
+#screen-vab .vab-telemetry:hover{max-height:66vh;overflow-y:auto;background:var(--sim-glass-solid);padding-bottom:12px}
+#screen-vab .vab-telemetry h3{
+  margin:0;height:30px;display:flex;align-items:center;gap:6px;
+  font-size:10px;letter-spacing:.6px;text-transform:uppercase;color:var(--sim-ink-soft);
+}
+#screen-vab .vab-telemetry h3::after{content:"\25BE";margin-left:auto;font-size:9px;opacity:.7}
+#screen-vab .vab-telemetry .telem{margin:2px 0 0}
+#screen-vab .vab-telemetry .telem dt{color:var(--sim-ink-soft);font-size:10px}
+#screen-vab .vab-telemetry .telem dd{color:var(--sim-ink);font-size:10px}
+#screen-vab .vab-telemetry .telem-verdict{font-size:10.5px;margin-top:8px}
+
+/* --- BOTTOM CENTRE · tier-1 drag grid + primary CTA --- */
+#screen-vab #vab-grid{
+  position:fixed;left:50%;bottom:70px;transform:translateX(-50%);z-index:38;
+  min-height:0;max-width:min(340px,64vw);max-height:34vh;overflow-y:auto;
+  background:var(--sim-glass);border:1px solid var(--sim-line);
+  -webkit-backdrop-filter:var(--sim-blur);backdrop-filter:var(--sim-blur);
+}
+/* NOTE: no transform here — a transformed ancestor would trap position:fixed
+   children (#vab-reset) inside this bar instead of the viewport. */
+#screen-vab .vab-actions{
+  position:fixed;left:0;right:0;bottom:8px;transform:none;z-index:46;
+  width:min(440px,64vw);margin:0 auto;padding:7px;gap:8px;
+  background:var(--sim-glass);border:1px solid var(--sim-line);border-radius:14px;
+  -webkit-backdrop-filter:var(--sim-blur);backdrop-filter:var(--sim-blur);
+}
+#screen-vab .vab-actions #vab-proceed{flex:1 1 auto;text-align:center;font-weight:800}
+#screen-vab .vabe-status,
+#screen-vab #vabeditor-status{
+  position:fixed;left:50%;right:auto;transform:translateX(-50%);bottom:62px;z-index:40;
+  max-width:min(420px,72vw);text-align:center;font-size:10.5px;color:var(--sim-ink-soft);
+}
+#screen-vab #vab3d-tip,#screen-vab #vabeditor-tip{z-index:50}
+
+@media(max-width:560px){
+  #screen-vab .vab-inventory{width:min(66vw,200px)}
+  #screen-vab .vabe-palette{width:84px}
+  #screen-vab .vabe-item-icon{font-size:19px}
+  #screen-vab .vab-actions{width:calc(100vw - 130px)}
+  #screen-vab #vab-grid{max-width:calc(100vw - 140px)}
+  #screen-vab .vab-telemetry{min-width:110px;max-width:44vw}
+}
+
+/* ==================================================================
+   19.3 · CAMPAIGN · TESTING + MATERIAL — kill headers, dark lab
+   ================================================================== */
+#screen-testing > .screen-title,
+#screen-material > .screen-title,
+#screen-material > .screen-hint{display:none !important}
+
+#screen-testing,#screen-material{
+  margin:-8px calc(50% - 50vw) 0;
+  min-height:100vh;min-height:100dvh;padding:26px 16px 128px;
+  background:radial-gradient(135% 100% at 50% 0%,#182a49 0%,#0d1b30 55%,#0a1424 100%);
+}
+#screen-testing .cmp-body,#screen-material .cmp-body{
+  max-width:900px;margin:0 auto;padding-top:44px;
+}
+
+/* kill the cream app-bar + plain stepbar on every immersive screen; keep campaign
+   progress as a floating dark pill */
+body:has(#screen-vab:not([hidden])) .topbar,
+body:has(#screen-launch:not([hidden])) .topbar,
+body:has(#screen-material:not([hidden])) .topbar,
+body:has(#screen-testing:not([hidden])) .topbar,
+body:has(#screen-vab:not([hidden])) #stepbar,
+body:has(#screen-launch:not([hidden])) #stepbar{display:none !important}
+
+body:has(#screen-material:not([hidden])) #campaign-stepbar,
+body:has(#screen-testing:not([hidden])) #campaign-stepbar{
+  position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:82;
+  margin:0;padding:5px 12px;border-radius:999px;
+  background:var(--sim-glass);border:1px solid var(--sim-line);
+  -webkit-backdrop-filter:var(--sim-blur);backdrop-filter:var(--sim-blur);
+  box-shadow:0 6px 20px rgba(0,0,0,.34);
+}
+body:has(#screen-material:not([hidden])) #campaign-stepbar span,
+body:has(#screen-testing:not([hidden])) #campaign-stepbar span{color:var(--sim-ink-soft)}
+
+#screen-testing .screen-nav,
+#screen-material .screen-nav{
+  position:fixed;left:8px;right:8px;bottom:8px;z-index:80;max-width:none;margin:0;
+  display:flex;gap:8px;justify-content:space-between;align-items:center;
+  padding:8px;border-radius:14px;
+  background:var(--sim-glass);border:1px solid var(--sim-line);
+  -webkit-backdrop-filter:var(--sim-blur);backdrop-filter:var(--sim-blur);
+}
+#screen-testing .screen-nav [data-cmp-back],
+#screen-material .screen-nav [data-cmp-back]{
+  flex:0 0 auto;color:var(--sim-ink);background:rgba(255,255,255,.06);
+  border:1px solid var(--sim-line);font-weight:700;
+}
+#screen-testing .screen-nav .btn-primary,
+#screen-material .screen-nav .btn-primary{flex:1 1 auto;text-align:center;font-weight:800}
+@media(min-width:900px){
+  #screen-testing .screen-nav,#screen-material .screen-nav{
+    left:50%;right:auto;transform:translateX(-50%);width:min(560px,90vw);
+  }
+}
+
+/* --- 19.4 · MATERIAL SELECTION — dark payload-config cards --- */
+#campaign-fw-sink{display:none !important}
+.cmp-mat-lab{display:flex;flex-direction:column;gap:14px}
+#screen-material .cmp-mat-group{
+  background:var(--sim-glass);border:1px solid var(--sim-line);border-radius:16px;
+  padding:14px 15px;margin:0;box-shadow:0 12px 34px rgba(0,0,0,.4);
+  -webkit-backdrop-filter:var(--sim-blur);backdrop-filter:var(--sim-blur);
+}
+#screen-material .cmp-mat-label{
+  display:flex;align-items:center;gap:9px;margin-bottom:11px;
+  font-family:'JetBrains Mono',monospace;font-weight:700;font-size:10.5px;
+  letter-spacing:1.4px;text-transform:uppercase;color:var(--sim-ink-soft);
+}
+#screen-material .cmp-mat-gicon{
+  font-size:16px;width:30px;height:30px;flex:0 0 auto;border-radius:9px;
+  display:flex;align-items:center;justify-content:center;
+  background:rgba(255,255,255,.06);border:1px solid var(--sim-line);
+}
+#screen-material .cmp-mat-chips{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(122px,1fr));gap:9px;
+}
+#screen-material .cmp-chip{
+  position:relative;display:flex;flex-direction:column;align-items:center;gap:5px;text-align:center;
+  padding:14px 10px 11px;border-radius:13px;cursor:pointer;
+  color:var(--sim-ink);background:rgba(255,255,255,.045);
+  border:1px solid rgba(255,255,255,.12);transition:border-color .15s,background .15s,transform .12s;
+}
+#screen-material .cmp-chip:hover{border-color:var(--sim-line-hot);background:rgba(224,189,115,.1);transform:translateY(-2px)}
+#screen-material .cmp-chip-ic{
+  font-size:30px;line-height:1;filter:drop-shadow(0 3px 8px rgba(0,0,0,.5));
+}
+#screen-material .cmp-chip b{font-size:13px;color:var(--sim-ink);font-family:'Noto Serif Thai',serif}
+#screen-material .cmp-chip small{
+  font-family:'JetBrains Mono',monospace;font-size:8.5px;color:var(--sim-ink-soft);line-height:1.3;
+}
+#screen-material .cmp-chip.on{
+  border-color:var(--sim-line-hot);background:rgba(224,189,115,.2);
+  box-shadow:0 0 0 1px var(--sim-line-hot),0 8px 24px rgba(224,189,115,.22);
+}
+#screen-material .cmp-chip.on b{color:#f4dca0}
+#screen-material .cmp-chip.on::after{content:"\2713";position:absolute;top:6px;right:9px;color:#f4dca0;font-weight:800;font-size:11px}
+
+/* --- 19.5 · TESTING — dark diagnostic console shell --- */
+#screen-testing .cmp-test-card{
+  background:var(--sim-glass);border:1px solid var(--sim-line);border-radius:16px;
+  -webkit-backdrop-filter:var(--sim-blur);backdrop-filter:var(--sim-blur);
+  box-shadow:0 12px 34px rgba(0,0,0,.4);color:var(--sim-ink);
+}
+#screen-testing .cmp-test-eyebrow{color:var(--sim-ink-soft)}
+#screen-testing .cmp-test-list li{
+  background:rgba(255,255,255,.045);border-color:rgba(255,255,255,.12);color:var(--sim-ink);
+}

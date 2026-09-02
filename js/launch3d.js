@@ -408,52 +408,7 @@
       milkyWay.material.opacity = Math.max(0, v * 0.7);
     }
 
-    // ---------- Phase 18.5 · พระจันทร์ (สุ่มเฟสต่อการปล่อย) — ฉากกลางคืน ----------
-    let moon = null;
-    function makeMoon() {
-      const phases = ["full", "gibbous", "crescent", "smiling", "new"];
-      const phase = phases[(Math.random() * phases.length) | 0];
-      const S = 256, c = document.createElement("canvas");
-      c.width = c.height = S;
-      const x = c.getContext("2d");
-      const cx = S / 2, cy = S / 2, R = S * 0.32;
-      const halo = x.createRadialGradient(cx, cy, R * 0.7, cx, cy, R * 2.3);
-      halo.addColorStop(0, "rgba(214,226,255,0.34)");
-      halo.addColorStop(1, "rgba(214,226,255,0)");
-      x.fillStyle = halo; x.fillRect(0, 0, S, S);
-      x.save();
-      x.beginPath(); x.arc(cx, cy, R, 0, 7); x.clip();
-      x.fillStyle = phase === "new" ? "#242c44" : "#eef1ff";
-      x.fillRect(0, 0, S, S);
-      if (phase !== "new") {
-        x.fillStyle = "rgba(150,165,205,0.5)";
-        [[-0.3, -0.22, 0.20], [0.26, 0.12, 0.16], [0.04, 0.42, 0.13], [-0.16, 0.30, 0.11], [0.34, -0.32, 0.12]]
-          .forEach(([dx, dy, r]) => { x.beginPath(); x.arc(cx + dx * R, cy + dy * R, r * R, 0, 7); x.fill(); });
-      }
-      if (phase === "crescent" || phase === "gibbous" || phase === "smiling") {
-        x.fillStyle = "#05060c";
-        const off = phase === "gibbous" ? -0.6 : 0.52;
-        x.beginPath(); x.arc(cx + off * R * 2, cy, R * 1.16, 0, 7); x.fill();
-      }
-      x.restore();
-      if (phase === "smiling") {
-        x.strokeStyle = "#c9d2ee"; x.lineWidth = S * 0.022; x.lineCap = "round";
-        x.beginPath(); x.arc(cx - R * 0.20, cy - R * 0.16, R * 0.07, 0, 7); x.stroke();
-        x.beginPath(); x.arc(cx + R * 0.10, cy - R * 0.16, R * 0.07, 0, 7); x.stroke();
-        x.beginPath(); x.arc(cx - R * 0.05, cy + R * 0.04, R * 0.42, 0.15 * Math.PI, 0.85 * Math.PI); x.stroke();
-      }
-      const m = new THREE.Sprite(new THREE.SpriteMaterial({
-        map: track(new THREE.CanvasTexture(c)), transparent: true, depthWrite: false, toneMapped: false, opacity: 0
-      }));
-      m.scale.set(205, 205, 1);
-      // วางในซีกฟ้า "ด้านหน้า" (ทิศที่กล้องหันไป, −z) กวาดซ้าย/ขวา ±30° ที่มุมเงย ~22°
-      const th = (Math.random() - 0.5) * 1.05;
-      m.position.set(Math.sin(th) * 920, 300 + Math.random() * 150, -Math.cos(th) * 920);
-      m.renderOrder = -1;
-      scene.add(m);
-      moon = m;
-    }
-    if (nightSky) makeMoon();
+    // ---------- Phase 19 · ไม่มีพระจันทร์แล้ว — ฟ้ากลางคืนดำสนิท ดาวล้วน (โคมลอย/พลุ) ----------
 
     // ---------- Phase 18.5 · เงาต้นไม้ขอบฟ้า — ไม่ให้พื้นเป็นที่ว่างเปล่าตอนแหงนมอง ----------
     (function makeTreeline() {
@@ -1756,9 +1711,6 @@
         hemi.intensity = 0.10;
         sun.intensity = 0.20;   // แสงจันทร์นวล ๆ — พื้นมืดพอให้ไฟในโคมเด่น
       }
-      if (moon) {
-        moon.material.opacity += ((nightSky ? 0.95 : 0) - moon.material.opacity) * Math.min(1, dt * 1.5);
-      }
       const orbitalView = alt > 60000;
       earth.visible = orbitalView;
       ground.material.opacity = 1;
@@ -1851,7 +1803,6 @@
       if (notamHudEl) { notamHudEl.hidden = true; notamHudEl.classList.remove("breach"); }
       if (camTag) camTag.hidden = true;
       if (camToggleBtn) { camToggleBtn.hidden = true; camToggleBtn.onclick = null; }
-      moon = null;
       if (evEl) evEl.hidden = true;
       if (fwChemEl) { fwChemEl.hidden = true; fwChemEl.classList.remove("fade"); }
       if (fwIgniteBtn) { fwIgniteBtn.hidden = true; fwIgniteBtn.onclick = null; }
