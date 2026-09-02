@@ -1,0 +1,211 @@
+/* =============================================================================
+ * FROM FIRE TO ORBIT — Phase 2B/2C
+ * css/flight.css  ·  the flight / replay telemetry-review screen
+ * ===========================================================================*/
+
+.fs-overlay {
+  position: fixed; inset: 0; z-index: 90;
+  background: #050b18;
+  overflow: hidden;
+  font-family: var(--bp-font, "Sarabun", system-ui, sans-serif);
+  color: var(--bp-ink, #e9f1ff);
+}
+.fs-overlay[hidden] { display: none; }
+
+#fs-canvas {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  display: block; cursor: grab; touch-action: none;
+}
+#fs-canvas:active { cursor: grabbing; }
+
+/* ---- HUD (top-left telemetry stack) ---------------------------------- */
+.fs-hud {
+  position: absolute; left: 18px; top: 16px;
+  pointer-events: none;
+  display: flex; flex-direction: column; gap: 8px;
+  max-width: 260px;
+}
+.fs-phase {
+  align-self: flex-start;
+  font-family: var(--bp-mono, "JetBrains Mono", monospace);
+  font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
+  color: #5bd6ff;
+  border: 1px solid rgba(91,214,255,0.4);
+  background: rgba(6,16,32,0.72);
+  border-radius: 4px; padding: 4px 10px;
+}
+.fs-readout {
+  display: grid; grid-template-columns: 1fr; gap: 1px;
+  background: rgba(6,16,32,0.72);
+  border: 1px solid rgba(120,180,255,0.18);
+  border-left: 2px solid #5bd6ff;
+  border-radius: 4px;
+  padding: 8px 12px;
+  backdrop-filter: blur(3px);
+}
+.fs-readout > div {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 14px;
+  padding: 2px 0;
+  border-bottom: 1px dashed rgba(120,180,255,0.10);
+}
+.fs-readout > div:last-child { border-bottom: 0; }
+.fs-readout span {
+  font-size: 10px; letter-spacing: 0.06em; color: #9db4d8;
+  font-family: var(--bp-mono, monospace); text-transform: uppercase;
+}
+.fs-readout b {
+  font-size: 15px; font-family: var(--bp-mono, monospace); font-weight: 700;
+  color: #e9f1ff;
+}
+
+/* ---- event toast (top-centre) -------------------------------------- */
+.fs-toast {
+  position: absolute; left: 50%; top: 22px; transform: translate(-50%, -14px);
+  font-family: var(--bp-mono, monospace); font-size: 13px; font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #ffce40;
+  background: rgba(6,16,32,0.9);
+  border: 1px solid rgba(255,206,64,0.5);
+  border-radius: 6px; padding: 8px 18px;
+  opacity: 0; transition: opacity .25s ease, transform .25s ease;
+  pointer-events: none;
+}
+.fs-toast.show { opacity: 1; transform: translate(-50%, 0); }
+.fs-toast[hidden] { display: none; }
+
+/* ---- transport bar (bottom-centre) ------------------------------- */
+.fs-bar {
+  position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 10px;
+  background: rgba(6,16,32,0.82);
+  border: 1px solid rgba(120,180,255,0.2);
+  border-radius: 12px;
+  padding: 10px 14px;
+  backdrop-filter: blur(6px);
+  width: min(760px, calc(100vw - 40px));
+  box-shadow: 0 10px 40px rgba(0,0,0,0.45);
+}
+.fs-ic {
+  flex: none;
+  width: 34px; height: 34px;
+  display: grid; place-items: center;
+  background: rgba(18,41,79,0.9);
+  border: 1px solid rgba(120,180,255,0.24);
+  border-radius: 8px;
+  color: #e9f1ff; font-size: 14px; cursor: pointer;
+  font-family: var(--bp-mono, monospace);
+  transition: border-color .12s ease, color .12s ease, background .12s ease;
+}
+.fs-ic:hover { border-color: #5bd6ff; color: #5bd6ff; }
+.fs-ic.fs-txt { width: auto; padding: 0 12px; font-size: 12px; letter-spacing: 0.04em; }
+#fs-close { margin-left: 2px; }
+#fs-close:hover { border-color: #ff6a5a; color: #ff6a5a; }
+
+/* ---- timeline scrubber + event ticks ---------------------------- */
+.fs-timeline { position: relative; flex: 1; height: 34px; display: flex; align-items: center; }
+.fs-scrub {
+  -webkit-appearance: none; appearance: none;
+  width: 100%; height: 5px; border-radius: 3px;
+  background: linear-gradient(90deg, #5bd6ff var(--fs-pos,0%), rgba(120,180,255,0.18) var(--fs-pos,0%));
+  outline: none; cursor: pointer; position: relative; z-index: 2;
+}
+.fs-scrub::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 15px; height: 15px; border-radius: 50%;
+  background: #e9f1ff; border: 2px solid #5bd6ff; cursor: grab;
+}
+.fs-scrub::-moz-range-thumb {
+  width: 15px; height: 15px; border-radius: 50%;
+  background: #e9f1ff; border: 2px solid #5bd6ff; cursor: grab;
+}
+.fs-marks {
+  position: absolute; left: 0; right: 0; top: 50%; height: 16px;
+  transform: translateY(-50%);
+  pointer-events: none; z-index: 1;
+}
+.fs-mark {
+  position: absolute; top: 0; width: 2px; height: 16px;
+  transform: translateX(-1px);
+  border-radius: 1px; opacity: 0.9;
+  box-shadow: 0 0 5px currentColor;
+}
+
+/* ---- Physics Autopsy report card ------------------------------- */
+.fs-autopsy {
+  position: absolute; right: 20px; top: 50%; transform: translateY(-50%);
+  width: min(380px, calc(100vw - 40px));
+  max-height: calc(100vh - 120px); overflow-y: auto;
+  background: rgba(8,18,36,0.94);
+  border: 1px solid rgba(91,214,255,0.35);
+  border-radius: 12px;
+  padding: 16px 18px 18px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.55);
+  backdrop-filter: blur(6px);
+}
+.fs-autopsy[hidden] { display: none; }
+.fs-ap-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin-bottom: 12px;
+}
+.fs-ap-head h2 {
+  margin: 0; font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase;
+  color: #5bd6ff;
+}
+.fs-ap-x {
+  background: none; border: 1px solid rgba(120,180,255,0.3); color: #9db4d8;
+  border-radius: 6px; width: 24px; height: 24px; cursor: pointer; font-size: 13px;
+}
+.fs-ap-x:hover { color: #ff6a5a; border-color: #ff6a5a; }
+.fs-ap-stats {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-bottom: 12px;
+}
+.fs-ap-stat {
+  background: rgba(18,41,79,0.7); border: 1px solid rgba(120,180,255,0.16);
+  border-radius: 8px; padding: 8px 10px;
+}
+.fs-ap-stat span {
+  display: block; font-size: 9.5px; letter-spacing: 0.05em; color: #9db4d8;
+  font-family: var(--bp-mono, monospace); text-transform: uppercase;
+}
+.fs-ap-stat b { font-size: 16px; font-family: var(--bp-mono, monospace); }
+.fs-ap-diaglist { list-style: none; margin: 0 0 14px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.fs-ap-diag {
+  display: grid; grid-template-columns: 20px 1fr; gap: 8px; align-items: start;
+  font-size: 12px;
+}
+.fs-ap-diag > span:first-child { font-weight: 700; text-align: center; }
+.fs-ap-diag b { font-weight: 600; display: block; }
+.fs-ap-diag i { font-style: normal; font-size: 10.5px; color: #9db4d8; font-family: var(--bp-mono, monospace); }
+.fs-ap-diag.OK   > span:first-child { color: #5fe0a8; }
+.fs-ap-diag.WARN > span:first-child { color: #ffce40; }
+.fs-ap-diag.FAIL > span:first-child { color: #ff6a5a; }
+.fs-ap-actions { display: flex; gap: 8px; }
+.fs-ap-btn {
+  flex: 1; padding: 9px; border-radius: 8px; cursor: pointer;
+  font-family: var(--bp-font, sans-serif); font-weight: 700; font-size: 12.5px;
+  border: 1px solid rgba(120,180,255,0.3);
+  background: rgba(18,41,79,0.9); color: #e9f1ff;
+}
+.fs-ap-btn.primary {
+  background: linear-gradient(180deg, #2a7d5c, #1d5f45);
+  border-color: rgba(95,224,168,0.5); color: #eafff5;
+}
+.fs-ap-btn:hover { filter: brightness(1.12); }
+
+.fs-hint {
+  position: absolute; right: 18px; bottom: 78px;
+  font-family: var(--bp-mono, monospace); font-size: 10px; color: #6f86ad;
+  text-align: right; line-height: 1.5; pointer-events: none;
+}
+
+@media (max-width: 720px) {
+  .fs-autopsy { right: 10px; left: 10px; width: auto; }
+  .fs-hint { display: none; }
+  .fs-bar { gap: 7px; padding: 8px 10px; }
+}
+
+/* builder: the "watch flight" button variant */
+.bp-btn.bp-btn-alt {
+  background: linear-gradient(180deg, #21507f, #16375c);
+  border-color: rgba(91,214,255,0.5); color: #eaf6ff;
+}

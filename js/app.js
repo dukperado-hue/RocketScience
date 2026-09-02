@@ -25,6 +25,8 @@
   var vehicle = new RS.Vehicle();
   var lastSim = null;
 
+  var watchBtn = document.getElementById('bp-watch');
+
   var builder = new RS.Blueprint2D({
     canvas: document.getElementById('bp-canvas'),
     catalogEl: document.getElementById('bp-catalog'),
@@ -35,6 +37,7 @@
     era: RS.EraManager.currentId() || '0-khomloy',
     onChange: function (stats) {
       document.getElementById('bp-run').disabled = !stats.valid;
+      watchBtn.disabled = true;      // any edit invalidates the last replay
       schedulePreview();
     }
   });
@@ -42,7 +45,14 @@
   // ---- 3D preview (Phase 2A prelude) --------------------------------
   var preview = new RS.render.Scene(document.getElementById('preview-canvas'), { ground: true });
   var orbit = null, vehicleGroup = null, previewRAF = 0;
-  var flight = new RS.render.FlightRenderer();   // contract binding; not wired to a screen yet
+  var flight = new RS.render.FlightRenderer();   // used by the builder preview binding
+  var flightScreen = RS.render.FlightScreen ? new RS.render.FlightScreen() : null;
+
+  watchBtn.addEventListener('click', function () {
+    if (lastSim && lastSim.ok && flightScreen && flightScreen.available) {
+      flightScreen.open(lastSim, vehicle);
+    }
+  });
 
   if (preview.available) {
     orbit = new RS.render.CameraController(preview.camera, preview.canvas, {
@@ -99,6 +109,9 @@
     renderEvents(result.events);
     renderDiagnostics(result.diagnostics);
     drawTrace(result.trajectory);
+
+    watchBtn.disabled = !(result.ok && result.summary && result.summary.liftedOff &&
+      flightScreen && flightScreen.available);
 
     // optional mission check against the first era mission
     var missions = RS.MissionEngine.forEra(RS.EraManager.currentId());
@@ -208,10 +221,11 @@
 
   // console handle
   window.FIRE_TO_ORBIT = {
-    vehicle: vehicle, builder: builder, preview: preview, flight: flight, RS: RS,
+    vehicle: vehicle, builder: builder, preview: preview, flight: flight,
+    flightScreen: flightScreen, RS: RS,
     simulate: function () { return RS.Physics.simulate(vehicle.toPhysicsModel()); }
   };
-  console.log('%cFROM FIRE TO ORBIT — Reboot Phase 1.1 ready', 'color:#5fe0a8;font-weight:bold');
+  console.log('%cFROM FIRE TO ORBIT — Reboot Phase 2 ready', 'color:#5fe0a8;font-weight:bold');
   console.log('contract v' + RS.Physics.CONTRACT_VERSION +
     ' · try FIRE_TO_ORBIT.simulate()');
 })();

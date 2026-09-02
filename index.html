@@ -4,19 +4,20 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FROM FIRE TO ORBIT — Blueprint Builder</title>
-<meta name="description" content="เกมจำลองวิศวกรรมจรวด: ระบบเดียว ประกอบได้ทุกอย่างตั้งแต่โคมลอยถึงจรวดวงโคจร — Reboot Phase 1.1: Contract Lock, Event System & 3D Vehicle Preview">
+<meta name="description" content="เกมจำลองวิศวกรรมจรวด: ระบบเดียว ประกอบได้ทุกอย่างตั้งแต่โคมลอยถึงจรวดวงโคจร — Reboot Phase 2: Flight Playback, Replay Timeline & Camera Modes">
 <meta name="theme-color" content="#0a1830">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/blueprint.css?v=4">
+<link rel="stylesheet" href="css/blueprint.css?v=5">
+<link rel="stylesheet" href="css/flight.css?v=5">
 </head>
 <body class="bp-body">
 
 <header class="bp-top">
   <h1>From Fire to Orbit</h1>
   <span class="bp-era" id="bp-era-tag">ERA 0 · KHOM LOY</span>
-  <span class="bp-tagline">Reboot Phase 1.1 — Contract Lock · Event System · 3D Vehicle Preview</span>
+  <span class="bp-tagline">Reboot Phase 2 — Flight Playback · Replay Timeline · Camera Modes</span>
 </header>
 
 <div class="bp-stage">
@@ -69,6 +70,7 @@
   <div class="bp-sim-head">
     <h2>Simulation Contract · Physics → SimulationResult</h2>
     <button type="button" class="bp-btn" id="bp-run" disabled>▶ จำลองการบิน</button>
+    <button type="button" class="bp-btn bp-btn-alt" id="bp-watch" disabled>🎬 ดูการบิน 3D</button>
     <span class="bp-sim-note">core/ คำนวณ trajectory + events + diagnostics — render/ ไม่แตะฟิสิกส์</span>
   </div>
 
@@ -93,32 +95,81 @@
   <code>core/</code> ผลิตข้อมูล · <code>render/</code> บริโภคข้อมูล · โค้ดเก่าอยู่ใน <code>archive/</code>
 </footer>
 
+<!-- ═══ Flight / replay screen — telemetry-review playback (Phase 2B/2C) ═══ -->
+<div class="fs-overlay" id="fs-overlay" hidden>
+  <canvas id="fs-canvas"></canvas>
+
+  <div class="fs-hud">
+    <div class="fs-phase" id="fs-phase">PRE-LAUNCH</div>
+    <div class="fs-readout">
+      <div><span>T +</span><b id="fs-time">0.0 s</b></div>
+      <div><span>ระดับความสูง</span><b id="fs-alt">0 m</b></div>
+      <div><span>ความเร็ว</span><b id="fs-vel">0 m/s</b></div>
+      <div><span>ความเร็วสูงสุด</span><b id="fs-vmax">0 m/s</b></div>
+      <div><span>ความเร่ง</span><b id="fs-acc">0 m/s²</b></div>
+      <div><span>มวลยาน</span><b id="fs-mass">0 g</b></div>
+      <div><span>แรงดันอากาศ q</span><b id="fs-q">0 Pa</b></div>
+    </div>
+  </div>
+
+  <div class="fs-toast" id="fs-toast" hidden></div>
+
+  <p class="fs-hint">ลาก = หมุนกล้อง · สกรอลล์ = ซูม<br>Space = เล่น/หยุด · C = สลับกล้อง · R = เริ่มใหม่ · Esc = ปิด</p>
+
+  <!-- Physics Autopsy report -->
+  <div class="fs-autopsy" id="fs-autopsy" hidden>
+    <div class="fs-ap-head">
+      <h2>รายงานการบิน · Physics Autopsy</h2>
+      <button type="button" class="fs-ap-x" id="fs-autopsy-close" aria-label="ปิดรายงาน">✕</button>
+    </div>
+    <div class="fs-ap-stats" id="fs-autopsy-stats"></div>
+    <ul class="fs-ap-diaglist" id="fs-autopsy-diag"></ul>
+    <div class="fs-ap-actions">
+      <button type="button" class="fs-ap-btn primary" id="fs-replay">▶ ดูอีกครั้ง</button>
+      <button type="button" class="fs-ap-btn" id="fs-close">ปิดหน้าจอ</button>
+    </div>
+  </div>
+
+  <div class="fs-bar">
+    <button type="button" class="fs-ic" id="fs-play" aria-label="เล่น/หยุด">▶</button>
+    <button type="button" class="fs-ic" id="fs-restart" aria-label="เริ่มใหม่">⟲</button>
+    <div class="fs-timeline">
+      <div class="fs-marks" id="fs-marks"></div>
+      <input type="range" class="fs-scrub" id="fs-scrub" min="0" max="1000" value="0" aria-label="เลื่อนเวลาการบิน">
+    </div>
+    <button type="button" class="fs-ic fs-txt" id="fs-rate">1×</button>
+    <button type="button" class="fs-ic fs-txt" id="fs-cam">ลอยตาม</button>
+    <button type="button" class="fs-ic" id="fs-close-x" aria-label="ปิด">✕</button>
+  </div>
+</div>
+
 <!-- ═══ core/ — ZERO dependency on render/ or Three.js ═══ -->
-<script src="js/core/PartsCatalog.js?v=4"></script>
-<script src="js/core/Vehicle.js?v=4"></script>
-<script src="js/core/SimulationEvents.js?v=4"></script>
-<script src="js/core/Diagnostics.js?v=4"></script>
-<script src="js/core/Physics.js?v=4"></script>
-<script src="js/core/Blueprint2D.js?v=4"></script>
+<script src="js/core/PartsCatalog.js?v=5"></script>
+<script src="js/core/Vehicle.js?v=5"></script>
+<script src="js/core/SimulationEvents.js?v=5"></script>
+<script src="js/core/Diagnostics.js?v=5"></script>
+<script src="js/core/Physics.js?v=5"></script>
+<script src="js/core/Blueprint2D.js?v=5"></script>
 
 <!-- ═══ data/ — pure content ═══ -->
-<script src="js/data/parts.js?v=4"></script>
-<script src="js/data/eras.js?v=4"></script>
-<script src="js/data/missions.js?v=4"></script>
+<script src="js/data/parts.js?v=5"></script>
+<script src="js/data/eras.js?v=5"></script>
+<script src="js/data/missions.js?v=5"></script>
 
 <!-- ═══ game/ — rules, consumes the contract ═══ -->
-<script src="js/game/EraManager.js?v=4"></script>
-<script src="js/game/MissionEngine.js?v=4"></script>
+<script src="js/game/EraManager.js?v=5"></script>
+<script src="js/game/MissionEngine.js?v=5"></script>
 
 <!-- ═══ vendor ═══ -->
-<script src="vendor/three/three.min.js?v=4"></script>
+<script src="vendor/three/three.min.js?v=5"></script>
 
 <!-- ═══ render/ — consumes data, needs Three.js ═══ -->
-<script src="js/render/Scene.js?v=4"></script>
-<script src="js/render/CameraController.js?v=4"></script>
-<script src="js/render/VehicleRenderer.js?v=4"></script>
-<script src="js/render/FlightRenderer.js?v=4"></script>
+<script src="js/render/Scene.js?v=5"></script>
+<script src="js/render/CameraController.js?v=5"></script>
+<script src="js/render/VehicleRenderer.js?v=5"></script>
+<script src="js/render/FlightRenderer.js?v=5"></script>
+<script src="js/render/FlightScreen.js?v=5"></script>
 
-<script src="js/app.js?v=4"></script>
+<script src="js/app.js?v=5"></script>
 </body>
 </html>
