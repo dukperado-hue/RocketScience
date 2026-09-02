@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+Thai:wght@500;600;700;900&family=Sarabun:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=42">
+<link rel="stylesheet" href="css/style.css?v=61">
 </head>
 <body>
 <script>
@@ -45,6 +45,9 @@
   <span data-step="launch">ปล่อย</span>
   <span data-step="report">ผลลัพธ์</span>
 </div>
+
+<!-- Phase 16 · Campaign state-machine stepbar (พลุ missions) -->
+<div id="campaign-stepbar" class="stepbar stepbar-campaign" hidden></div>
 
 <main class="wrap">
 
@@ -116,6 +119,18 @@
             <span class="vab3d-hint">ลากหมุน · สกรอลล์ซูม · Shift+ลากแพน · ชี้ชิ้นส่วนเพื่อดูสเปก</span>
           </div>
           <div id="vab3d-tip" hidden></div>
+        </div>
+
+        <!-- Phase 15: Node-Based Drag & Drop VAB (ทดลองสถาปัตยกรรมใหม่ — เริ่มที่พลุ) -->
+        <div id="vabeditor-wrap" hidden>
+          <canvas id="vabeditor-canvas"></canvas>
+          <aside id="vabeditor-palette" class="vabe-palette" aria-label="พาเลทชิ้นส่วน"></aside>
+          <div class="vab3d-bar">
+            <button id="vabeditor-explode" type="button" class="vab3d-btn">🔍 แยกชิ้นส่วน (X-Ray)</button>
+            <span class="vab3d-hint">ลากไอคอนขวามาวาง · ลากชิ้นส่วนเพื่อย้าย/ถอด · ลากหมุน · สกรอลล์ซูม</span>
+          </div>
+          <div id="vabeditor-status" class="vabe-status"></div>
+          <div id="vabeditor-tip" hidden></div>
         </div>
         <div id="vab-grid" class="vab-grid" aria-label="กริดประกอบจรวด">
           <div class="vab-grid-empty" id="vab-grid-empty">วางชิ้นส่วนที่นี่</div>
@@ -228,7 +243,70 @@
     </div>
   </section>
 
+  <!-- ============ PHASE 16 · CAMPAIGN STATE MACHINE (พลุ) ============ -->
+  <section id="screen-briefing" class="screen campaign-screen" hidden>
+    <h2 class="screen-title">STATE · BRIEFING</h2>
+    <div id="briefing-body" class="cmp-body"></div>
+    <div class="screen-nav">
+      <span></span>
+      <button class="btn btn-primary" id="briefing-go">รับทราบ — ไปเลือกวัตถุดิบ →</button>
+    </div>
+  </section>
+
+  <section id="screen-material" class="screen campaign-screen" hidden>
+    <h2 class="screen-title">STATE · MATERIAL SELECTION</h2>
+    <p class="screen-hint">เลือกวัตถุดิบให้ครบทั้ง 4 หมวด (พลังงาน · สี · จังหวะ · เปลือก)</p>
+    <div id="material-body" class="cmp-body"></div>
+    <div id="campaign-fw-sink" hidden></div>
+    <div class="screen-nav">
+      <span></span>
+      <button class="btn btn-primary" id="material-go" disabled>ประกอบลูกพลุ →</button>
+    </div>
+  </section>
+
+  <section id="screen-testing" class="screen campaign-screen" hidden>
+    <h2 class="screen-title">STATE · TESTING &amp; SYSTEM CHECK</h2>
+    <div id="testing-body" class="cmp-body"></div>
+    <div class="screen-nav">
+      <span></span>
+      <button class="btn btn-primary" id="testing-go">ส่งต่อให้ LAUNCH CONTROL →</button>
+    </div>
+  </section>
+
+  <section id="screen-debrief" class="screen campaign-screen" hidden>
+    <h2 class="screen-title">STATE · DEBRIEF</h2>
+    <div id="debrief-body" class="cmp-body"></div>
+    <div class="screen-nav">
+      <button class="btn btn-ghost" id="debrief-home">กลับหน้าหลัก</button>
+      <button class="btn btn-primary" id="debrief-next">ภารกิจถัดไป →</button>
+    </div>
+  </section>
+
 </main>
+
+<!-- Phase 16 · LAUNCH CONTROL — cinematic countdown overlay -->
+<div id="launch-control" class="launch-control" hidden>
+  <div class="lc-frame">
+    <div class="lc-head">LAUNCH CONTROL</div>
+    <div class="lc-lights" id="lc-lights">
+      <i></i><i></i><i></i><i></i><i></i><i></i>
+    </div>
+    <div class="lc-status" id="lc-status"></div>
+    <div class="lc-count" id="lc-count"></div>
+    <div class="lc-cut" id="lc-cut" hidden></div>
+    <button type="button" class="lc-arm" id="lc-arm">[ ARM SIMULATION ]</button>
+  </div>
+</div>
+
+<!-- Phase 16 · Persistent NPC companion (พี่ช่าง / น้องกะปิ) -->
+<div id="npc" class="npc" data-who="pchang" hidden>
+  <div class="npc-portrait"><img id="npc-img" alt=""></div>
+  <div class="npc-main">
+    <div class="npc-plate"><span id="npc-name" class="npc-name"></span><span id="npc-role" class="npc-role"></span></div>
+    <p id="npc-text" class="npc-text"></p>
+    <div id="npc-cont" class="npc-cont">▶ คลิกเพื่อไปต่อ</div>
+  </div>
+</div>
 
 <!-- ============ LEGAL CLEARANCE MODAL ============ -->
 <div id="legal-modal" class="modal-overlay" hidden>
@@ -305,39 +383,42 @@
 </footer>
 
 <!-- Three.js r147 (UMD) + post-processing + GLTFLoader for the cinematic 3D launch -->
-<script src="vendor/three/three.min.js?v=42"></script>
-<script src="vendor/three/shaders/CopyShader.js?v=42"></script>
-<script src="vendor/three/shaders/LuminosityHighPassShader.js?v=42"></script>
-<script src="vendor/three/shaders/FilmShader.js?v=42"></script>
-<script src="vendor/three/postprocessing/EffectComposer.js?v=42"></script>
-<script src="vendor/three/postprocessing/MaskPass.js?v=42"></script>
-<script src="vendor/three/postprocessing/RenderPass.js?v=42"></script>
-<script src="vendor/three/postprocessing/ShaderPass.js?v=42"></script>
-<script src="vendor/three/postprocessing/UnrealBloomPass.js?v=42"></script>
-<script src="vendor/three/postprocessing/FilmPass.js?v=42"></script>
-<script src="vendor/three/loaders/GLTFLoader.js?v=42"></script>
+<script src="vendor/three/three.min.js?v=61"></script>
+<script src="vendor/three/shaders/CopyShader.js?v=61"></script>
+<script src="vendor/three/shaders/LuminosityHighPassShader.js?v=61"></script>
+<script src="vendor/three/shaders/FilmShader.js?v=61"></script>
+<script src="vendor/three/postprocessing/EffectComposer.js?v=61"></script>
+<script src="vendor/three/postprocessing/MaskPass.js?v=61"></script>
+<script src="vendor/three/postprocessing/RenderPass.js?v=61"></script>
+<script src="vendor/three/postprocessing/ShaderPass.js?v=61"></script>
+<script src="vendor/three/postprocessing/UnrealBloomPass.js?v=61"></script>
+<script src="vendor/three/postprocessing/FilmPass.js?v=61"></script>
+<script src="vendor/three/loaders/GLTFLoader.js?v=61"></script>
 
-<script src="js/data.js?v=42"></script>
-<script src="js/notam.js?v=42"></script>
-<script src="js/law.js?v=42"></script>
-<script src="js/chemistry.js?v=42"></script>
-<script src="js/fireworks.js?v=42"></script>
-<script src="js/codex.js?v=42"></script>
-<script src="js/physics.js?v=42"></script>
-<script src="js/ui.js?v=42"></script>
-<script src="js/vn.js?v=42"></script>
-<script src="js/narrative.js?v=42"></script>
-<script src="js/vab.js?v=42"></script>
-<script src="js/talai.js?v=42"></script>
-<script src="js/bangfai.js?v=42"></script>
-<script src="js/skins.js?v=42"></script>
-<script src="js/modelManager.js?v=42"></script>
-<script src="js/vab3d.js?v=42"></script>
-<script src="js/codexViewer.js?v=42"></script>
-<script src="js/recovery.js?v=42"></script>
-<script src="js/textureManager.js?v=42"></script>
-<script src="js/launch2d.js?v=42"></script>
-<script src="js/launch3d.js?v=42"></script>
-<script src="js/main.js?v=42"></script>
+<script src="js/data.js?v=61"></script>
+<script src="js/notam.js?v=61"></script>
+<script src="js/law.js?v=61"></script>
+<script src="js/chemistry.js?v=61"></script>
+<script src="js/fireworks.js?v=61"></script>
+<script src="js/codex.js?v=61"></script>
+<script src="js/physics.js?v=61"></script>
+<script src="js/ui.js?v=61"></script>
+<script src="js/vn.js?v=61"></script>
+<script src="js/narrative.js?v=61"></script>
+<script src="js/vab.js?v=61"></script>
+<script src="js/talai.js?v=61"></script>
+<script src="js/bangfai.js?v=61"></script>
+<script src="js/skins.js?v=61"></script>
+<script src="js/modelManager.js?v=61"></script>
+<script src="js/vab3d.js?v=61"></script>
+<script src="js/vehicleTree.js?v=61"></script>
+<script src="js/vabEditor.js?v=61"></script>
+<script src="js/codexViewer.js?v=61"></script>
+<script src="js/recovery.js?v=61"></script>
+<script src="js/textureManager.js?v=61"></script>
+<script src="js/launch2d.js?v=61"></script>
+<script src="js/launch3d.js?v=61"></script>
+<script src="js/main.js?v=61"></script>
+<script src="js/campaign.js?v=61"></script>
 </body>
 </html>

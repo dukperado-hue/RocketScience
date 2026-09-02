@@ -1,0 +1,690 @@
+// js/campaign.js — Phase 16 · Campaign State Machine & Cinematic Launch
+//
+//   เปลี่ยนภารกิจ "พลุ" (fireworkMission) จาก sandbox → ลูปเล่าเรื่องแบบวิศวกรจำลอง
+//   สเตตแมชชีน 6 สเตต (เรียงตายตัว):
+//     STATE_BRIEFING       — พี่ช่าง (CAPCOM) บรีฟภารกิจอย่างเป็นทางการ
+//     STATE_MATERIAL       — เลือกวัตถุดิบ 4 หมวด (พลังงาน/สี/จังหวะ/เปลือก) — น้องกะปิพาทำ
+//     STATE_ASSEMBLY       — โรงประกอบ node 3 มิติ (ใช้ VABEditor จาก Phase 15) — น้องกะปิเป็นเพื่อน
+//     STATE_TESTING        — System Check — น้องกะปิมักเป็นต้นเหตุของบั๊ก ผู้เล่นต้องแก้
+//     STATE_LAUNCH_CONTROL — พี่ช่างกลับมาคุมเคาต์ดาวน์ซีเนแมติก (LAUNCH CONTROL terminal)
+//     STATE_DEBRIEF        — สกอร์การ์ดละเอียด + อันดับ (ทั้งคู่รีแอกต์ตามผล)
+//
+//   NPC สองตัว (mentor–apprentice):
+//     P_CHANG — เป็ดยาง CAPCOM จอมเข้ม
+//     KAPI    — คาปิบาราผู้ช่วยฝึกงาน ซุ่มซ่ามแต่กระตือรือร้น
+//
+//   พึ่ง window.RS (main.js) สำหรับ progress/launch, window.Fireworks / VABEditor / Launch3D
+
+(function () {
+  "use strict";
+  const $ = (s, r) => (r || document).querySelector(s);
+  const el = (id) => document.getElementById(id);
+  const RS = () => window.RS;
+  const FW = () => window.Fireworks;
+
+  // ============================================================
+  //  NPC · ระบบเพื่อนคู่ใจ (พี่ช่าง + น้องกะปิ) — persistent, typewriter
+  // ============================================================
+  const IMG = "assets/images/characters/";
+  const CH = {
+    pchang: { name: "พี่ช่าง", role: "CAPCOM · หัวหน้าวิศวกร", img: IMG + "pchang.png", accent: "#3B82C4", tone: "pchang" },
+    kapi:   { name: "น้องกะปิ", role: "ผู้ช่วยช่างฝึกงาน", img: IMG + "kapi.png", accent: "#8AA35C", tone: "kapi" }
+  };
+
+  const NPC = (function () {
+    let box, img, nameEl, roleEl, textEl, contEl;
+    let queue = [], idx = 0, typing = false, timer = null, autoT = null, doneCb = null, full = "";
+    const SPEED = 16;
+
+    function ensure() {
+      box = el("npc");
+      if (!box) return false;
+      img = el("npc-img"); nameEl = el("npc-name"); roleEl = el("npc-role");
+      textEl = el("npc-text"); contEl = el("npc-cont");
+      if (!box._wired) {
+        box._wired = true;
+        box.addEventListener("click", advance);
+      }
+      return true;
+    }
+
+    function setWho(who) {
+      const c = CH[who] || CH.pchang;
+      box.dataset.who = who in CH ? who : "pchang";
+      box.style.setProperty("--npc-accent", c.accent);
+      if (img) { img.src = c.img; img.alt = c.name; }
+      nameEl.textContent = c.name;
+      roleEl.textContent = c.role;
+    }
+
+    // lines: [{who, text}] | {who, text}
+    function play(lines, opts) {
+      opts = opts || {};
+      if (!ensure()) { opts.onDone && opts.onDone(); return; }
+      clearTimeout(autoT); clearInterval(timer);
+      queue = (Array.isArray(lines) ? lines : [lines]).filter(l => l && l.text);
+      idx = 0; doneCb = opts.onDone || null; box._auto = opts.auto || 0;
+      box.hidden = false;
+      document.body.classList.add("npc-open");
+      if (!queue.length) { finish(); return; }
+      step();
+    }
+
+    function step() {
+      if (idx >= queue.length) { finish(); return; }
+      const e = queue[idx];
+      setWho(e.who || "pchang");
+      full = e.text; textEl.textContent = ""; contEl.classList.remove("show");
+      typing = true;
+      let k = 0;
+      clearInterval(timer);
+      timer = setInterval(() => {
+        textEl.textContent = full.slice(0, ++k);
+        if (k >= full.length) { clearInterval(timer); typing = false; contEl.classList.add("show"); armAuto(); }
+      }, SPEED);
+    }
+
+    function armAuto() {
+      if (!box._auto) return;
+      clearTimeout(autoT);
+      autoT = setTimeout(() => { idx++; step(); }, box._auto);
+    }
+
+    function advance(ev) {
+      if (ev) ev.stopPropagation();
+      if (typing) { clearInterval(timer); textEl.textContent = full; typing = false; contEl.classList.add("show"); armAuto(); return; }
+      clearTimeout(autoT);
+      idx++;
+      if (idx >= queue.length) { finish(); return; }
+      step();
+    }
+
+    function finish() {
+      typing = false; clearInterval(timer); clearTimeout(autoT);
+      contEl && contEl.classList.remove("show");
+      const cb = doneCb; doneCb = null;
+      cb && cb();
+    }
+
+    // แทรกประโยคสั้น ๆ (ไม่รอคลิก) — ใช้ตอนเคาต์ดาวน์
+    function flash(who, text, ms) {
+      if (!ensure()) return;
+      clearTimeout(autoT); clearInterval(timer); typing = false;
+      box.hidden = false;
+      document.body.classList.add("npc-open");
+      setWho(who);
+      textEl.textContent = text;
+      contEl.classList.remove("show");
+    }
+
+    function hide() {
+      clearInterval(timer); clearTimeout(autoT); typing = false;
+      if (box) box.hidden = true;
+      document.body.classList.remove("npc-open");
+    }
+    function showPersist(who) {
+      if (!ensure()) return;
+      box.hidden = false;
+      document.body.classList.add("npc-open");
+      if (who) setWho(who);
+    }
+
+    return { play, flash, hide, show: showPersist };
+  })();
+
+  // ============================================================
+  //  STATE MACHINE
+  // ============================================================
+  const S = {
+    BRIEFING: "STATE_BRIEFING",
+    MATERIAL: "STATE_MATERIAL",
+    ASSEMBLY: "STATE_ASSEMBLY",
+    TESTING: "STATE_TESTING",
+    LAUNCH_CONTROL: "STATE_LAUNCH_CONTROL",
+    DEBRIEF: "STATE_DEBRIEF"
+  };
+  const STEP_ORDER = [S.BRIEFING, S.MATERIAL, S.ASSEMBLY, S.TESTING, S.LAUNCH_CONTROL, S.DEBRIEF];
+  const STEP_TH = {
+    [S.BRIEFING]: "บรีฟ", [S.MATERIAL]: "วัตถุดิบ", [S.ASSEMBLY]: "ประกอบ",
+    [S.TESTING]: "ทดสอบ", [S.LAUNCH_CONTROL]: "ปล่อย", [S.DEBRIEF]: "สรุปผล"
+  };
+
+  let state = null, mission = null;
+  let mats = { energy: null, color: null, timing: null, casing: null };
+  let testing = { fixed: false };
+  let lastSummary = null, lastScore = null;
+
+  const fmt = (n) => Number(n || 0).toLocaleString("en-US", { maximumFractionDigits: 0 });
+
+  function wants(m) { return !!(m && m.fireworkMission); }
+
+  function begin(m) {
+    if (!RS()) { console.warn("[Campaign] window.RS not ready"); return; }
+    mission = m;
+    mats = { energy: null, color: null, timing: null, casing: null };
+    testing = { fixed: false };
+    lastSummary = lastScore = null;
+    RS().beginCampaign(m);
+    buildStepbar();
+    go(S.BRIEFING);
+  }
+
+  function go(next) {
+    state = next;
+    markStep();
+    switch (next) {
+      case S.BRIEFING: renderBriefing(); break;
+      case S.MATERIAL: renderMaterial(); break;
+      case S.ASSEMBLY: enterAssembly(); break;
+      case S.TESTING: renderTesting(); break;
+      case S.LAUNCH_CONTROL: enterLaunchControl(); break;
+      case S.DEBRIEF: renderDebrief(); break;
+    }
+  }
+
+  // ---------- screen helpers ----------
+  function campHideAll() {
+    document.querySelectorAll("main.wrap > section.screen").forEach(s => { s.hidden = true; });
+  }
+  function campShow(id) {
+    campHideAll();
+    const t = el(id); if (t) t.hidden = false;
+    el("stepbar").hidden = true;
+    const cb = el("campaign-stepbar"); if (cb) cb.hidden = false;
+    window.scrollTo(0, 0);
+  }
+  function buildStepbar() {
+    const cb = el("campaign-stepbar");
+    if (!cb) return;
+    cb.innerHTML = STEP_ORDER.map(s => `<span data-cs="${s}">${STEP_TH[s]}</span>`).join("");
+    cb.hidden = false;
+  }
+  function markStep() {
+    const cb = el("campaign-stepbar");
+    if (!cb) return;
+    const cur = STEP_ORDER.indexOf(state);
+    Array.from(cb.children).forEach(sp => {
+      const i = STEP_ORDER.indexOf(sp.dataset.cs);
+      sp.classList.toggle("active", i === cur);
+      sp.classList.toggle("done", i > -1 && i < cur);
+    });
+  }
+
+  // ============================================================
+  //  STATE_BRIEFING — พี่ช่าง
+  // ============================================================
+  function renderBriefing() {
+    campShow("screen-briefing");
+    NPC.show("pchang");
+    const tgt = mission.targetAltitude >= 1000
+      ? (mission.targetAltitude / 1000).toFixed(1) + " กม." : mission.targetAltitude + " ม.";
+    const chemLine = mission.requiredChems && window.Chemistry
+      ? mission.requiredChems.map(k => (window.Chemistry.starChem ? window.Chemistry.starChem(k).th : k)).join(" · ")
+      : "อิสระ";
+    el("briefing-body").innerHTML = `
+      <div class="cmp-brief-card">
+        <div class="cmp-brief-eyebrow">MISSION BRIEF · ${mission.id}</div>
+        <h3>${mission.titleTh}</h3>
+        <p class="cmp-brief-lede">${mission.briefTh}</p>
+        <dl class="cmp-brief-dl">
+          <div><dt>เพดานเป้าหมาย</dt><dd>${tgt}</dd></div>
+          <div><dt>สีที่กรรมการสั่ง</dt><dd>${chemLine}</dd></div>
+          <div><dt>งบประมาณ</dt><dd>${fmt(mission.budget)} ฿</dd></div>
+          <div><dt>ฐานคะแนน</dt><dd>${fmt(mission.basePoints)}</dd></div>
+        </dl>
+        <div class="cmp-hazards">${(mission.hazards || []).map(h => `<span>${h}</span>`).join("")}</div>
+      </div>`;
+
+    const lines = [
+      { who: "pchang", text: `พี่ช่าง CAPCOM — บรีฟภารกิจ "${mission.titleTh}" อย่างเป็นทางการ ฟังให้จบก่อนลงมือ` },
+      { who: "pchang", text: `วัตถุประสงค์: จุดลูกพลุให้แตกที่เพดาน ${tgt} ${mission.requiredChems ? "และต้องได้ครบสีที่กรรมการสั่ง — " + chemLine : "โดยไม่รบกวนน่านฟ้า"}` },
+      { who: "pchang", text: `นี่ไม่ใช่การเล่นดอกไม้ไฟหลังบ้าน — มีเขตปลอดภัยการบิน มีคนดูอยู่ข้างล่าง ทุกกรัมของดินขับมีผลต่อความปลอดภัย` },
+      { who: "pchang", text: `เดี๋ยวน้องกะปิจะพาไปเลือกวัตถุดิบ ผมจะกลับมาอีกทีตอนเคาต์ดาวน์ — ลงมือได้` }
+    ];
+    NPC.play(lines);
+    el("briefing-go").onclick = () => go(S.MATERIAL);
+  }
+
+  // ============================================================
+  //  STATE_MATERIAL — น้องกะปิ (placeholder + ต่อกับ Fireworks.state จริง)
+  // ============================================================
+  function materialGroups() {
+    const CHEM_TH = (k) => (window.Chemistry && window.Chemistry.starChem ? window.Chemistry.starChem(k).th : k);
+    const color = mission.requiredChems
+      ? [
+          { id: "theme", th: "ชุดสีธีมงาน", sub: "แนะนำ · " + mission.requiredChems.map(CHEM_TH).join("/"), chems: mission.requiredChems.slice() },
+          { id: "red", th: "แดงล้วน", sub: CHEM_TH("strontium"), chems: ["strontium"] },
+          { id: "blue", th: "น้ำเงินล้วน", sub: CHEM_TH("copper"), chems: ["copper"] }
+        ]
+      : [
+          { id: "red", th: "แดง", sub: "สตรอนเชียม", chems: ["strontium"] },
+          { id: "green", th: "เขียว", sub: "แบเรียม", chems: ["barium"] },
+          { id: "blue", th: "น้ำเงิน", sub: "ทองแดง", chems: ["copper"] },
+          { id: "gold", th: "ทอง", sub: "โซเดียม", chems: ["sodium"] }
+        ];
+    return {
+      energy: {
+        label: "พลังงาน (ดินขับ / เปลือก)", key: "energy",
+        opts: [
+          { id: "small", th: "ดินน้อย", sub: "~240 ม. · ปลอดภัยกว่า", shell: "small" },
+          { id: "medium", th: "ดินมาตรฐาน", sub: "~360 ม. · งานเทศกาล", shell: "medium" },
+          { id: "large", th: "ดินอัดแน่น", sub: "~520 ม. · เสี่ยง CATO", shell: "large" }
+        ]
+      },
+      color: { label: "สี (สารเปล่งแสงเชิงอะตอม)", key: "color", opts: color },
+      timing: {
+        label: "จังหวะ (ชนวนหน่วงเวลา)", key: "timing",
+        opts: [
+          { id: "short", th: "ชนวนสั้น", sub: "แตกทันทีที่ apogee", fuse: "short" },
+          { id: "medium", th: "ชนวนกลาง", sub: "แตกหลัง apogee นิด — ดอกกางเต็ม", fuse: "medium" },
+          { id: "long", th: "ชนวนยาว", sub: "หน่วงนาน เห็นหางยาว", fuse: "long" }
+        ]
+      },
+      casing: {
+        label: "เปลือก (รูปแบบการแตก)", key: "casing",
+        opts: [
+          { id: "peony", th: "ลูกพุด (Peony)", sub: "ทรงกลม หรี่ดับพร้อมกัน", pattern: "peony" },
+          { id: "willow", th: "ต้นหลิว (Willow)", sub: "หางทองลู่ลง ค้างฟ้านานสุด", pattern: "willow" },
+          { id: "multibreak", th: "มัลติเบรก", sub: "หลายสีในดอกเดียว", pattern: "multibreak" }
+        ]
+      }
+    };
+  }
+
+  function renderMaterial() {
+    campShow("screen-material");
+    NPC.show("kapi");
+
+    // ตั้ง context ให้ Fireworks (maxChems / requiredChems) โดยเรนเดอร์ลง sink ที่ซ่อนไว้
+    const sink = el("campaign-fw-sink");
+    if (FW() && sink) {
+      try {
+        FW().render(sink, function () {}, {
+          maxChems: mission.maxChems || (mission.requiredChems ? mission.requiredChems.length : 1),
+          requiredChems: mission.requiredChems || null,
+          missionTitle: mission.titleTh || ""
+        });
+      } catch (e) { console.warn("[Campaign] Fireworks.render", e); }
+    }
+
+    const groups = materialGroups();
+    const body = el("material-body");
+    body.innerHTML = Object.values(groups).map(g => `
+      <div class="cmp-mat-group" data-group="${g.key}">
+        <div class="cmp-mat-label">${g.label}</div>
+        <div class="cmp-mat-chips">
+          ${g.opts.map(o => `<button type="button" class="cmp-chip" data-opt="${o.id}">
+            <b>${o.th}</b><small>${o.sub || ""}</small></button>`).join("")}
+        </div>
+      </div>`).join("");
+
+    body.querySelectorAll(".cmp-mat-group").forEach(grp => {
+      const key = grp.dataset.group;
+      const defs = groups[key].opts;
+      grp.querySelectorAll(".cmp-chip").forEach(btn => {
+        btn.addEventListener("click", () => {
+          grp.querySelectorAll(".cmp-chip").forEach(b => b.classList.remove("on"));
+          btn.classList.add("on");
+          mats[key] = defs.find(d => d.id === btn.dataset.opt);
+          refreshMaterialGate();
+        });
+      });
+    });
+
+    refreshMaterialGate();
+    NPC.play([
+      { who: "kapi", text: "พี่ครับ! ผมน้องกะปิ ช่างฝึกงาน — จากนี้ผมจะเป็นเพื่อนพี่เองนะครับ 🙌" },
+      { who: "kapi", text: "วัตถุดิบมี 4 หมวด: พลังงาน = ดินขับกับเปลือก · สี = สารเคมีเม็ดดาว · จังหวะ = ชนวนหน่วงเวลา · เปลือก = รูปแบบตอนแตก" },
+      { who: "kapi", text: mission.requiredChems
+        ? "อันนี้กรรมการสั่งสีมาเป๊ะ ๆ เลือก 'ชุดสีธีมงาน' ไว้ก่อนน่าจะปลอดภัยครับ... เอ๊ะ หรือผมจำผิด? 💦"
+        : "ดินเยอะขึ้นสูงกว่าแต่เสี่ยง CATO ครับ ผม... ผมก็ไม่ค่อยแน่ใจเหมือนกันว่าเยอะแค่ไหนถึงพอดี 😅" }
+    ]);
+
+    el("material-go").onclick = () => {
+      applyMaterialsToFireworks();
+      go(S.ASSEMBLY);
+    };
+  }
+
+  function refreshMaterialGate() {
+    const ok = mats.energy && mats.color && mats.timing && mats.casing;
+    el("material-go").disabled = !ok;
+  }
+
+  function applyMaterialsToFireworks() {
+    if (!FW() || !FW().state) return;
+    const st = FW().state;
+    st.enabled = true;
+    if (mats.energy) st.shell = mats.energy.shell;
+    if (mats.color) st.chems = mats.color.chems.slice();
+    if (mats.timing) st.fuse = mats.timing.fuse;
+    if (mats.casing) st.pattern = mats.casing.pattern;
+  }
+
+  // ============================================================
+  //  STATE_ASSEMBLY — ใช้ #screen-vab + VABEditor (Phase 15)
+  // ============================================================
+  function enterAssembly() {
+    const phu = (window.ROCKETS || []).find(r => r.id === "phu");
+    if (!phu || !RS()) { go(S.TESTING); return; }
+    const G = RS().G;
+    G.run.rocket = phu;
+    G.run.name = G.run.name || (mission.titleTh + " · พลุ");
+    campHideAll();               // main.show("vab") ไม่ซ่อนจอแคมเปญให้ — ซ่อนเองก่อน
+    RS().goVab();
+    // ปรับ chrome ให้เป็นโหมดแคมเปญ
+    el("stepbar").hidden = true;
+    const cb = el("campaign-stepbar"); if (cb) cb.hidden = false;
+    const nav = $("#screen-vab .screen-nav"); if (nav) nav.hidden = true;
+    NPC.show("kapi");
+    NPC.play([
+      { who: "kapi", text: "โรงประกอบครับพี่! ลากไอคอนขวามือมาวาง — เปลือกพลุก่อน แล้วค่อยยัดสารเคมี แล้วเสียบชนวน" },
+      { who: "kapi", text: "ชิ้นไหนวางผิดที่ก็ลากออกมาลอย ๆ ได้ครับ ไม่ต้องกลัว เดี๋ยวผมยืนดูเป็นกำลังใจ 👀" }
+    ], { auto: 5200 });
+  }
+
+  // เรียกจาก main.js (ปุ่ม #vab-proceed ในโหมดแคมเปญ)
+  function assemblyDone() {
+    if (window.VABEditor) { try { window.VABEditor.unmount(); } catch (e) {} }
+    if (window.VAB3D) { try { window.VAB3D.unmount(); } catch (e) {} }
+    const nav = $("#screen-vab .screen-nav"); if (nav) nav.hidden = false;
+    go(S.TESTING);
+  }
+
+  // ============================================================
+  //  STATE_TESTING — System Check (บั๊กจากน้องกะปิ)
+  // ============================================================
+  const TEST_CHECKS = [
+    { id: "energy", th: "ENERGY BUS", ok: "แรงขับ/มวล อยู่ในพิกัด" },
+    { id: "color", th: "COLOR MIX", ok: "สเปกตรัมเม็ดดาวตรงธีม" },
+    { id: "timing", th: "TIMING SYNC", ok: "ชนวนหน่วงเวลาซิงก์กับ apogee" },
+    { id: "casing", th: "CASING SEAL", ok: "เปลือกพลุปิดผนึกสนิท" }
+  ];
+
+  function renderTesting() {
+    campShow("screen-testing");
+    NPC.show("kapi");
+    testing.fixed = false;
+
+    const body = el("testing-body");
+    body.innerHTML = `
+      <div class="cmp-test-card">
+        <div class="cmp-test-eyebrow">SYSTEM CHECK · pre-launch diagnostics</div>
+        <ul class="cmp-test-list" id="cmp-test-list">
+          ${TEST_CHECKS.map(c => `
+            <li data-check="${c.id}" class="${c.id === "timing" ? "err" : "ok"}">
+              <span class="cmp-test-name">${c.th}</span>
+              <span class="cmp-test-stat">${c.id === "timing" ? "✗ ERROR — กราฟ Timing เพี้ยน" : "✓ " + c.ok}</span>
+            </li>`).join("")}
+        </ul>
+        <button type="button" class="btn btn-primary cmp-fix-btn" id="cmp-fix-btn">🔧 สลับสายชนวนกลับให้ถูก (ช่วยกะปิ)</button>
+        <p class="cmp-test-note" id="cmp-test-note">พบ 1 รายการผิดปกติ — แก้ก่อนปล่อย ไม่งั้นจังหวะการแตกจะเพี้ยนและเสถียรภาพตก</p>
+      </div>`;
+
+    el("cmp-fix-btn").onclick = () => {
+      const li = $('#cmp-test-list li[data-check="timing"]');
+      if (li) { li.classList.remove("err"); li.classList.add("ok"); li.querySelector(".cmp-test-stat").textContent = "✓ ชนวนหน่วงเวลาซิงก์กับ apogee"; }
+      el("cmp-fix-btn").disabled = true;
+      el("cmp-fix-btn").textContent = "✓ แก้เรียบร้อย";
+      el("cmp-test-note").textContent = "ทุกระบบผ่าน — พร้อมส่งต่อให้พี่ช่างคุมการปล่อย";
+      testing.fixed = true;
+      NPC.play([{ who: "kapi", text: "ขอบคุณครับพี่! ผมจะจำไว้เลย... สายฟ้าคือขั้วบวก 🙏" }]);
+    };
+
+    NPC.play([
+      { who: "kapi", text: "พี่ครับ ผมเผลอเสียบสายสลับกัน กราฟ Timing เลยเพี้ยน ช่วยผมแก้หน่อย! 💦" },
+      { who: "pchang", text: "อย่าเพิ่งรีบปล่อย ดู timing ให้ครบก่อน งานนี้ไม่ได้แข่งว่าใครเร็ว แข่งว่าใครชัวร์" }
+    ]);
+
+    el("testing-go").onclick = () => {
+      if (!testing.fixed) {
+        NPC.play([{ who: "pchang", text: "ยังมีระบบค้างสถานะ ERROR อยู่ — จะปล่อยทั้งอย่างนี้จริงเหรอ? บันทึกไว้ว่าเตือนแล้ว" }],
+          { onDone: () => go(S.LAUNCH_CONTROL) });
+      } else {
+        go(S.LAUNCH_CONTROL);
+      }
+    };
+  }
+
+  // ============================================================
+  //  STATE_LAUNCH_CONTROL — เคาต์ดาวน์ซีเนแมติก (พี่ช่าง)
+  // ============================================================
+  let cdTimer = null, hum = null;
+
+  function enterLaunchControl() {
+    campHideAll();
+    el("stepbar").hidden = true;
+    const lc = el("launch-control");
+    lc.hidden = false;
+    lc.className = "launch-control";
+    el("lc-count").textContent = "";
+    el("lc-cut").hidden = true;
+    el("lc-lights").classList.remove("on");
+    el("lc-arm").hidden = false;
+    el("lc-arm").disabled = false;
+    el("lc-status").innerHTML = `
+      <div class="lc-stat"><span>SYSTEM</span><b class="good">READY</b></div>
+      <div class="lc-stat"><span>WEATHER</span><b class="good">CLEAR</b></div>
+      <div class="lc-stat"><span>TIMING</span><b class="${testing.fixed ? "good" : "warn"}">${testing.fixed ? "SYNCED" : "UNVERIFIED"}</b></div>`;
+
+    NPC.show("pchang");
+    NPC.play([
+      { who: "pchang", text: "พี่ช่างรับช่วงต่อ — ระบบพร้อม สภาพอากาศฟ้าโปร่ง ทุกคนเข้าประจำที่" },
+      { who: "kapi", text: "ตื่นเต้นจังเลยครับ!" }
+    ], { auto: 3600 });
+
+    startRoomTone();
+    el("lc-arm").onclick = () => {
+      el("lc-arm").hidden = true;
+      RS().startCampaignLaunch(sum => onFlightDone(sum));
+      el("stepbar").hidden = true;   // main.show("launch") เปิดสเตปบาร์เดิมกลับมา — ซ่อนอีกที
+      const cb = el("campaign-stepbar"); if (cb) cb.hidden = false;
+      const lb = $("#screen-launch .launch-back"); if (lb) lb.hidden = true;
+      runCountdown();
+    };
+  }
+
+  function startRoomTone() {
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      hum = new AC();
+      const o = hum.createOscillator(), g = hum.createGain();
+      o.type = "sine"; o.frequency.value = 62;
+      g.gain.value = 0.035;
+      o.connect(g); g.connect(hum.destination); o.start();
+      hum._o = o; hum._g = g;
+    } catch (e) { hum = null; }
+  }
+  function dropRoomTone() {
+    if (!hum) return;
+    try {
+      hum._g.gain.exponentialRampToValueAtTime(0.0001, hum.currentTime + 0.8);
+      setTimeout(() => { try { hum.close(); } catch (e) {} hum = null; }, 1000);
+    } catch (e) { try { hum.close(); } catch (x) {} hum = null; }
+  }
+
+  const CUTS = [
+    { th: "CLOSE-UP · สายชนวนจุดระเบิด", tint: "cut-wire" },
+    { th: "WIDE · ท้องฟ้ามืดเหนือลาน", tint: "cut-sky" },
+    { th: "GROUND · ปากท่อครก", tint: "cut-tube" }
+  ];
+
+  function runCountdown() {
+    const lc = el("launch-control");
+    let t = 10;
+    const cutEl = el("lc-cut");
+    tick();
+    cdTimer = setInterval(tick, 1000);
+
+    function tick() {
+      el("lc-count").textContent = t > 0 ? "T‑" + t : "IGNITION";
+      if (t === 10) {
+        lc.classList.add("dim");
+        dropRoomTone();
+        NPC.flash("pchang", "T‑10 · ตัดเสียงรบกวน ห้องเงียบ");
+      }
+      if (t === 5) {
+        el("lc-lights").classList.add("on");
+        NPC.flash("pchang", "T‑5 · ไฟเตือนห้องคอนโทรลติด — ยืนยันเคลียร์");
+      }
+      if (t <= 3 && t >= 1) {
+        const c = CUTS[(3 - t) % CUTS.length];
+        cutEl.hidden = false;
+        cutEl.textContent = c.th;
+        lc.classList.remove("cut-wire", "cut-sky", "cut-tube");
+        lc.classList.add(c.tint);
+        if (t === 3) NPC.flash("kapi", "กลั้นหายใจ...");
+      }
+      if (t === 0) {
+        clearInterval(cdTimer); cdTimer = null;
+        ignite();
+        return;
+      }
+      t--;
+    }
+  }
+
+  function ignite() {
+    const lc = el("launch-control");
+    lc.classList.add("clearing");
+    NPC.flash("pchang", "IGNITION — จุด!");
+    setTimeout(() => {
+      lc.hidden = true;
+      lc.className = "launch-control";
+      const btn = el("fw-ignite");
+      if (btn && !btn.hidden) btn.click();
+      else if (btn) btn.click();
+      setTimeout(() => NPC.hide(), 1400);
+    }, 480);
+  }
+
+  // ============================================================
+  //  STATE_DEBRIEF — สกอร์การ์ดละเอียด + อันดับ
+  // ============================================================
+  const RANKS = [
+    [85, "A", "MASTER TECHNICIAN"],
+    [70, "B", "SENIOR TECHNICIAN"],
+    [55, "C", "TECHNICIAN"],
+    [40, "D", "APPRENTICE"],
+    [0, "F", "TRAINEE"]
+  ];
+
+  function computeScorecard(sum) {
+    const d = (FW() && FW().derived) ? safeDerived() : {};
+    const tgt = mission.targetAltitude || 300;
+    // เพดานที่ใช้ตัดสิน = สูงสุดระหว่างผลฟิสิกส์จริง กับเพดานแตกของลูกพลุ (shell apogee × altMul)
+    const shellApogee = d.apogeeM ? d.apogeeM * (d.altMul || 1) : 0;
+    const apo = Math.max(sum.apogee || 0, shellApogee);
+    const fail = sum.failReason;
+    const drift = Math.abs(sum.horizontalDrift || 0);
+
+    let accuracy = Math.round(Math.max(0, Math.min(1.1, apo / tgt)) * 100);
+    if (mission.requiredChems) accuracy = Math.round(accuracy * (d.requiredMet ? 1 : 0.5));
+    accuracy = Math.min(100, accuracy);
+
+    let timing = mats.timing ? ({ medium: 88, long: 78, short: 70 }[mats.timing.id] || 70) : 55;
+    if (!testing.fixed) timing = Math.round(timing * 0.5);
+    else timing = Math.min(100, timing + 8);
+
+    let stability = fail ? 15 : (testing.fixed ? 92 : 66);
+    if (mats.energy && mats.energy.id === "large" && !fail) stability -= 10;
+    stability = Math.max(0, Math.min(100, stability));
+
+    let safety = 100;
+    if (drift > 200) safety -= Math.min(45, (drift - 200) / 10);
+    if (fail === "PAD_CATO") safety -= 60;
+    else if (fail) safety -= 30;
+    safety = Math.max(0, Math.round(safety));
+
+    let style = 38;
+    if (mats.color) style += (mats.color.chems ? mats.color.chems.length : 1) * 11;
+    if (mats.casing) style += mats.casing.id === "willow" ? 22 : mats.casing.id === "multibreak" ? 18 : 10;
+    if (mats.energy) style += mats.energy.id === "large" ? 12 : mats.energy.id === "medium" ? 8 : 4;
+    if (fail) style = Math.round(style * 0.4);
+    style = Math.max(0, Math.min(100, style));
+
+    const avg = Math.round((accuracy + timing + stability + safety + style) / 5);
+    const rk = RANKS.find(r => avg >= r[0]);
+    const success = avg >= 55 && !fail && apo >= tgt * 0.8;
+    const awardedPoints = Math.round((mission.basePoints || 600) * (avg / 100) * (success ? 1 : 0.5));
+    return {
+      metrics: { accuracy, timing, stability, safety, style },
+      avg, rank: rk[1], rankTitle: rk[2], rankIndex: RANKS.indexOf(rk),
+      success, awardedPoints
+    };
+  }
+  function safeDerived() { try { return FW().derived(); } catch (e) { return {}; } }
+
+  function onFlightDone(sum) {
+    lastSummary = sum;
+    lastScore = computeScorecard(sum);
+    let res = { notes: [] };
+    try { res = RS().commitCampaignResult(sum, lastScore) || res; } catch (e) { console.warn("[Campaign] commit", e); }
+    lastScore._notes = res.notes || [];
+    go(S.DEBRIEF);
+  }
+
+  const MET_TH = {
+    accuracy: "Mission Accuracy", timing: "Timing", stability: "System Stability",
+    safety: "Safety", style: "Style"
+  };
+
+  function renderDebrief() {
+    campShow("screen-debrief");
+    const sc = lastScore, sum = lastSummary || {};
+    if (!sc) { teardown(); RS().show("home"); RS().renderHome(); return; }
+
+    const rows = Object.keys(MET_TH).map(k => {
+      const v = sc.metrics[k];
+      const cls = v >= 75 ? "good" : v >= 50 ? "mid" : "bad";
+      return `<tr>
+        <td>${MET_TH[k]}</td>
+        <td class="cmp-bar-cell"><span class="cmp-bar ${cls}" style="width:${v}%"></span></td>
+        <td class="cmp-score ${cls}">${v}</td></tr>`;
+    }).join("");
+
+    el("debrief-body").innerHTML = `
+      <div class="cmp-rank cmp-rank-${sc.rank}">
+        <div class="cmp-rank-badge">${sc.rank}</div>
+        <div class="cmp-rank-text">
+          <div class="cmp-rank-title">Rank: ${sc.rank} — ${sc.rankTitle}</div>
+          <div class="cmp-rank-sub">คะแนนเฉลี่ย ${sc.avg}/100 · +${fmt(sc.awardedPoints)} แต้ม · ${sc.success ? "ภารกิจสำเร็จ 🎉" : "ยังไม่ผ่านเกณฑ์"}</div>
+        </div>
+      </div>
+      <table class="cmp-scorecard"><tbody>${rows}</tbody></table>
+      ${sc._notes && sc._notes.length ? `<div class="cmp-unlock">${sc._notes.join("<br>")}</div>` : ""}`;
+
+    NPC.show("pchang");
+    const pLine = sc.avg >= 85
+      ? "งานระดับช่างใหญ่ — วิถีสวย จังหวะแม่น เอกสารครบ ไม่มีอะไรให้ติ"
+      : sc.avg >= 70
+        ? "ผ่านเกณฑ์อย่างมั่นคง จุดที่เสียคะแนนคือ" + (sc.metrics.timing < 60 ? " จังหวะชนวน" : sc.metrics.safety < 70 ? " ระยะปลอดภัย" : " สไตล์ดอกพลุ") + " — รอบหน้าปรับได้"
+        : sc.success
+          ? "ผ่านแบบเฉียดฉิว — กลับไปทบทวน System Check กับการเลือกดินขับ"
+          : "ภารกิจไม่ผ่าน วิเคราะห์สาเหตุจากตาราง แล้วลองใหม่ นี่คือส่วนหนึ่งของการเป็นช่าง";
+    const kLine = sc.avg >= 70
+      ? "เย้! เราทำได้! ผมจะไปเล่าให้ที่บ้านฟัง 🎊"
+      : sc.avg >= 55
+        ? "ก็... ไม่แย่นะครับพี่ ครั้งหน้าผมจะไม่เสียบสายผิดแล้ว"
+        : "ฮือ... ผมขอโทษครับพี่ 😢 ผมจะฝึกให้เก่งกว่านี้";
+    NPC.play([{ who: "pchang", text: pLine }, { who: "kapi", text: kLine }]);
+
+    el("debrief-home").onclick = () => { teardown(); RS().endCampaign(); RS().renderHome(); RS().show("home"); };
+    el("debrief-next").onclick = () => { teardown(); RS().endCampaign(); RS().renderMissions(); RS().show("mission"); };
+  }
+
+  function teardown() {
+    NPC.hide();
+    if (cdTimer) { clearInterval(cdTimer); cdTimer = null; }
+    dropRoomTone();
+    const lc = el("launch-control"); if (lc) { lc.hidden = true; lc.className = "launch-control"; }
+    const lb = $("#screen-launch .launch-back"); if (lb) lb.hidden = false;
+    const nav = $("#screen-vab .screen-nav"); if (nav) nav.hidden = false;
+    const cb = el("campaign-stepbar"); if (cb) cb.hidden = true;
+    ["screen-briefing", "screen-material", "screen-testing", "screen-debrief"].forEach(id => { const s = el(id); if (s) s.hidden = true; });
+    state = null;
+  }
+
+  window.Campaign = { wants, begin, assemblyDone, get state() { return state; } };
+})();

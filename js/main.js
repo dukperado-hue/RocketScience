@@ -35,6 +35,8 @@
     progress: loadProgress(),
     run: null,
     launchInstance: null,
+    campaign: false,             // Phase 16: อยู่ในลูปแคมเปญพลุ (js/campaign.js) หรือไม่
+    __campaignOnDone: null,
     wanHu: { unlocked: false }   // ปลดล็อกเก้าอี้หวันหู่ด้วยการพิมพ์ "wanhu"
   };
 
@@ -69,6 +71,7 @@
   // ---------------- screen routing ----------------
   function show(name) {
     if (name !== "vab" && window.VAB3D) window.VAB3D.unmount();   // คืน GL context ก่อนออกจากโรงประกอบ
+    if (name !== "vab" && window.VABEditor) window.VABEditor.unmount();
     closeCodex();                                                 // ปิดหอจดหมายเหตุ + คืน GL context
     if (window.VN && window.VN.skip) window.VN.skip();            // ปิดบทสนทนาค้างจากหน้าก่อน (ไม่ให้ลอยทับปุ่ม)
     SCREENS.forEach(s => { const el = $("#screen-" + s); if (el) el.hidden = (s !== name); });
@@ -275,6 +278,8 @@
           ? `<div class="pc-cta pc-cta--locked">🔒 ${lockReason}</div>`
           : `<div class="pc-cta">▶ เลือกภารกิจนี้</div>`}`;
       if (!locked) card.addEventListener("click", () => {
+        // Phase 16: ภารกิจพลุ → เข้าลูปแคมเปญ (state machine) แทน flow เดิม
+        if (window.Campaign && window.Campaign.wants(m)) { window.Campaign.begin(m); return; }
         newRun(m);
         rollMissionWeather();
         goRocket();
@@ -498,9 +503,10 @@
     },
 
     // Phase 7: ซิงก์โมเดล 3 มิติ + สลับการแสดง grid ↔ 3D
+    // Phase 15: พลุ (r.id === "phu") ใช้ VABEditor (node-based drag & drop) แทน VAB3D แบบพาสซีฟ
     sync3d() {
       const r = G.run.rocket;
-      if (!window.VAB3D || !r) return;
+      if (!r) return;
       window.__vabSlots = VAB.slots.slice();
       window.__vabPayloadId = VAB.payloadId || null;
       window.__vabSkin = (window.Skins && r) ? (r.id === "bangfai" ? window.Skins.state.bangfai
@@ -509,7 +515,22 @@
         window.__vabStages = effectiveStages(r);
         window.__vabPayloadMass = VAB.payloadId ? (partById(VAB.payloadId).mass || 0) : (r.defaultPayload || 0);
       }
-      const wrap = $("#vab3d-wrap"), grid = $("#vab-grid");
+      const wrap = $("#vab3d-wrap"), editorWrap = $("#vabeditor-wrap"), grid = $("#vab-grid");
+      const useEditor = r.id === "phu" && window.VABEditor;
+
+      if (useEditor) {
+        if (window.VAB3D) window.VAB3D.unmount();
+        const ok = window.VABEditor.mount(editorWrap);
+        const keepGrid = !ok;
+        if (wrap) wrap.hidden = true;
+        if (editorWrap) editorWrap.hidden = !ok;
+        if (grid) grid.hidden = !keepGrid;
+        const eh = $("#vab-grid-empty"); if (eh && !keepGrid) eh.hidden = true;
+        if (ok && !VAB._editorInited) { window.VABEditor.show(); VAB._editorInited = true; }
+        return;
+      }
+      if (editorWrap) editorWrap.hidden = true;
+      if (!window.VAB3D) return;
       const ok = window.VAB3D.mount(wrap);
       // WebGL ใช้ไม่ได้ → ถอยไปมุมมองกริดเดิม
       const keepGrid = !ok || r.tierKey === "tier1";
@@ -924,9 +945,10 @@
   }
 
   function goVab() {
-    G.run.name = $("#rocket-name-input").value.trim() || (G.run.rocket.nameTh + " I");
+    G.run.name = ($("#rocket-name-input").value || "").trim() || G.run.name || (G.run.rocket.nameTh + " I");
     const r = G.run.rocket;
     VAB.slots = []; VAB.payloadId = null; VAB.upgrades = [];
+    VAB._editorInited = false;   // Phase 15: บังคับให้ห้องประกอบ node editor เริ่มใหม่เมื่อเข้าโรงประกอบรอบใหม่
     if (isStaged(r)) {
       VAB.payloadId = (r.payloads && r.payloads[0]) || null;   // เพย์โหลดเบาสุดเป็นค่าเริ่มต้น
     } else if (r.tierKey === "tier1") {
@@ -945,6 +967,8 @@
     setupVabDnD();
     setupVabDrawer();
     show("vab");
+    // Phase 16: ในลูปแคมเปญ บรีฟทำไปแล้วใน STATE_BRIEFING — ข้าม VN
+    if (G.campaign) return;
     // บรีฟ 4 ส่วนของพี่ช่าง — ยิงหลังจอเปลี่ยนเข้าโรงประกอบแล้ว
     if (window.VN && window.VN.brief) setTimeout(() => VN.brief(G.run), 260);
     else if (window.VN) VN.atVab(r);
@@ -979,7 +1003,11 @@
       if (pid) VAB.add(pid);
     });
     $("#vab-reset").addEventListener("click", () => VAB.reset());
-    $("#vab-proceed").addEventListener("click", proceedToLegal);
+    $("#vab-proceed").addEventListener("click", () => {
+      // Phase 16: ในลูปแคมเปญ → ไป STATE_TESTING แทนหน้าขออนุญาต
+      if (G.campaign && window.Campaign) { window.Campaign.assemblyDone(); return; }
+      proceedToLegal();
+    });
   }
 
   // ---------------- assembled-rocket JSON (passed to law.js) ----------------
@@ -1209,7 +1237,12 @@
     $("#launch-caption").textContent =
       `${G.run.name} · ${use3d ? "3D cinematic" : "2D"} · ลม ${G.run.wind >= 0 ? "→" : "←"} ${Math.abs(G.run.wind)} m/s · ${WX_TH[G.run.weather.type] || ""}`;
 
-    const hooks = { onComplete: summary => { G.run.flightSummary = summary; showReport(summary); } };
+    const hooks = { onComplete: summary => {
+      G.run.flightSummary = summary;
+      // Phase 16: ในลูปแคมเปญ ส่งผลบินให้ campaign.js คำนวณสกอร์การ์ด (ข้ามรายงานเดิม)
+      if (G.campaign && G.__campaignOnDone) { const cb = G.__campaignOnDone; G.__campaignOnDone = null; cb(summary); return; }
+      showReport(summary);
+    } };
     try {
       G.launchInstance = (use3d ? window.Launch3D.run : window.Launch2D.run)(freshCanvas(), cfg, hooks);
     } catch (e) {
@@ -1554,6 +1587,64 @@
 
     show("home");
   }
+
+  // ============================================================
+  //  Phase 16 · Campaign bridge — API ที่ js/campaign.js เรียกใช้
+  // ============================================================
+  function startCampaignLaunch(onDone) {
+    G.run.stats = VAB.computeStats();
+    G.run.assembly = buildAssembledRocket();
+    // ภารกิจพลุในลูปแคมเปญ — เคลียร์เอกสารบังคับให้อัตโนมัติ (ขั้นตอนกฎหมายรวมอยู่ในบรีฟแล้ว)
+    const lt = TIERS[G.run.rocket.tierKey].legalTier;
+    const law = (window.LegalFramework || {})[lt];
+    G.run.legalChecks = ((law && law.requirements) || []).filter(rq => rq.isRequired).map(rq => rq.id);
+    try { G.run.legalResult = checkClearance(lt, G.run.legalChecks); }
+    catch (e) { G.run.legalResult = { status: "CLEARED", message: "เคลียร์อัตโนมัติ (โหมดแคมเปญพลุ)", bonusEarned: 0 }; }
+    G.__campaignOnDone = onDone || null;
+    doLaunch({ skipIntro: true });
+  }
+
+  function commitCampaignResult(sum, sc) {
+    const m = G.run.mission, r = G.run.rocket;
+    const notes = [];
+    G.progress.totalScore = Math.max(0, G.progress.totalScore + (sc.awardedPoints || 0));
+    if (sc.success && !G.progress.missionsPassed.includes(m.id)) G.progress.missionsPassed.push(m.id);
+
+    const newlyUnlocked = tryUnlockTiers();
+    if (newlyUnlocked.length) {
+      notes.push("🔓 ปลดล็อก " + newlyUnlocked.map(k => "Tier " + TIERS[k].n + " · " + TIERS[k].nameTh).join(", "));
+      newlyUnlocked.forEach(k => toast("ปลดล็อก Tier " + TIERS[k].n + "!"));
+    }
+    if (window.Codex) {
+      try {
+        const nc = window.Codex.unlockFromFlight({
+          rocket: r, mission: m, tier: tierN(r.tierKey), summary: sum,
+          missionPassed: !!sc.success, firework: true, totalScore: G.progress.totalScore
+        });
+        if (nc && nc.length) notes.push("🏛️ หอจดหมายเหตุ: " + nc.map(e => e.title).join(", "));
+        updateCodexButton();
+      } catch (e) {}
+    }
+    if (window.Skins) {
+      try {
+        const ns = window.Skins.unlockFromFlight({ rocket: r, mission: m, summary: sum, missionPassed: !!sc.success, totalScore: G.progress.totalScore });
+        (ns || []).forEach(s => { notes.push("🎨 ปลดล็อกลาย: <b>" + s.th + "</b>"); toast("ปลดล็อกลาย: " + s.th); });
+      } catch (e) {}
+    }
+    saveProgress();
+    renderHome();
+    return { notes, newlyUnlocked };
+  }
+
+  window.RS = {
+    get G() { return G; },
+    show, renderHome, renderMissions, toast,
+    beginCampaign(m) { newRun(m); rollMissionWeather(); G.campaign = true; },
+    endCampaign() { G.campaign = false; G.__campaignOnDone = null; },
+    goVab,
+    startCampaignLaunch,
+    commitCampaignResult
+  };
 
   document.addEventListener("DOMContentLoaded", init);
 })();
