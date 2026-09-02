@@ -342,9 +342,24 @@
     }
 
     if (node.type === "shell") {
-      const m = new THREE.Mesh(geo(new THREE.SphereGeometry(1.05, 26, 18)),
-        mat(0x8a3a2c, { rough: 0.9, transparent: true, opacity: 0.5, side: THREE.DoubleSide }));
-      return m;
+      // Phase 20 · ครึ่งทรงกลมเปิดด้านบน (ชามผนังบาง) — หย่อนเม็ดดาวลงไปข้างในเห็น ๆ
+      const g = new THREE.Group();
+      const R = 1.14, LIFT = R * 0.62;   // ยกชามขึ้นให้ center อยู่ "ในชาม"
+      const bowl = new THREE.Mesh(
+        geo(new THREE.SphereGeometry(R, 34, 20, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2)),
+        mat(0x8a3a2c, { rough: 0.8, transparent: true, opacity: 0.4, side: THREE.DoubleSide }));
+      bowl.position.y = LIFT; g.add(bowl);
+      // ผนังชั้นในบาง ๆ ให้ดูมีความหนา
+      const inner = new THREE.Mesh(
+        geo(new THREE.SphereGeometry(R * 0.9, 28, 16, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2)),
+        mat(0x5f2418, { rough: 0.95, transparent: true, opacity: 0.5, side: THREE.DoubleSide }));
+      inner.position.y = LIFT; g.add(inner);
+      // ขอบปากชาม
+      const rim = new THREE.Mesh(geo(new THREE.TorusGeometry(R, 0.05, 12, 44)),
+        mat(0xd8b489, { rough: 0.45, metal: 0.15 }));
+      rim.rotation.x = Math.PI / 2; rim.position.y = LIFT; g.add(rim);
+      g.userData.shellBowl = true;
+      return g;
     }
     if (node.type === "chemical") {
       const c = new THREE.Color(fireworkColor());

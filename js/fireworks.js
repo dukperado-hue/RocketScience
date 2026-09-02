@@ -36,25 +36,26 @@
   };
 
   // ชนวนหน่วงเวลา (time fuse) — หน่วงการจุดหลังถึง apogee
+  //   Phase 20 · ทำให้ต่างกันจริง: สั้น = จุดที่ apogee เป๊ะ · กลาง = หน่วงนิด · ยาว = ร่วงลงมาชัด ๆ ลากหางยาว
   const FUSES = {
-    short:  { th: "ชนวนสั้น",  delay: 0.0,  desc: "แตกทันทีที่ถึงจุดสูงสุด" },
-    medium: { th: "ชนวนกลาง", delay: 0.35, desc: "แตกหลัง apogee เล็กน้อย — ดอกกางเต็มขาลง" },
-    long:   { th: "ชนวนยาว",  delay: 0.8,  desc: "หน่วงนาน แตกตอนเริ่มร่วง เห็นหางยาว" }
+    short:  { th: "ชนวนสั้น",  delay: 0.0, tail: 0,    desc: "จุดทันทีที่ถึงจุดสูงสุด — ดอกกางกลางฟ้า" },
+    medium: { th: "ชนวนกลาง", delay: 0.9, tail: 0.4,  desc: "หน่วงเล็กน้อย เริ่มร่วงแล้วค่อยแตก" },
+    long:   { th: "ชนวนยาว",  delay: 2.4, tail: 1.0,  desc: "ร่วงลงมาชัด ๆ ลากหางยาวก่อนระเบิด" }
   };
 
   // รูปแบบการแตกของลูกพลุ (shell break)
-  //   Phase 17.2 · cinematic — เม็ดดาวค้างฟ้า ~20–28 วิ เหมือนเนบิวลาเรืองแสง ค่อย ๆ จางหาย
-  //   แรงโน้มถ่วงต่ำมาก (≤0.5) + แรงต้านอากาศสูง (drag base ต่ำ) → ความเร็วปลายดิ่งเกือบ 0
+  //   Phase 20 · NO MORE SLOW-MO — ดอกไม้ไฟกระชับ ปัง ๆ ตกไว จบใน ~4–7 วิ
+  //   grav สูงขึ้นมาก + life สั้นลง → เม็ดดาวพุ่ง ร่วง ดับ เร็ว รู้สึกมีน้ำหนักและพลัง
   const PATTERNS = {
-    peony:      { th: "ลูกพุด", en: "Peony",         grav: 0.50, life: 20, spread: 1.00, trailFrac: 0.00, breaks: false,
+    peony:      { th: "ลูกพุด", en: "Peony",         grav: 3.6, life: 4.6, spread: 1.10, trailFrac: 0.00, breaks: false,
                   desc: "ทรงกลมเม็ดดาวกระจายแล้วหรี่ดับพร้อมกัน" },
-    chrysanth:  { th: "เบญจมาศ", en: "Chrysanthemum", grav: 0.45, life: 22, spread: 1.00, trailFrac: 0.55, breaks: false,
+    chrysanth:  { th: "เบญจมาศ", en: "Chrysanthemum", grav: 3.1, life: 5.2, spread: 1.10, trailFrac: 0.55, breaks: false,
                   desc: "เม็ดดาวลากหางประกายยาวเป็นทรงพัด" },
-    willow:     { th: "ต้นหลิว", en: "Willow",        grav: 0.30, life: 27, spread: 0.74, trailFrac: 0.72, breaks: false, gold: true,
+    willow:     { th: "ต้นหลิว", en: "Willow",        grav: 2.2, life: 6.6, spread: 0.80, trailFrac: 0.80, breaks: false, gold: true,
                   desc: "หางทองยาวลู่ลงช้า ๆ ค้างฟ้านานสุด" },
-    multibreak: { th: "มัลติเบรก", en: "Multi-Break", grav: 0.50, life: 20, spread: 1.00, trailFrac: 0.30, breaks: true,
+    multibreak: { th: "มัลติเบรก", en: "Multi-Break", grav: 3.5, life: 4.8, spread: 1.10, trailFrac: 0.30, breaks: true,
                   desc: "เม็ดดาวชั้นแรกจุดระเบิดซ้ำเป็นพวงเล็ก (ใช้กับพลุหลายสี)" },
-    crossette:  { th: "ครอสเซ็ตต์", en: "Crossette", grav: 0.50, life: 19, spread: 0.92, trailFrac: 0.25, breaks: true, cross: true,
+    crossette:  { th: "ครอสเซ็ตต์", en: "Crossette", grav: 3.5, life: 4.4, spread: 1.00, trailFrac: 0.25, breaks: true, cross: true,
                   desc: "เม็ดดาวแตกออกเป็นกากบาท 4 แฉก" }
   };
 
@@ -88,7 +89,7 @@
     return {
       enabled: state.enabled,
       shell: state.shell, chems: state.chems.slice(), colors,
-      pattern: state.pattern, fuse: state.fuse, fuseDelay: fs.delay,
+      pattern: state.pattern, fuse: state.fuse, fuseDelay: fs.delay, fuseTail: fs.tail || 0,
       burstScale: sh.burstScale, altMul: sh.altMul, apogeeM: sh.apogee,
       spec: specs[0], specs, colorant: state.chems[0],
       color: colors[0], nm: specs[0].nm, spark: specs.some(s => s.spark),
@@ -222,6 +223,10 @@
     opts = opts || {};
     const pat = PATTERNS[opts.pattern] || PATTERNS.peony;
     const scale = opts.burstScale || 1;
+    // Phase 20 · ชนวนยาว → หางประกายเยอะ+ยาวขึ้น
+    const tailBoost = opts.fuseTail || 0;
+    const trailFrac = Math.min(1, (pat.trailFrac || 0) + tailBoost * 0.55);
+    const lifeMul = opts.lifeMul || 1;
 
     // รายการสี (1–3 สี) — ดันความสว่างสีมืด (เช่น Cu 0x0044ff) ให้ติด bloom
     const colorHexes = (opts.colors && opts.colors.length) ? opts.colors
@@ -302,11 +307,11 @@
           cx, cy, cz,
           rr * Math.cos(ang) * sp, u * sp, rr * Math.sin(ang) * sp * 1.7 + sp * 0.42,
           r, g, b,
-          pat.life * (0.82 + Math.random() * 0.36),
+          pat.life * lifeMul * (0.82 + Math.random() * 0.36),
           spark ? 0.09 : 0.07, pat.grav,
           {
-            trail: pat.trailFrac > 0 && Math.random() < pat.trailFrac,
-            breakIn: pat.breaks ? 0.55 + Math.random() * 0.4 : 0,
+            trail: trailFrac > 0 && Math.random() < trailFrac,
+            breakIn: pat.breaks ? 0.45 + Math.random() * 0.3 : 0,
             cross: pat.cross
           }
         );
@@ -389,7 +394,7 @@
               p.tacc -= iv;
               const tp = alloc();
               if (tp) {
-                tp.life = pat.gold ? 4.0 : 2.6; tp.max = tp.life;
+                tp.life = (pat.gold ? 2.4 : 1.6) * (1 + tailBoost * 1.4); tp.max = tp.life;
                 tp.x = p.x; tp.y = p.y; tp.z = p.z;
                 tp.vx = p.vx * 0.12; tp.vy = p.vy * 0.12 - 0.4; tp.vz = p.vz * 0.12;
                 if (pat.gold) { tp.r = 1.7; tp.g = 1.15; tp.b = 0.35; }
@@ -409,14 +414,14 @@
         geo.setDrawRange(0, n);
         geo.attributes.position.needsUpdate = true;
         geo.attributes.color.needsUpdate = true;
-        // ขนาดเม็ด: พองตอนแตก แล้วคงเม็ดนุ่มใหญ่ตลอด ~28 วิ (เนบิวลาเรืองแสง เบลอรวมกันด้วย bloom)
-        mat.size = (0.42 + 0.6 * Math.max(0, 1 - elapsed * 0.06)) * (0.95 + 0.3 * scale);
+        // Phase 20 · เม็ดใหญ่ตอนแตกแล้วยุบไว — ปัง ไม่อืด
+        mat.size = (0.40 + 0.75 * Math.max(0, 1 - elapsed * 0.5)) * (0.95 + 0.3 * scale);
 
         lightHold *= Math.pow(0.02, dt);
         lightGlow *= Math.pow(0.25, dt);
         burstLight.intensity = lightHold + lightGlow;
 
-        return (aliveCount > 0 || shellIdx < shells.length) && elapsed < 30;
+        return (aliveCount > 0 || shellIdx < shells.length) && elapsed < 10;
       },
       dispose() {
         scene.remove(points);

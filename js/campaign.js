@@ -52,6 +52,15 @@
         box._wired = true;
         box.addEventListener("click", advance);
       }
+      // Phase 20 · แตะที่ไหนก็ได้เพื่อให้ NPC พูดต่อ — ยกเว้นปุ่ม/ลิงก์/ฟอร์ม/แคนวาส 3มิติ/การ์ดเลือก
+      if (!document._npcDocTap) {
+        document._npcDocTap = true;
+        document.addEventListener("click", (e) => {
+          if (!box || box.hidden || box.classList.contains("npc-dim")) return;
+          if (e.target.closest("button, a, input, textarea, select, label, canvas, #npc, .cmp-chip, .vab-part, .vabe-item, .vabe-palette")) return;
+          advance();
+        });
+      }
       return true;
     }
 
@@ -579,14 +588,26 @@
 
     startRoomTone();
 
-    // ARM = พรีโหลดฉากปล่อยไว้หลังโอเวอร์เลย์ (ลูกพลุยังค้างในท่อครก) — ยังไม่นับถอยหลัง
+    // Phase 20 · พรีโหลดฉากปล่อย 3มิติ "ทันที" — ผู้เล่นเห็นท่อครก/ลูกพลุตั้งอยู่บนลาน
+    //            หลังแผงเคาต์ดาวน์กึ่งโปร่งแสง (เดิมโหลดตอนกด ARM = พื้นหลังดำสนิท)
+    let padLoaded = false;
+    function loadPad() {
+      if (padLoaded) return;
+      padLoaded = true;
+      RS().startCampaignLaunch(sum => onFlightDone(sum));
+      el("stepbar").hidden = true;
+      const cb = el("campaign-stepbar"); if (cb) cb.hidden = false;
+      const lb = $("#screen-launch .launch-back"); if (lb) lb.hidden = true;
+      const fwi = $("#fw-ignite"); if (fwi) fwi.hidden = true;   // ใช้ปุ่มจุดของแผง LC แทน
+      const lcEl = el("launch-control"); if (lcEl) lcEl.classList.add("see-through");
+    }
+    setTimeout(loadPad, 300);
+
+    // ARM = ระบบติดไฟ + เผยปุ่มจุด (ฉากพรีโหลดไว้แล้ว)
     el("lc-arm").onclick = () => {
       el("lc-arm").hidden = true;
       el("lc-lights").classList.add("on");
-      RS().startCampaignLaunch(sum => onFlightDone(sum));
-      el("stepbar").hidden = true;   // main.show("launch") เปิดสเตปบาร์เดิมกลับมา — ซ่อนอีกที
-      const cb = el("campaign-stepbar"); if (cb) cb.hidden = false;
-      const lb = $("#screen-launch .launch-back"); if (lb) lb.hidden = true;
+      loadPad();
       if (ig) ig.hidden = false;
       NPC.flash("pchang", "ระบบติดไฟแล้ว — กด “จุดพลุ” เพื่อเริ่มนับถอยหลัง T‑3");
     };
@@ -607,7 +628,7 @@
       hum = new AC();
       const o = hum.createOscillator(), g = hum.createGain();
       o.type = "sine"; o.frequency.value = 62;
-      g.gain.value = 0.035;
+      g.gain.value = 0.006;   // Phase 20 · ผู้เล่นบ่นเสียงหึ่ง — ลงเหลือแทบไม่ได้ยิน (เดิม 0.035)
       o.connect(g); g.connect(hum.destination); o.start();
       hum._o = o; hum._g = g;
     } catch (e) { hum = null; }

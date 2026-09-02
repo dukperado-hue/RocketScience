@@ -34,6 +34,15 @@
     const x = $("vn-x");
     if (x && !x._wired) { x._wired = true; x.addEventListener("click", (e) => { e.stopPropagation(); end(); }); }
     if (!box._wired) { box._wired = true; box.addEventListener("click", advance); }
+    // Phase 20 · แตะที่ไหนก็ได้บนจอเพื่อไปต่อ (ไม่ต้องเล็งกล่องเล็ก ๆ)
+    if (!document._vnDocTap) {
+      document._vnDocTap = true;
+      document.addEventListener("click", (e) => {
+        if (!box || box.hidden) return;
+        if (e.target.closest("button, a, input, textarea, select, label, #vn")) return;
+        advance();
+      });
+    }
     if (!document._vnKey) {
       document._vnKey = true;
       document.addEventListener("keydown", (e) => {

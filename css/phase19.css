@@ -122,9 +122,29 @@
 #screen-vab .vab-inventory .vab-slot{width:auto;max-width:100%;font-size:10px;padding:7px 9px}
 #screen-vab .vab-inventory .vab-stage .vst-sub{font-size:8.5px}
 
-/* the khom/firework "wall of text" hint panel — gone; parts live in the node palette */
-#screen-vab .vab:has(#vabeditor-wrap:not([hidden])) .vab-inventory{display:none}
-#screen-vab .vab-inventory .vab-khom-hint{display:none}
+/* editor mode: drop the "wall of text" hint — BUT keep the Khom pattern picker
+   (#vab-skins), which was disappearing in the reboot (Phase 20 fix). */
+#screen-vab .vab-inventory .vab-khom-hint,
+#screen-vab .vab:has(#vabeditor-wrap:not([hidden])) .vab-inventory > h3,
+#screen-vab .vab:has(#vabeditor-wrap:not([hidden])) .vab-inventory > .vab-panel-hint{display:none !important}
+
+/* firework flow has no skin panel → hide the empty inventory shell entirely */
+#screen-vab .vab:has(#vabeditor-wrap:not([hidden])) .vab-inventory:not(:has(#vab-skins)){display:none}
+
+/* khom flow: float the pattern picker as a compact panel, clear of the left tool rail */
+#screen-vab .vab:has(#vabeditor-wrap:not([hidden])) .vab-inventory:has(#vab-skins){
+  left:62px;right:auto;top:auto;bottom:64px;
+  width:auto;min-width:150px;max-width:210px;max-height:44vh;padding:8px 9px;
+}
+#screen-vab .vab-inventory #vab-skins{margin:0;border:0;background:none;padding:0;font-size:10px}
+#screen-vab .vab-inventory #vab-skins .vx-title{
+  font-size:9px;letter-spacing:.8px;text-transform:uppercase;color:var(--sim-ink-soft);margin-bottom:6px;
+}
+#screen-vab .vab-inventory #vab-skins .skin-grid{grid-template-columns:repeat(auto-fit,minmax(78px,1fr));gap:5px}
+#screen-vab .vab-inventory #vab-skins .skin-sw{
+  background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.14);color:var(--sim-ink);font-size:9.5px;
+}
+#screen-vab .vab-inventory #vab-skins .skin-sw.on{border-color:var(--sim-line-hot);background:rgba(224,189,115,.16)}
 
 /* --- RIGHT RAIL · node-editor palette (khom / firework flow) --- */
 #screen-vab .vabe-palette{
@@ -340,4 +360,46 @@ body:has(#screen-testing:not([hidden])) #campaign-stepbar span{color:var(--sim-i
 #screen-testing .cmp-test-eyebrow{color:var(--sim-ink-soft)}
 #screen-testing .cmp-test-list li{
   background:rgba(255,255,255,.045);border-color:rgba(255,255,255,.12);color:var(--sim-ink);
+}
+
+/* ==================================================================
+   PHASE 20 · overflow fixes + Launch Control over the live pad
+   ================================================================== */
+
+/* --- 20.a · material UI must never break out of its container --- */
+#screen-material .cmp-body,
+#screen-material .cmp-mat-lab{width:100%;max-width:900px;margin:0 auto;min-width:0}
+#screen-material .cmp-mat-group{max-width:100%;overflow:hidden;box-sizing:border-box}
+#screen-material .cmp-mat-chips{
+  grid-template-columns:repeat(auto-fit,minmax(118px,1fr));min-width:0;
+}
+#screen-material .cmp-chip{min-width:0;max-width:100%;overflow:hidden}
+#screen-material .cmp-chip b,
+#screen-material .cmp-chip small{max-width:100%;overflow-wrap:anywhere;word-break:break-word}
+@media(max-width:520px){
+  #screen-material .cmp-mat-chips{grid-template-columns:repeat(2,minmax(0,1fr))}
+  #screen-material .cmp-chip-ic{font-size:26px}
+  #screen-material .cmp-chip b{font-size:12px}
+}
+/* if the fireworks builder ever renders visibly, keep it inside the card too */
+#screen-material .fw-body,#screen-material .fw-pats,#screen-material .fw-swatches,
+#screen-material .fw-shells,#screen-material .fw-fuses{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(0,1fr));gap:8px;min-width:0;max-width:100%;
+}
+
+/* --- 20.b · LAUNCH CONTROL — translucent panel over the live 3D pad --- */
+.launch-control.see-through{
+  background:linear-gradient(180deg,rgba(4,7,12,.30),rgba(4,7,12,.52)) !important;
+  -webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);
+}
+.launch-control.see-through.dim{
+  background:linear-gradient(180deg,rgba(2,4,7,.44),rgba(2,4,7,.66)) !important;
+}
+.launch-control.see-through.cut-wire{background:radial-gradient(700px 500px at 50% 60%,rgba(58,22,8,.5),rgba(4,6,10,.62) 72%) !important}
+.launch-control.see-through.cut-sky{background:radial-gradient(900px 700px at 50% 20%,rgba(10,23,48,.5),rgba(1,2,7,.64) 75%) !important}
+.launch-control.see-through.cut-tube{background:radial-gradient(600px 500px at 50% 80%,rgba(16,20,24,.5),rgba(4,6,10,.62) 70%) !important}
+/* the countdown frame stays as a readable glass card, pushed up a little so the pad shows */
+.launch-control.see-through .lc-frame{
+  background:rgba(4,10,14,.72);align-self:flex-start;margin-top:6vh;
+  box-shadow:0 24px 60px rgba(0,0,0,.5);
 }

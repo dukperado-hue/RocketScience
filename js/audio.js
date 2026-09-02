@@ -18,6 +18,7 @@
   const NULL_HANDLE = { setBurner() {}, setWind() {}, stop() {} };
 
   let AC = null;
+  let _bgmEl = null, _bgmFade = null, _bgmOn = false;   // Phase 19 · mp3 background music
   function ctx() {
     if (AC === null) {
       try { AC = new (window.AudioContext || window.webkitAudioContext)(); }
@@ -28,7 +29,11 @@
   }
   // ปลดล็อกเสียงเมื่อผู้เล่นแตะจอครั้งแรก (นโยบาย autoplay)
   ["pointerdown", "keydown", "touchstart"].forEach(ev =>
-    window.addEventListener(ev, () => ctx(), { passive: true }));
+    window.addEventListener(ev, () => {
+      ctx();
+      // Phase 19 · ถ้าเพลงพื้นหลังถูกสั่งเล่นไว้แต่ browser บล็อก autoplay — เริ่มตอนนี้
+      if (_bgmOn && _bgmEl && _bgmEl.paused) { try { _bgmEl.play().catch(() => {}); } catch (e) {} }
+    }, { passive: true }));
 
   function noiseBuffer(a, seconds) {
     const len = Math.max(1, Math.floor(a.sampleRate * seconds));
@@ -204,7 +209,8 @@
     try {
       master = a.createGain();
       master.gain.setValueAtTime(0.0001, t0);
-      master.gain.setTargetAtTime(1, t0, 1.4);
+      // Phase 20 · ผู้เล่นบ่นว่าเสียงหึ่ง/บัซซ์รบกวน — หรี่ bed ลงเยอะ (เดิม 1.0)
+      master.gain.setTargetAtTime(0.28, t0, 1.4);
       master.connect(a.destination);
     } catch (e) { return NULL_HANDLE; }
 
@@ -213,7 +219,7 @@
       try {
         const src = a.createBufferSource(); src.buffer = noiseBuffer(a, 3); src.loop = true;
         const lp = a.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 460;
-        const g = a.createGain(); g.gain.value = 0.045;
+        const g = a.createGain(); g.gain.value = 0.014;   // Phase 20 · ลมเบาลง
         const lfo = a.createOscillator(); lfo.type = "sine"; lfo.frequency.value = 0.08;
         const lfoG = a.createGain(); lfoG.gain.value = 240;
         lfo.connect(lfoG); lfoG.connect(lp.frequency);
@@ -253,10 +259,10 @@
       burnerGain = a.createGain(); burnerGain.gain.value = 0; burnerGain.connect(master);
       const roar = a.createBufferSource(); roar.buffer = noiseBuffer(a, 2.5); roar.loop = true;
       const roarLP = a.createBiquadFilter(); roarLP.type = "lowpass"; roarLP.frequency.value = 240;
-      const roarG = a.createGain(); roarG.gain.value = 0.55;
+      const roarG = a.createGain(); roarG.gain.value = 0.32;
       roar.connect(roarLP); roarLP.connect(roarG); roarG.connect(burnerGain);
       const flame = a.createOscillator(); flame.type = "triangle"; flame.frequency.value = 56;
-      const flameG = a.createGain(); flameG.gain.value = 0.16;
+      const flameG = a.createGain(); flameG.gain.value = 0.05;   // Phase 20 · ตัดเสียงฮัม 56Hz ลง
       flame.connect(flameG); flameG.connect(burnerGain);
       const air = a.createBufferSource(); air.buffer = noiseBuffer(a, 2); air.loop = true;
       const airHP = a.createBiquadFilter(); airHP.type = "highpass"; airHP.frequency.value = 1700;
@@ -269,11 +275,11 @@
     return {
       setBurner(level) {
         if (dead || !a || !burnerGain) return;
-        try { burnerGain.gain.setTargetAtTime(clamp01(level) * 0.5, a.currentTime, 0.25); } catch (e) {}
+        try { burnerGain.gain.setTargetAtTime(clamp01(level) * 0.14, a.currentTime, 0.25); } catch (e) {}
       },
       setWind(level) {
         if (dead || !a || !windGain) return;
-        try { windGain.gain.setTargetAtTime(0.02 + clamp01(level) * 0.09, a.currentTime, 0.6); } catch (e) {}
+        try { windGain.gain.setTargetAtTime(0.008 + clamp01(level) * 0.03, a.currentTime, 0.6); } catch (e) {}
       },
       stop() {
         if (dead) return; dead = true;
@@ -309,80 +315,50 @@
     } catch (e) {}
   }
 
-  // ---------------- Phase 18.5 · RPG background music (synth chiptune loop) ----------------
-  let _bgm = null;
-  function noteInto(a, dest, freq, t, dur, type, vol) {
-    try {
-      const o = a.createOscillator();
-      o.type = type || "square"; o.frequency.value = freq;
-      const g = a.createGain();
-      g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(vol || 0.04, t + 0.02);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-      o.connect(g); g.connect(dest);
-      o.start(t); o.stop(t + dur + 0.05);
-    } catch (e) {}
+  // ---------------- Phase 19 · background music (mp3 loop, fade in/out) ----------------
+  //   Phase 18.5 ใช้ chiptune สังเคราะห์ — Phase 19 เปลี่ยนเป็นแทร็กแจ๊ส/บลูส์จริง
+  const BGM_SRC = "assets/audio/alban_gogh-minor-to-major-blues-142967.mp3";
+  const BGM_VOL = 0.4;
+
+  function _fadeBgm(to, ms, onDone) {
+    if (!_bgmEl) return;
+    if (_bgmFade) { clearInterval(_bgmFade); _bgmFade = null; }
+    const from = _bgmEl.volume, steps = Math.max(1, Math.round(ms / 40));
+    let i = 0;
+    _bgmFade = setInterval(() => {
+      i++;
+      const v = from + (to - from) * (i / steps);
+      try { _bgmEl.volume = Math.max(0, Math.min(1, v)); } catch (e) {}
+      if (i >= steps) { clearInterval(_bgmFade); _bgmFade = null; if (onDone) onDone(); }
+    }, 40);
   }
+
   function startBGM(opts) {
     opts = opts || {};
-    if (_bgm) return _bgm;                          // singleton — safe to call every screen
-    const a = ctx();
-    if (!a) return { stop() {} };
-    let dead = false, loopTimer = null, step = 0, bar = 0;
-    let master, lp, pads = [];
-    try {
-      master = a.createGain();
-      master.gain.setValueAtTime(0.0001, a.currentTime);
-      master.gain.setTargetAtTime(opts.volume != null ? opts.volume : 0.14, a.currentTime, 1.6);
-      master.connect(a.destination);
-      lp = a.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 2400; lp.connect(master);
-      // warm sustained pad (Am9-ish)
-      [110.00, 164.81, 220.00, 329.63].forEach(f => {
-        const o = a.createOscillator(); o.type = "triangle"; o.frequency.value = f;
-        const g = a.createGain(); g.gain.value = 0.045;
-        const det = a.createOscillator(); det.type = "sine"; det.frequency.value = 0.07;
-        const detG = a.createGain(); detG.gain.value = 1.6;
-        det.connect(detG); detG.connect(o.detune);
-        o.connect(g); g.connect(lp); o.start(); det.start();
-        pads.push(o, det);
-      });
-    } catch (e) { return { stop() {} }; }
-
-    // gentle A-minor pentatonic arpeggio + walking bass
-    const arp = [220.00, 261.63, 329.63, 392.00, 440.00, 392.00, 329.63, 261.63];
-    const bass = [55.00, 65.41, 43.65, 49.00];      // A1 C2 F1 G1, one per bar
-    const beat = 0.36;
-    function tick() {
-      if (dead || !a) return;
-      const t = a.currentTime + 0.06;
-      const oct = bar % 4 === 3 ? 2 : 1;
-      noteInto(a, lp, arp[step % arp.length] * oct, t, beat * 0.85, "square", 0.03);
-      if (step % 2 === 0) noteInto(a, lp, bass[bar % bass.length], t, beat * 1.9, "triangle", 0.075);
-      if (step % 8 === 4) noteInto(a, lp, arp[(step + 2) % arp.length] * 2, t, beat * 0.5, "sine", 0.022);
-      step++;
-      if (step % 8 === 0) bar++;
-      loopTimer = setTimeout(tick, beat * 1000);
+    _bgmOn = true;
+    if (!_bgmEl) {
+      try {
+        _bgmEl = new Audio(BGM_SRC);
+        _bgmEl.loop = true;
+        _bgmEl.preload = "auto";
+        _bgmEl.volume = 0;
+      } catch (e) { _bgmEl = null; return { stop() {} }; }
     }
-    tick();
-
-    _bgm = {
-      stop() {
-        if (dead) return; dead = true;
-        if (loopTimer) { clearTimeout(loopTimer); loopTimer = null; }
-        try {
-          const n = a.currentTime;
-          master.gain.cancelScheduledValues(n);
-          master.gain.setValueAtTime(Math.max(0.0001, master.gain.value), n);
-          master.gain.exponentialRampToValueAtTime(0.0001, n + 0.6);
-          pads.forEach(o => { try { o.stop(n + 1.6); } catch (e) {} });
-          setTimeout(() => { try { master.disconnect(); } catch (e) {} }, 2400);
-        } catch (e) {}
-        _bgm = null;
-      }
-    };
-    return _bgm;
+    const target = opts.volume != null ? opts.volume : BGM_VOL;
+    try {
+      const p = _bgmEl.play();
+      // autoplay ถูกบล็อก → จะเริ่มเองตอน user แตะจอครั้งแรก (ดู listener ด้านบน)
+      if (p && p.catch) p.catch(() => {});
+    } catch (e) {}
+    _fadeBgm(target, 1400);
+    return { stop: stopBGM };
   }
-  function stopBGM() { if (_bgm) _bgm.stop(); }
+
+  function stopBGM() {
+    _bgmOn = false;
+    if (!_bgmEl) return;
+    _fadeBgm(0, 600, () => { try { if (!_bgmOn) _bgmEl.pause(); } catch (e) {} });
+  }
 
   window.SoundStage = {
     ctx, thump, hiss, boom, crackle, startNight, blip, startBGM, stopBGM, SPEED_OF_SOUND

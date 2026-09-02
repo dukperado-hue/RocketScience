@@ -929,6 +929,8 @@
     // Phase 8/12/13: หัวพลุเฉลิมฉลอง — จุดระเบิดหลายชั้นตอนถึง apogee (vy ≤ 0)
     const fx = [];
     let fwFired = false, fwBurstY = null, fwChemTimer = 0, fwFuseT = 0, fwChemShown = false;
+    // Phase 20 · SALVO — ยิงหลายลูกรัว ๆ ให้เป็นไคลแม็กซ์จริง (ไม่ใช่ลูกเดียวเหงา ๆ)
+    let fwSalvo = null, fwSalvoAge = 0;
     const fwChemEl = document.getElementById("fw-chem");
 
     // Phase 13: ท่อครก — ลูกพลุค้างในท่อจนกดปุ่ม "จุดพลุ" (จรวดปกติเริ่มทันที)
@@ -1296,10 +1298,10 @@
         fwCamPhase = (!fwArmed || shellY < 3.5) ? "liftoff" : "ascent";
       } else {
         fwBurstAge += dt;
-        fwCamPhase = fwBurstAge < 2.6 ? "burst" : "post";
+        fwCamPhase = fwBurstAge < 1.5 ? "burst" : "post";
       }
       if (camTag) camTag.textContent =
-        { liftoff: "SPECTATOR", ascent: "TRACKING ▲", burst: "◉ CLOSE-UP", post: "◉ DOLLY IN ⟲" }[fwCamPhase];
+        { liftoff: "SPECTATOR", ascent: "TRACKING ▲", burst: "◉ PULL BACK", post: "◉ WIDE" }[fwCamPhase];
 
       const base = new THREE.Vector3(), look = new THREE.Vector3();
       if (fwCamPhase === "liftoff") {
@@ -1314,21 +1316,20 @@
         look.set(xJit * 0.5, shellY + 3.4, 0);
         camFovGoal = 58; camKcMul = 0.85;                     // ช้าลง = แพนนุ่ม
       } else if (fwCamPhase === "burst") {
-        // Phase 17.2 · ไม่ถอยกล้อง — ดัน CLOSE-UP เข้าหาศูนย์กลางดอกตามแกน Z + หุบเลนส์เล็กน้อย
-        const e = fwBurstAge / 2.6;
-        const ease = e < 0.5 ? 4 * e * e * e : 1 - Math.pow(-2 * e + 2, 3) / 2;   // easeInOutCubic
-        base.set(0.6, burstY * 0.62 + 2.2, 26 - ease * 8);   // 26 → 18 (ดันเข้า)
-        look.set(0, burstY, 0);
-        camFovGoal = 52 - ease * 6;                           // 52 → 46 (หุบเลนส์)
-        camKcMul = 0.55 + ease * 0.3;
+        // Phase 20 · PULL BACK — ถอยกล้องออก + ถ่างเลนส์กว้าง เผยสเกลพลุชุดใหญ่กับฟ้ากลางคืน
+        const e = Math.min(1, fwBurstAge / 1.5);
+        const ease = 1 - Math.pow(1 - e, 3);                  // easeOutCubic — พุ่งออกเร็ว
+        base.set(2 + ease * 4, burstY * 0.45 + 7 + ease * 12, 30 + ease * 40);   // z 30 → 70
+        look.set(0, burstY * 0.9, 0);
+        camFovGoal = 58 + ease * 22;                          // 58 → 80 (กว้างสุด ๆ)
+        camKcMul = 1.15;                                      // ตามไว = กระชับ
       } else {
-        // Phase 17.2 · ดอลลี่-อินช้ามาก ตลอด ~28 วิ ที่เม็ดดาวค้างฟ้า — ชื่นชมเนบิวลาเรืองแสง
-        const d = Math.min(1, (fwBurstAge - 2.6) / 26);      // 0 → 1 across the hang time
-        const dd = 1 - Math.pow(1 - d, 2);                    // easeOut
-        base.set(0.3, burstY * 0.66 + 1.4, 18 - dd * 10);    // 18 → 8 (นิ่ง ๆ เข้าไปเรื่อย ๆ)
-        look.set(0, burstY * 0.99, 0);
-        camFovGoal = 46 - dd * 5;                             // 46 → 41
-        camKcMul = 0.16;                                      // ตามช้ามาก = นุ่มนวล
+        // Phase 20 · ค้างมุมกว้าง นิ่ง ๆ สั้น ๆ — ไม่มีสโลว์โมชั่น ไม่ดอลลี่อิน
+        const d = Math.min(1, (fwBurstAge - 1.5) / 3.5);
+        base.set(4 + d * 2, burstY * 0.45 + 12, 70 + d * 8);
+        look.set(0, burstY * 0.82, 0);
+        camFovGoal = 82;
+        camKcMul = 0.55;
       }
 
       // manual orbit offset — หมุนเวกเตอร์กล้อง→เป้ารอบแกน Y + เอียง pitch + ดอลลี่
@@ -1440,7 +1441,9 @@
       if (!fwArmed) {
         // ลูกพลุรอในท่อครก — ยังไม่กด "จุดพลุ"
       } else if (fwFired) {
-        if (!fx.length && ++holdF > 40) { finish(); return; }
+        // Phase 20 · จบไว — ไม่ค้าง 30 วิ. ปล่อยให้ salvo ยิงครบ + ประกายจางแล้วตัดจบ (สูงสุด ~8 วิ)
+        const salvoDone = !fwSalvo;
+        if ((salvoDone && !fx.length && ++holdF > 24) || fwBurstAge > 8) { finish(); return; }
       } else if (flight.state.phase !== "done") {
         const simDt = dt * simSpeed;
         const steps = Math.max(2, Math.ceil(simDt / 0.02));
@@ -1505,32 +1508,63 @@
         }
       }
 
-      // หัวพลุ: Time Fuse ถึง Bursting Charge — จุดหลัง apogee ตามความยาวชนวนที่เลือก
+      // Phase 20 · ยิงลูกพลุ 1 ลูก (ใช้ทั้งลูกแรกและลูกที่รัวตามมา)
+      function fireOneShell(ox, oy, oz, sizeMul) {
+        const my = (nightFW ? rocket.position.y : 0) + vehicleMidY() + 1.5 + (oy || 0);
+        if (fwBurstY == null) fwBurstY = my;
+        try {
+          const fwOpts = Object.assign({}, meta.firework, {
+            burstScale: (meta.firework.burstScale || 1) * (sizeMul || 1),
+            fuseTail: (meta.firework.fuseTail || 0)
+          });
+          const bp = new THREE.Vector3(rocket.position.x + (ox || 0), my, (oz || 0));
+          fx.push(window.Fireworks.detonate(THREE, scene, bp, fwOpts));
+          shake = Math.max(shake, 0.45 + 0.25 * (sizeMul || 1));
+          if (SS) {
+            const dist = camera.position.distanceTo(bp);
+            SS.boom(dist, { size: fwOpts.burstScale });
+            const pat = window.Fireworks.PATTERNS && window.Fireworks.PATTERNS[meta.firework.pattern];
+            const cr = SS.crackle((pat && pat.life ? pat.life : 5) * 0.8, dist);
+            if (cr) fwCrackle.push(cr);
+          }
+        } catch (e) { console.warn("[Launch3D] firework", e); }
+      }
+
+      // หัวพลุ: Time Fuse — สั้น=จุดที่ apogee เป๊ะ · กลาง=หน่วงนิด · ยาว=ร่วงลงมาชัด ๆ ก่อนแตก
       if (!fwFired && meta.firework && window.Fireworks && s.vy <= 0 && s.t > 1 && alt > 20
         && s.phase !== "pad" && !s.landed) {
         fwFuseT += dt;
-        if (fwFuseT >= (meta.firework.fuseDelay || 0)) {
+        // ยาวสุดก็ต้องแตกก่อนถึงพื้น
+        if (fwFuseT >= (meta.firework.fuseDelay || 0) || alt < 18) {
           fwFired = true;
-          const my = (nightFW ? rocket.position.y : 0) + vehicleMidY() + 1.5;
-          fwBurstY = my;
-          try {
-            fx.push(window.Fireworks.detonate(THREE, scene,
-              new THREE.Vector3(rocket.position.x, my, 0), meta.firework));
-            shake = Math.max(shake, 0.5);
-            showEvent("หัวพลุแตก! เปลว" + (meta.firework.flame || "สี") + " 🎆");
-            // Phase 18 · เสียงเชิงพื้นที่ — หน่วง BOOM ตามระยะกล้อง→จุดแตก + ประกายค้างฟ้า
-            if (SS) {
-              const bp = new THREE.Vector3(rocket.position.x, my, 0);
-              const dist = camera.position.distanceTo(bp);
-              const size = meta.firework.burstScale || 1;
-              SS.boom(dist, { size });
-              const pat = window.Fireworks.PATTERNS && window.Fireworks.PATTERNS[meta.firework.pattern];
-              const cr = SS.crackle((pat && pat.life ? pat.life : 20) * 0.9, dist);
-              if (cr) fwCrackle.push(cr);
-              if (fwHiss) { fwHiss.stop(); fwHiss = null; }
-            }
-          } catch (e) { console.warn("[Launch3D] firework", e); }
+          if (fwHiss) { fwHiss.stop(); fwHiss = null; }
+          fireOneShell(0, 0, 0, 1);
+          showEvent("🎆 พลุชุดใหญ่! เปลว" + (meta.firework.flame || "สี"));
+          // ตั้งคิว SALVO — รัว 2–4 ลูกตามมาใน ~2 วิ กระจายทั่วฟ้า
+          const extra = 2 + (Math.random() * 3 | 0);   // 2–4 → รวม 3–5 ลูก
+          fwSalvo = [];
+          for (let i = 0; i < extra; i++) {
+            fwSalvo.push({
+              t: 0.22 + i * (0.28 + Math.random() * 0.22),
+              ox: (Math.random() - 0.5) * 46,
+              oy: (Math.random() - 0.5) * 22 + 4,
+              oz: (Math.random() - 0.5) * 30,
+              s: 0.7 + Math.random() * 0.7,
+              fired: false
+            });
+          }
         }
+      }
+      // ยิงลูกที่รัวตามมา
+      if (fwSalvo) {
+        fwSalvoAge += dt;
+        for (const sh of fwSalvo) {
+          if (!sh.fired && fwSalvoAge >= sh.t) {
+            sh.fired = true;
+            fireOneShell(sh.ox, sh.oy, sh.oz, sh.s);
+          }
+        }
+        if (fwSalvo.every(sh => sh.fired)) fwSalvo = null;
       }
       if (fwFired && !fwChemShown) {
         fwChemShown = true;
@@ -1549,11 +1583,12 @@
           }
         } catch (e) { console.warn("[Launch3D] firework", e); }
       }
-      const fwDt = Math.min(dt * Math.min(simSpeed, 1.4), 0.04);
+      // Phase 20 · เดินเวลาเต็มสปีด — พลุปัง ๆ ไว ไม่มีสโลว์โมชั่น
+      const fwDt = Math.min(dt * Math.min(simSpeed, 1.5) * 1.15, 0.05);
       for (let i = fx.length - 1; i >= 0; i--) {
         if (!fx[i].update(fwDt)) { fx[i].dispose(); fx.splice(i, 1); }
       }
-      if (fwFired && fx.length) simSpeed += (1 - simSpeed) * Math.min(1, dt * 2.5);   // ชะลอเวลาให้ชมพลู
+      if (fwFired && fx.length) simSpeed += (1.15 - simSpeed) * Math.min(1, dt * 2.5);
       if (fwChemTimer > 0) {
         fwChemTimer -= dt;
         if (fwChemTimer < 1.2 && fwChemEl) fwChemEl.classList.add("fade");
