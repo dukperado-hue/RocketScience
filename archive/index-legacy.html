@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RocketScience — ปล่อยจรวดให้ถูกกฎหมาย</title>
+<meta name="description" content="เกมจำลองการปล่อยจรวด: มีเทคโนโลยียังไม่พอ ต้องผ่านกฎหมายการเดินอากาศและกฎหมายอวกาศระหว่างประเทศด้วย — จาก Cool Uncle Lab">
+<meta name="theme-color" content="#2E4A7A">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+Thai:wght@500;600;700;900&family=Sarabun:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css?v=79">
+<link rel="stylesheet" href="css/phase19.css?v=79">
+</head>
+<body>
+<script>
+(function(){
+  try {
+    var t = localStorage.getItem('codex-theme');
+    if (t === 'dark' || t === 'horror') document.documentElement.setAttribute('data-theme', t);
+  } catch(e){}
+})();
+</script>
+
+<div class="topbar">
+  <a href="https://coolunclelab.com/lab.html" class="topbar-brand">
+    <span>🚀</span>
+    <span class="topbar-brand-text">RocketScience<span class="topbar-brand-sub">Cool Uncle Lab</span></span>
+  </a>
+  <div class="topbar-right">
+    <span id="score-badge" class="score-badge">คะแนนรวม <b>0</b></span>
+    <div class="theme-toggle" role="group" aria-label="เลือกธีม">
+      <button type="button" data-theme-btn="light"  onclick="setTheme('light')"  title="โหมดสว่าง">☀️</button>
+      <button type="button" data-theme-btn="dark"   onclick="setTheme('dark')"   title="โหมดมืด">🌙</button>
+      <button type="button" data-theme-btn="horror" onclick="setTheme('horror')" title="โหมดสยองขวัญ">👻</button>
+    </div>
+  </div>
+</div>
+
+<div id="stepbar" class="stepbar" hidden>
+  <span data-step="mission">ภารกิจ</span>
+  <span data-step="rocket">เลือกจรวด</span>
+  <span data-step="name">ตั้งชื่อ</span>
+  <span data-step="vab">ประกอบ</span>
+  <span data-step="legal">ขออนุญาต</span>
+  <span data-step="launch">ปล่อย</span>
+  <span data-step="report">ผลลัพธ์</span>
+</div>
+
+<!-- Phase 16 · Campaign state-machine stepbar (พลุ missions) -->
+<div id="campaign-stepbar" class="stepbar stepbar-campaign" hidden></div>
+
+<main class="wrap">
+
+  <!-- ============ HOME ============ -->
+  <section id="screen-home" class="screen">
+    <div class="hero">
+      <div class="eyebrow">Cool Uncle Lab · เกมการศึกษา</div>
+      <h1>RocketScience<br><span class="hero-sub">ปล่อยจรวดให้ถูกกฎหมาย</span></h1>
+      <p class="lede">มีเทคโนโลยียิงของขึ้นฟ้ายัง<strong>ไม่พอ</strong> คุณต้องผ่านกฎหมายการเดินอากาศ
+      กฎจังหวัด ประกาศ NOTAM ไปจนถึงสนธิสัญญาอวกาศระหว่างประเทศ ค่อย ๆ ปลดล็อกจากโคมลอยสู่ดาวเทียมวงโคจร</p>
+      <div class="home-actions">
+        <button class="btn btn-primary" id="btn-start">เลือกภารกิจ →</button>
+        <button class="btn btn-ghost" id="btn-codex">🏛️ หอจดหมายเหตุ</button>
+        <button class="btn btn-ghost" id="btn-reset-progress" hidden>ล้างความคืบหน้า</button>
+      </div>
+    </div>
+    <h2 class="home-ladder-title">เลือกระดับ · แตะการ์ดที่ปลดล็อกเพื่อเริ่ม</h2>
+    <div class="tier-ladder" id="tier-ladder"></div>
+  </section>
+
+  <!-- ============ MISSION BRIEFING ============ -->
+  <section id="screen-mission" class="screen" hidden>
+    <h2 class="screen-title">1 · เลือกภารกิจ</h2>
+    <div id="mission-grid" class="card-grid"></div>
+    <div class="screen-nav"><button class="btn btn-ghost" data-back="home">← กลับหน้าหลัก</button></div>
+  </section>
+
+  <!-- ============ ROCKET SELECT ============ -->
+  <section id="screen-rocket" class="screen" hidden>
+    <h2 class="screen-title">2 · เลือกชนิดจรวด</h2>
+    <p class="screen-hint" id="rocket-hint"></p>
+    <div id="rocket-grid" class="card-grid"></div>
+    <div class="screen-nav"><button class="btn btn-ghost" data-back="mission">← กลับ</button></div>
+  </section>
+
+  <!-- ============ NAME ROCKET ============ -->
+  <section id="screen-name" class="screen" hidden>
+    <h2 class="screen-title">3 · ตั้งชื่อจรวด</h2>
+    <div class="name-box">
+      <div class="name-preview"><span id="name-icon">🚀</span></div>
+      <label for="rocket-name-input">ชื่อจรวดของคุณ</label>
+      <input type="text" id="rocket-name-input" maxlength="28" placeholder="เช่น ผไทเดโช 1">
+      <div class="name-suggest" id="name-suggest"></div>
+      <div class="screen-nav">
+        <button class="btn btn-ghost" data-back="rocket">← กลับ</button>
+        <button class="btn btn-primary" id="btn-to-vab">ไปโรงประกอบ →</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ VAB (Vehicle Assembly Building) ============ -->
+  <section id="screen-vab" class="screen" hidden>
+    <h2 class="screen-title">4 · โรงประกอบจรวด <span class="vab-blueprint-tag">BLUEPRINT</span></h2>
+    <div class="vab">
+      <!-- LEFT: part inventory -->
+      <aside class="vab-panel vab-inventory">
+        <h3>คลังชิ้นส่วน <span class="vab-mode-tag" id="vab-mode-tag"></span></h3>
+        <p class="vab-panel-hint">Tier 1–2 ลากชิ้นส่วนไปวาง · Tier 3–5 เลือกเพย์โหลด/อัปเกรด</p>
+        <div id="vab-parts" class="vab-parts-list"></div>
+      </aside>
+
+      <!-- CENTER: interactive 3D inspection + assembly grid -->
+      <div class="vab-panel vab-assembly">
+        <h3>ตรวจสอบจรวด 3 มิติ</h3>
+        <div id="vab3d-wrap" hidden>
+          <canvas id="vab3d-canvas"></canvas>
+          <div class="vab3d-bar">
+            <button id="vab3d-explode" type="button" class="vab3d-btn">🔍 แยกชิ้นส่วน (X-Ray)</button>
+            <span class="vab3d-hint">ลากหมุน · สกรอลล์ซูม · Shift+ลากแพน · ชี้ชิ้นส่วนเพื่อดูสเปก</span>
+          </div>
+          <div id="vab3d-tip" hidden></div>
+        </div>
+
+        <!-- Phase 15: Node-Based Drag & Drop VAB (ทดลองสถาปัตยกรรมใหม่ — เริ่มที่พลุ) -->
+        <div id="vabeditor-wrap" hidden>
+          <canvas id="vabeditor-canvas"></canvas>
+          <aside id="vabeditor-palette" class="vabe-palette" aria-label="พาเลทชิ้นส่วน"></aside>
+          <div class="vab3d-bar">
+            <button id="vabeditor-explode" type="button" class="vab3d-btn">🔍 แยกชิ้นส่วน (X-Ray)</button>
+            <span class="vab3d-hint">ลากไอคอนขวามาวาง · ลากชิ้นส่วนเพื่อย้าย/ถอด · ลากหมุน · สกรอลล์ซูม</span>
+          </div>
+          <div id="vabeditor-status" class="vabe-status"></div>
+          <div id="vabeditor-tip" hidden></div>
+        </div>
+        <div id="vab-grid" class="vab-grid" aria-label="กริดประกอบจรวด">
+          <div class="vab-grid-empty" id="vab-grid-empty">วางชิ้นส่วนที่นี่</div>
+        </div>
+        <div class="vab-actions">
+          <button class="btn btn-ghost" id="vab-reset">รีเซ็ต</button>
+          <button class="btn btn-primary" id="vab-proceed" disabled>ไปขั้นตอนขออนุญาต →</button>
+        </div>
+      </div>
+
+      <!-- RIGHT: telemetry -->
+      <aside class="vab-panel vab-telemetry">
+        <h3>ค่าประเมิน</h3>
+        <dl class="telem" id="vab-telem"></dl>
+        <p class="telem-verdict" id="t-verdict">ยังประกอบไม่ครบ</p>
+      </aside>
+    </div>
+    <div class="screen-nav">
+      <button class="btn btn-ghost" data-back="name">← กลับ</button>
+      <button class="btn btn-ghost" id="vab-cmp-back" data-cmp-back hidden>‹ กลับไปเลือกวัตถุดิบ</button>
+    </div>
+  </section>
+
+  <!-- ============ LAUNCH ============ -->
+  <section id="screen-launch" class="screen" hidden>
+    <h2 class="screen-title">6 · ปล่อยจรวด</h2>
+    <div class="launch-wrap">
+      <canvas id="launch-canvas"></canvas>
+      <button class="btn btn-ghost launch-back" data-back="vab">← กลับไปแก้ไข</button>
+      <button id="fw-ignite" class="fw-ignite" type="button" hidden>🎆 จุดพลุ<small>IGNITE</small></button>
+      <div id="launch-hud" class="launch-hud" hidden>
+        <div class="lh-row"><span>ALT</span><b id="lh-alt">0 m</b></div>
+        <div class="lh-row"><span>VEL</span><b id="lh-vel">0 m/s</b></div>
+        <div class="lh-row"><span>Q</span><b id="lh-q">0 Pa</b></div>
+        <div class="lh-row"><span>MaxQ</span><b id="lh-maxq">—</b></div>
+        <div class="lh-row"><span>STAGE</span><b id="lh-stage">1</b></div>
+        <div class="lh-row"><span>Δv</span><b id="lh-dv">—</b></div>
+        <div class="lh-row"><span>PHASE</span><b id="lh-phase">—</b></div>
+      </div>
+      <div id="launch-cam" class="launch-cam" hidden>GROUND</div>
+      <button id="cam-toggle" class="cam-toggle" type="button" hidden>🎥 มุมกล้อง: แหงน</button>
+
+      <!-- Phase 14 · ตัวชี้กรอบ NOTAM (เพดาน / รัศมี) -->
+      <div id="notam-hud" class="notam-hud" hidden>
+        <div class="nh-title">NOTAM · ห้วงอากาศที่แจ้ง</div>
+        <div class="nh-row" id="nh-ceil"><span>เพดาน</span><b>—</b></div>
+        <div class="nh-row" id="nh-rad"><span>รัศมี</span><b>—</b></div>
+      </div>
+      <div id="launch-event" class="launch-event" hidden></div>
+
+      <!-- Phase 12 · คำอธิบายปฏิกิริยาเคมีของพลุ (Atomic Emission) -->
+      <div id="fw-chem" class="fw-chem" hidden>
+        <div class="fw-chem-el" id="fw-chem-el"></div>
+        <div class="fw-chem-chain" id="fw-chem-chain"></div>
+      </div>
+
+      <!-- Phase 4/5 · CAPCOM "พี่ช่าง" (real-time technical narrator) -->
+      <div id="capcom" class="capcom" hidden>
+        <div class="capcom-portrait" id="capcom-portrait" data-state="idle" aria-hidden="true">🦆</div>
+        <div class="capcom-line" id="capcom-line"></div>
+        <button class="capcom-mute" id="capcom-mute" type="button" title="ปิดเสียงพี่ช่าง (CAPCOM)">🦆</button>
+      </div>
+
+      <!-- Phase 4/5 · Operator "กะปิ" (silent — reacts via mood only) -->
+      <div id="operator" class="operator" data-mood="idle" hidden>
+        <div class="operator-face" id="operator-face" aria-hidden="true">😐</div>
+        <span class="operator-label">กะปิ</span>
+      </div>
+
+      <!-- Advanced bottom HUD (Phase 3) -->
+      <div id="flight-hud" class="fhud" hidden>
+        <div class="fhud-gauge fhud-left">
+          <span class="fhud-label">SPEED</span>
+          <span class="fhud-val" id="fhud-speed">0</span>
+          <span class="fhud-unit">m/s</span>
+        </div>
+        <div class="fhud-controls">
+          <div class="fhud-dpad">
+            <button class="fhud-btn" data-ctl="pitch-up" type="button" title="เชิดหัว / ตั้งตรง (W · ↑)">▲</button>
+            <div class="fhud-drow">
+              <button class="fhud-btn" data-ctl="yaw-left" type="button" title="หันซ้าย (A · ←)">◀</button>
+              <button class="fhud-btn fhud-stage" data-ctl="stage" type="button" title="สลัดท่อน (Space)">STAGE</button>
+              <button class="fhud-btn" data-ctl="yaw-right" type="button" title="หันขวา (D · →)">▶</button>
+            </div>
+            <button class="fhud-btn" data-ctl="pitch-down" type="button" title="กดหัว / gravity turn (S · ↓)">▼</button>
+          </div>
+          <span class="fhud-pitch" id="fhud-pitch">PITCH 0°</span>
+        </div>
+        <div class="fhud-gauge fhud-right">
+          <span class="fhud-label">ALTITUDE</span>
+          <span><span class="fhud-val" id="fhud-alt">0</span> <span class="fhud-unit" id="fhud-alt-unit">m</span></span>
+          <div class="fhud-fuel"><div class="fhud-fuel-fill" id="fhud-fuel"></div></div>
+          <span class="fhud-fuel-label">FUEL</span>
+        </div>
+      </div>
+    </div>
+    <div class="launch-caption" id="launch-caption">กำลังจุดระเบิด…</div>
+  </section>
+
+  <!-- ============ POST-FLIGHT REPORT ============ -->
+  <section id="screen-report" class="screen" hidden>
+    <h2 class="screen-title">7 · รายงานหลังบิน</h2>
+    <div class="report-card">
+      <div class="report-verdict" id="report-verdict"></div>
+      <div id="report-notam-stamp" class="report-notam-stamp" hidden>SKY HAZARD<br>VIOLATION</div>
+      <table class="report-table"><tbody id="report-rows"></tbody></table>
+      <div class="report-total">คะแนนภารกิจนี้ <b id="report-total">0</b></div>
+      <div class="report-legal" id="report-legal"></div>
+      <div id="report-unlock" class="report-unlock" hidden></div>
+      <div class="screen-nav">
+        <button class="btn btn-ghost" id="btn-report-home">กลับหน้าหลัก</button>
+        <button class="btn btn-primary" id="btn-report-next">ภารกิจถัดไป →</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ PHASE 16 · CAMPAIGN STATE MACHINE (พลุ) ============ -->
+  <section id="screen-briefing" class="screen campaign-screen" hidden>
+    <h2 class="screen-title">STATE · BRIEFING</h2>
+    <div id="briefing-body" class="cmp-body"></div>
+    <div class="screen-nav">
+      <button type="button" class="btn btn-ghost" data-cmp-back>‹ กลับ</button>
+      <button class="btn btn-primary" id="briefing-go">รับทราบ — ไปเลือกวัตถุดิบ →</button>
+    </div>
+  </section>
+
+  <section id="screen-material" class="screen campaign-screen" hidden>
+    <h2 class="screen-title">STATE · MATERIAL SELECTION</h2>
+    <p class="screen-hint">เลือกวัตถุดิบให้ครบทั้ง 4 หมวด (พลังงาน · สี · จังหวะ · เปลือก)</p>
+    <div id="material-body" class="cmp-body"></div>
+    <div id="campaign-fw-sink" hidden></div>
+    <div class="screen-nav">
+      <button type="button" class="btn btn-ghost" data-cmp-back>‹ กลับ</button>
+      <button class="btn btn-primary" id="material-go" disabled>ประกอบลูกพลุ →</button>
+    </div>
+  </section>
+
+  <section id="screen-testing" class="screen campaign-screen" hidden>
+    <h2 class="screen-title">STATE · TESTING &amp; SYSTEM CHECK</h2>
+    <div id="testing-body" class="cmp-body"></div>
+    <div class="screen-nav">
+      <button type="button" class="btn btn-ghost" data-cmp-back>‹ กลับ</button>
+      <button class="btn btn-primary" id="testing-go">ส่งต่อให้ LAUNCH CONTROL →</button>
+    </div>
+  </section>
+
+  <section id="screen-debrief" class="screen campaign-screen" hidden>
+    <h2 class="screen-title">STATE · DEBRIEF</h2>
+    <div id="debrief-body" class="cmp-body"></div>
+    <div class="screen-nav">
+      <button class="btn btn-ghost" id="debrief-home">กลับหน้าหลัก</button>
+      <button class="btn btn-primary" id="debrief-next">ภารกิจถัดไป →</button>
+    </div>
+  </section>
+
+</main>
+
+<!-- Phase 16 · LAUNCH CONTROL — cinematic countdown overlay -->
+<div id="launch-control" class="launch-control" hidden>
+  <div class="lc-frame">
+    <div class="lc-head">LAUNCH CONTROL</div>
+    <div class="lc-lights" id="lc-lights">
+      <i></i><i></i><i></i><i></i><i></i><i></i>
+    </div>
+    <div class="lc-status" id="lc-status"></div>
+    <div class="lc-count" id="lc-count"></div>
+    <div class="lc-cut" id="lc-cut" hidden></div>
+    <div class="lc-actions">
+      <button type="button" class="lc-arm" id="lc-arm">[ ARM SIMULATION ]</button>
+      <button type="button" class="lc-ignite" id="lc-ignite" hidden>🎆 จุดพลุ<small>IGNITE</small></button>
+    </div>
+    <button type="button" class="lc-back" id="lc-back" data-cmp-back>‹ กลับ</button>
+  </div>
+</div>
+
+<!-- Phase 16 · Persistent NPC companion (พี่ช่าง / น้องกะปิ / น้องชะอม) -->
+<div id="npc" class="npc" data-who="pchang" hidden>
+  <div class="npc-portrait"><span id="npc-emoji" class="npc-emoji" hidden>🦆</span><img id="npc-img" alt=""></div>
+  <div class="npc-main">
+    <div class="npc-plate"><span id="npc-name" class="npc-name"></span><span id="npc-role" class="npc-role"></span></div>
+    <p id="npc-text" class="npc-text"></p>
+    <div id="npc-cont" class="npc-cont">▶ คลิกเพื่อไปต่อ</div>
+  </div>
+</div>
+
+<!-- ============ LEGAL CLEARANCE MODAL ============ -->
+<div id="legal-modal" class="modal-overlay" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="legal-title">
+    <div class="modal-head">
+      <h3 id="legal-title">5 · ขั้นตอนขออนุญาตก่อนปล่อย</h3>
+      <span class="modal-tier" id="legal-tier-name"></span>
+    </div>
+    <p class="modal-lawrefs" id="legal-lawrefs"></p>
+    <ul class="legal-list" id="legal-list"></ul>
+    <div class="legal-warn" id="legal-warn" hidden></div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" id="legal-cancel">← กลับไปแก้จรวด</button>
+      <button class="btn btn-danger" id="legal-ignite">🔥 IGNITION</button>
+    </div>
+  </div>
+</div>
+
+<!-- mini-minigame popup (airport / notam / permit / impact / insurance) -->
+<div id="mini-modal" class="modal-overlay" hidden>
+  <div class="modal modal-sm">
+    <h3 id="mini-title"></h3>
+    <div id="mini-body"></div>
+  </div>
+</div>
+
+<!-- ============ VISUAL NOVEL — cast dialogue (Phase 5) ============ -->
+<div id="vn" class="vn" hidden>
+  <div class="vn-portrait" aria-hidden="true">
+    <img id="vn-portrait-img" class="vn-portrait-img" alt="">
+  </div>
+  <div class="vn-body">
+    <button class="vn-x" id="vn-x" type="button" title="ข้าม">✕</button>
+    <div class="vn-plate"><span class="vn-name" id="vn-name"></span><span class="vn-role" id="vn-role"></span></div>
+    <p class="vn-text" id="vn-text"></p>
+    <p class="vn-stagedir" id="vn-stagedir" hidden></p>
+    <div class="vn-cont" id="vn-cont">▶ คลิกเพื่อไปต่อ</div>
+  </div>
+</div>
+
+<!-- ============ AEROSPACE CODEX — หอจดหมายเหตุอวกาศ (Phase 9) ============ -->
+<div id="codex-modal" class="modal-overlay codex-overlay" hidden>
+  <div class="codex">
+    <div class="codex-head">
+      <h3>หอจดหมายเหตุอวกาศ <span class="codex-sub">Aerospace Codex</span></h3>
+      <span class="codex-count" id="codex-count">0 / 0</span>
+      <button class="codex-x" id="codex-close" type="button" title="ปิด">✕</button>
+    </div>
+
+    <div class="codex-grid" id="codex-grid"></div>
+
+    <div class="codex-detail" id="codex-detail" hidden>
+      <button class="codex-back" id="codex-back" type="button">← กลับสู่รายการ</button>
+      <div class="codex-detail-body">
+        <div class="codex-viewer">
+          <canvas id="codex-canvas"></canvas>
+          <span class="codex-viewer-hint">ลากหมุน · สกรอลล์ซูม · Shift+ลากแพน · ดับเบิลคลิกรีเซ็ต</span>
+        </div>
+        <div class="codex-info">
+          <div class="codex-info-era" id="codex-info-era"></div>
+          <h4 id="codex-info-title"></h4>
+          <div class="codex-info-sub" id="codex-info-sub"></div>
+          <p id="codex-info-desc"></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+
+<footer class="site-footer">
+  สร้างด้วย Claude · Cool Uncle Lab 2026 · <a href="https://coolunclelab.com/lab.html">โปรเจกต์ทั้งหมด</a>
+</footer>
+
+<!-- Three.js r147 (UMD) + post-processing + GLTFLoader for the cinematic 3D launch -->
+<script src="vendor/three/three.min.js?v=79"></script>
+<script src="vendor/three/shaders/CopyShader.js?v=79"></script>
+<script src="vendor/three/shaders/LuminosityHighPassShader.js?v=79"></script>
+<script src="vendor/three/shaders/FilmShader.js?v=79"></script>
+<script src="vendor/three/postprocessing/EffectComposer.js?v=79"></script>
+<script src="vendor/three/postprocessing/MaskPass.js?v=79"></script>
+<script src="vendor/three/postprocessing/RenderPass.js?v=79"></script>
+<script src="vendor/three/postprocessing/ShaderPass.js?v=79"></script>
+<script src="vendor/three/postprocessing/UnrealBloomPass.js?v=79"></script>
+<script src="vendor/three/postprocessing/FilmPass.js?v=79"></script>
+<script src="vendor/three/loaders/GLTFLoader.js?v=79"></script>
+
+<script src="js/data.js?v=79"></script>
+<script src="js/notam.js?v=79"></script>
+<script src="js/law.js?v=79"></script>
+<script src="js/chemistry.js?v=79"></script>
+<script src="js/fireworks.js?v=79"></script>
+<script src="js/codex.js?v=79"></script>
+<script src="js/physics.js?v=79"></script>
+<script src="js/ui.js?v=79"></script>
+<script src="js/vn.js?v=79"></script>
+<script src="js/narrative.js?v=79"></script>
+<script src="js/vab.js?v=79"></script>
+<script src="js/talai.js?v=79"></script>
+<script src="js/bangfai.js?v=79"></script>
+<script src="js/skins.js?v=79"></script>
+<script src="js/modelManager.js?v=79"></script>
+<script src="js/vab3d.js?v=79"></script>
+<script src="js/vehicleTree.js?v=79"></script>
+<script src="js/vabEditor.js?v=79"></script>
+<script src="js/codexViewer.js?v=79"></script>
+<script src="js/recovery.js?v=79"></script>
+<script src="js/textureManager.js?v=79"></script>
+<script src="js/audio.js?v=79"></script>
+<script src="js/launch2d.js?v=79"></script>
+<script src="js/launch3d.js?v=79"></script>
+<script src="js/main.js?v=79"></script>
+<script src="js/campaign.js?v=79"></script>
+<script src="js/testing.js?v=79"></script>
+<script src="js/phase19.js?v=79"></script>
+</body>
+</html>
