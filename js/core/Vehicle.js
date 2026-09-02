@@ -204,6 +204,7 @@
     };
 
     var massMomentX = 0, massMomentY = 0;   // Σ m·r  (uses WET mass)
+    var dryMomentY = 0;                      // Σ m·y  (DRY mass only — for burnout CoM)
     var areaMomentX = 0, areaMomentY = 0;   // Σ A·r  (aerodynamic reference area)
 
     this.instances.forEach(function (inst) {
@@ -217,6 +218,7 @@
 
       massMomentX += wet * c.x;
       massMomentY += wet * c.y;
+      dryMomentY += p.mass * c.y;
 
       var A = p.aerodynamics.crossSectionArea;
       s.dragArea += p.aerodynamics.dragCoefficient * A;
@@ -259,6 +261,14 @@
     // metre-space copies (origin = vehicle bounding-box top-left)
     s.comM = { x: s.com.x * mpc, y: s.com.y * mpc };
     s.copM = { x: s.cop.x * mpc, y: s.cop.y * mpc };
+
+    // flight-axis (grid +y = aft) scalars for the dynamic-stability check.
+    // As propellant burns, the true CoM slides from comWet toward comDry; a
+    // bottom-heavy solid motor means that slide is FORWARD (toward the nose),
+    // which is exactly what erodes the fin margin mid-boost.
+    s.comWetAxisM = s.com.y * mpc;
+    s.comDryAxisM = (s.dryMass > 0 ? dryMomentY / s.dryMass : s.com.y) * mpc;
+    s.copAxisM = s.refArea > 0 ? s.cop.y * mpc : NaN;
     s.length = {
       w: isFinite(s.maxX - s.minX) ? (s.maxX - s.minX) * mpc : 0,
       h: isFinite(s.maxY - s.minY) ? (s.maxY - s.minY) * mpc : 0
@@ -327,6 +337,11 @@
       motors: motors,
       valid: s.valid,
       stable: s.stable,
+      // dynamic aero-stability inputs (flight axis, metres; +y = aft)
+      rocketDominant: s.totalThrust > s.totalBuoyancy && s.totalThrust > 0,
+      comWetAxisM: s.comWetAxisM,
+      comDryAxisM: s.comDryAxisM,
+      copAxisM: s.copAxisM,
       // full stats snapshot so Diagnostics needs only the model, never the graph
       stats: s
     };

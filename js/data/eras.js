@@ -24,9 +24,11 @@
       id: '1-bangfai',
       order: 1,
       name: 'ยุค 1 · บั้งไฟ',
-      tagline: 'ดินปืนอัดในกระบอกไม้ไผ่ — แรงขับจริงครั้งแรก',
-      partIds: [],                         // parts land in a later phase
-      unlock: { type: 'missions', count: 2, era: '0-khomloy' },
+      tagline: 'ดินปืนอัดในกระบอกไม้ไผ่ — แรงขับจริงครั้งแรก · CoP ต้องอยู่ท้าย CoM',
+      partIds: ['nose_cone_wood', 'body_tube_bamboo', 'motor_blackpowder', 'fin_wood'],
+      // Phase 3: default-open so the aero-stability lesson is reachable now.
+      // Campaign gating (2 khom missions) returns when the mission flow lands.
+      unlock: { type: 'default' },
       envelope: { apogee: 3000, note: 'พุ่งขึ้นตรง หางถ่วงให้นิ่ง' }
     }
   ];

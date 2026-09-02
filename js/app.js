@@ -15,11 +15,15 @@
   // ---- game state -------------------------------------------------------
   RS.EraManager.init();
   RS.MissionEngine.init();
-  var era = RS.EraManager.current();
-  if (era) {
+
+  function setEraTag(eraId) {
+    var e = RS.EraManager.get(eraId);
+    if (!e) return;
     document.getElementById('bp-era-tag').textContent =
-      'ERA ' + era.id.split('-')[0].toUpperCase() + ' · ' + era.name;
+      'ERA ' + e.id.split('-')[0].toUpperCase() + ' · ' + e.name;
   }
+  var currentEra = RS.EraManager.currentId() || '0-khomloy';
+  setEraTag(currentEra);
 
   // ---- 2D blueprint builder ------------------------------------------
   var vehicle = new RS.Vehicle();
@@ -34,7 +38,7 @@
     statusEl: document.getElementById('bp-status'),
     vehicle: vehicle,
     catalog: RS.PartsCatalog,
-    era: RS.EraManager.currentId() || '0-khomloy',
+    era: currentEra,
     onChange: function (stats) {
       document.getElementById('bp-run').disabled = !stats.valid;
       watchBtn.disabled = true;      // any edit invalidates the last replay
@@ -87,15 +91,46 @@
   document.getElementById('bp-zoom-in').addEventListener('click', function () { builder.zoom(1); });
   document.getElementById('bp-zoom-out').addEventListener('click', function () { builder.zoom(-1); });
 
-  document.getElementById('bp-sample').addEventListener('click', function () {
+  var sampleBtn = document.getElementById('bp-sample');
+
+  function buildSample(eraId) {
     builder.reset();
     var C = RS.PartsCatalog;
-    var paper = vehicle.addInstance(C.get('cover_paper'), 0, 0, []);
-    var frame = vehicle.addInstance(C.get('frame_bamboo'), 0, 2,
-      [{ node: 'top', toIid: paper.iid, toNode: 'bottom' }]);
-    vehicle.addInstance(C.get('fuel_wax'), 0, 3,
-      [{ node: 'top', toIid: frame.iid, toNode: 'bottom' }]);
-    builder._afterEdit('วางโคมลอยตัวอย่างให้แล้ว — กด ▶ จำลองการบิน');
+    if (eraId === '1-bangfai') {
+      // a DELIBERATELY finless stack — the fastest way to see the tumble.
+      // Add fin_wood on the motor's radial nodes to tame it.
+      var motor = vehicle.addInstance(C.get('motor_blackpowder'), 0, 4, []);
+      var tube = vehicle.addInstance(C.get('body_tube_bamboo'), 0, 2,
+        [{ node: 'bottom', toIid: motor.iid, toNode: 'top' }]);
+      vehicle.addInstance(C.get('nose_cone_wood'), 0, 1,
+        [{ node: 'bottom', toIid: tube.iid, toNode: 'top' }]);
+      builder._afterEdit('บั้งไฟตัวอย่าง (ยังไม่มีครีบ!) — ลองจำลองดู แล้วลากครีบหางมาติดที่มอเตอร์');
+    } else {
+      var paper = vehicle.addInstance(C.get('cover_paper'), 0, 0, []);
+      var frame = vehicle.addInstance(C.get('frame_bamboo'), 0, 2,
+        [{ node: 'top', toIid: paper.iid, toNode: 'bottom' }]);
+      vehicle.addInstance(C.get('fuel_wax'), 0, 3,
+        [{ node: 'top', toIid: frame.iid, toNode: 'bottom' }]);
+      builder._afterEdit('วางโคมลอยตัวอย่างให้แล้ว — กด ▶ จำลองการบิน');
+    }
+  }
+  sampleBtn.addEventListener('click', function () { buildSample(currentEra); });
+
+  // ---- era switcher --------------------------------------------------
+  document.getElementById('bp-eras').addEventListener('click', function (e) {
+    var btn = e.target.closest('.bp-era-btn');
+    if (!btn || btn.classList.contains('is-on')) return;
+    var eraId = btn.dataset.era;
+    RS.EraManager.unlock(eraId);
+    RS.EraManager.setCurrent(eraId);
+    currentEra = eraId;
+    builder.setEra(eraId);
+    setEraTag(eraId);
+    sampleBtn.textContent = eraId === '1-bangfai' ? 'บั้งไฟตัวอย่าง' : 'โคมตัวอย่าง';
+    Array.prototype.forEach.call(this.children, function (c) {
+      c.classList.toggle('is-on', c === btn);
+    });
+    document.getElementById('bp-watch').disabled = true;
   });
 
   // ---- run the simulation contract ---------------------------------
@@ -225,7 +260,7 @@
     flightScreen: flightScreen, RS: RS,
     simulate: function () { return RS.Physics.simulate(vehicle.toPhysicsModel()); }
   };
-  console.log('%cFROM FIRE TO ORBIT — Reboot Phase 2 ready', 'color:#5fe0a8;font-weight:bold');
+  console.log('%cFROM FIRE TO ORBIT — Reboot Phase 3 ready', 'color:#5fe0a8;font-weight:bold');
   console.log('contract v' + RS.Physics.CONTRACT_VERSION +
     ' · try FIRE_TO_ORBIT.simulate()');
 })();

@@ -577,6 +577,14 @@
     this._afterEdit('ล้างกริดแล้ว');
   };
 
+  /** Swap the era: rebuild the parts rail and clear the grid (parts don't mix). */
+  Blueprint2D.prototype.setEra = function (eraId) {
+    if (!eraId || eraId === this.era) return;
+    this.era = eraId;
+    this._buildCatalog();
+    this.reset();
+  };
+
   Blueprint2D.prototype.zoom = function (dir) {
     this.view.cell = clamp(this.view.cell * (dir > 0 ? 1.15 : 1 / 1.15), MIN_CELL, MAX_CELL);
     this._render();

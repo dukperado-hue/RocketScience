@@ -36,6 +36,18 @@
         { type: 'flightTimeMin', value: 120, label: 'อยู่บนฟ้า ≥ 120 วินาที' }
       ],
       reward: { score: 900 }
+    },
+    {
+      id: 'bangfai-straight-up',
+      era: '1-bangfai',
+      name: 'พุ่งตรง',
+      brief: 'บั้งไฟลูกแรก — ต้องพุ่งขึ้นตรง ไม่ตีลังกากลางอากาศ และขึ้นสูงเกิน 400 เมตร. ' +
+        'เคล็ดลับ: ใส่ครีบหาง (fin) เพื่อดึงศูนย์แรงดันไปท้ายจรวด',
+      objectives: [
+        { type: 'apogeeMin', value: 320, label: 'ขึ้นสูงอย่างน้อย 320 ม.' },
+        { type: 'diagnosticsClear', value: 'WARN', label: 'ไม่เสียการควบคุม / ไม่มีข้อบกพร่องร้ายแรง' }
+      ],
+      reward: { score: 800 }
     }
   ];
 

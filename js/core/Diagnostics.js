@@ -60,19 +60,27 @@
     }
 
     // --- 3 · static stability ------------------------------------------
+    //  Rocket (thrust-dominant): the Center of Pressure MUST sit aft of the
+    //  Center of Mass, or the airstream flips the nose and it tumbles. Fins are
+    //  how you get there. Lantern (buoyancy): it hangs like a pendulum instead.
     var margin = st.stabilityMarginM;
+    var rocketMode = (st.totalThrust || 0) >= (st.totalBuoyancy || 0) && (st.totalThrust || 0) > 0;
     var mDetail = isFinite(margin)
-      ? 'ระยะ CoM–CoP ' + margin.toFixed(2) + ' m (' +
-        (st.totalBuoyancy > st.totalThrust ? 'โหมดพยุง' : 'โหมดจรวด') + ')'
+      ? 'ระยะ CoM–CoP ' + margin.toFixed(2) + ' m (' + (rocketMode ? 'โหมดจรวด' : 'โหมดพยุง') + ')'
       : '—';
     if (st.partCount <= 1) {
       add('stability', OK, 'ชิ้นเดียว — ไม่มีปัญหาเสถียรภาพ', mDetail);
     } else if (!isFinite(margin)) {
       add('stability', WARN, 'ประเมินเสถียรภาพไม่ได้ (ไม่มีพื้นที่อ้างอิง)', mDetail);
     } else if (margin <= 0) {
-      add('stability', FAIL, 'ไม่เสถียร — ยานจะส่ายหัว/พลิก', mDetail);
-    } else if (margin < 0.05) {
-      add('stability', WARN, 'เสถียรภาพเฉียดฉิว', mDetail);
+      add('stability', FAIL,
+        rocketMode ? 'ไม่เสถียร — CoP อยู่หน้า CoM จรวดจะตีลังกา ใส่ครีบหาง (fin) เพิ่ม'
+                   : 'ไม่เสถียร — ยานจะส่ายหัว/พลิก',
+        mDetail);
+    } else if (margin < (rocketMode ? 0.08 : 0.05)) {
+      add('stability', WARN,
+        rocketMode ? 'เสถียรภาพเฉียดฉิว — ครีบเล็กไป เผื่อ CoM เลื่อนตอนเชื้อเพลิงหมด' : 'เสถียรภาพเฉียดฉิว',
+        mDetail);
     } else {
       add('stability', OK, 'เสถียรตามแนวแกนบิน', mDetail);
     }
@@ -96,6 +104,14 @@
       }
     }
 
+    // --- 4b · departed controlled flight (the dynamic tumble) -------
+    var loc = events.filter(function (e) { return e.type === 'LOSS_OF_CONTROL'; })[0];
+    if (loc) {
+      add('control', FAIL, 'เสียการควบคุมกลางอากาศ — จรวดตีลังกา',
+        'ที่ ' + fmtAlt(loc.altitude) + ' · ' + Math.abs(loc.velocity).toFixed(0) +
+        ' m/s — CoM เลื่อนไปหน้า CoP ตอนเชื้อเพลิงเผาไหม้');
+    }
+
     // --- 5 · flight outcome ------------------------------------------
     if (!sim || !sim.ok) {
       add('outcome', FAIL, 'การจำลองไม่สำเร็จ', (sim && sim.reason) || '');
@@ -114,7 +130,8 @@
     if (impact) {
       var vImp = Math.abs(impact.velocity);
       var iDetail = 'ความเร็วแตะพื้น ' + vImp.toFixed(1) + ' m/s';
-      if (vImp <= 6) add('landing', OK, 'ลงแตะพื้นนุ่มนวล', iDetail);
+      if (loc) add('landing', WARN, 'ร่วงลงหลังเสียการควบคุม', iDetail);
+      else if (vImp <= 6) add('landing', OK, 'ลงแตะพื้นนุ่มนวล', iDetail);
       else if (vImp <= 15) add('landing', WARN, 'ลงแรง — โครงสร้างอาจเสียหาย', iDetail);
       else add('landing', FAIL, 'ตกกระแทก', iDetail);
     }

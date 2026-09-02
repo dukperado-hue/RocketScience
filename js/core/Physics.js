@@ -25,7 +25,13 @@
   var RHO0 = 1.225;        // kg/m^3 at sea level
   var SCALE_H = 8500;      // m, density scale height
 
-  var CONTRACT_VERSION = '1.1.0';
+  var CONTRACT_VERSION = '1.2.0';
+
+  // --- dynamic aero-instability ("the tumble") ---------------------------------
+  var TUMBLE_SPEED_MIN = 12;      // m/s — below this, too slow to weathercock
+  var TUMBLE_DRAG_MULT = 3.5;     // broadside Cd·A blow-up once tumbling
+  var TUMBLE_THRUST_FRAC = 0.30;  // thrust still fires but points every which way
+  var TUMBLE_CLIMB_BLEED = 2.6;   // per-second bleed applied to UPWARD velocity only
 
   /**
    * @typedef {Object} TrajectoryState
@@ -42,10 +48,11 @@
    * @property {number} buoyancy                   N (buoyancy-mode motors)
    * @property {number} drag                       N
    * @property {number} propRemaining              kg
+   * @property {boolean} tumbling                  true once the stack departs controlled flight
    *
    * @typedef {Object} FlightEvent
    * @property {number} time
-   * @property {'IGNITION'|'LIFTOFF'|'MAX_Q'|'APOGEE'|'BURNOUT'|'IMPACT'} type
+   * @property {'IGNITION'|'LIFTOFF'|'MAX_Q'|'APOGEE'|'BURNOUT'|'LOSS_OF_CONTROL'|'IMPACT'} type
    * @property {string} message
    * @property {number} altitude
    * @property {number} velocity
@@ -130,22 +137,49 @@
     // lift for the same temperature delta, so a lantern naturally levels off.
     buoyancy *= rho / RHO0;
 
-    var drag = 0.5 * rho * model.dragArea * state.v * Math.abs(state.v);
+    var v, y, a, drag, onPad = false;
+
+    if (state.tumbling) {
+      // ---- AERODYNAMICALLY OUT OF CONTROL --------------------------------
+      // The stack has pitched broadside to the airstream: reference area and
+      // Cd balloon, the nozzle no longer points along the velocity vector, and
+      // whatever thrust is left just spins it. Model it as a hard velocity
+      // bleed under gravity + a fraction of misdirected thrust. Deterministic,
+      // never stiff — a tumble should always arc over and come down.
+      drag = 0.5 * rho * model.dragArea * TUMBLE_DRAG_MULT * state.v * Math.abs(state.v);
+      var aThr = (thrust * TUMBLE_THRUST_FRAC) / mass;
+      a = aThr - g - drag / mass;
+      v = state.v + a * dt;
+      // energy poured into the tumble comes out of the climb — bleed only while
+      // still going up, so a falling wreck still settles at a drag terminal.
+      if (v > 2) v *= (1 - Math.min(0.4, TUMBLE_CLIMB_BLEED * dt));
+      y = state.y + v * dt;
+      if (y <= 0) { y = 0; if (v < 0) { v = 0; onPad = true; } }
+      return {
+        t: state.t + dt, y: y, v: v, propRemaining: propRemaining,
+        a: clampA(a), mass: mass, thrust: thrust, buoyancy: buoyancy, drag: drag,
+        q: 0.5 * rho * v * v, g: g, rho: rho, onPad: onPad, tumbling: true
+      };
+    }
+
+    drag = 0.5 * rho * model.dragArea * state.v * Math.abs(state.v);
     var fNet = thrust + buoyancy - mass * g - drag;
-    var a = fNet / mass;
+    a = clampA(fNet / mass);
 
-    var v = state.v + a * dt;
-    var y = state.y + v * dt;
+    v = state.v + a * dt;
+    y = state.y + v * dt;
 
-    var onPad = false;
     if (y <= 0) { y = 0; if (v < 0) { v = 0; onPad = true; } }
 
     return {
       t: state.t + dt, y: y, v: v, propRemaining: propRemaining,
       a: a, mass: mass, thrust: thrust, buoyancy: buoyancy, drag: drag,
-      q: 0.5 * rho * v * v, g: g, rho: rho, onPad: onPad
+      q: 0.5 * rho * v * v, g: g, rho: rho, onPad: onPad, tumbling: false
     };
   }
+
+  // A crash never needs 40-g fidelity; clamp keeps the integrator well-behaved.
+  function clampA(a) { return a < -400 ? -400 : (a > 400 ? 400 : a); }
 
   // ---------------------------------------------------------------------------
   //  simulate() — produces the locked SimulationResult
@@ -176,15 +210,17 @@
       }, model);
     }
 
-    var state = { t: 0, y: 0, v: 0, propRemaining: model.propellantMass };
+    var state = { t: 0, y: 0, v: 0, propRemaining: model.propellantMass, tumbling: false };
     var trajectory = [];
     var apogee = 0, apogeeTime = 0, maxV = 0, maxQ = 0;
     var liftedOff = false, nextSample = 0;
+    var tumbleT = Infinity;                    // time the tumble started
+    var canTumble = !!model.rocketDominant && isFinite(model.copAxisM);
     var reason = 'สิ้นสุดการบิน';
 
     // seed t=0 state so playback starts exactly on the pad
     trajectory.push(toState({ t: 0, y: 0, v: 0, a: 0, mass: model.totalMass,
-      thrust: 0, buoyancy: 0, drag: 0, q: 0, propRemaining: model.propellantMass }));
+      thrust: 0, buoyancy: 0, drag: 0, q: 0, propRemaining: model.propellantMass }, tumbleT));
     nextSample += sampleEvery;
 
     while (state.t < maxTime) {
@@ -195,16 +231,36 @@
       if (Math.abs(d.v) > maxV) maxV = Math.abs(d.v);
       if (d.q > maxQ) maxQ = d.q;
 
-      if (d.t >= nextSample) {
-        trajectory.push(toState(d));
-        nextSample += sampleEvery;
+      // --- dynamic aero-stability: CoM slides forward as propellant burns.
+      //     Once moving fast, if the (interpolated) CoM passes the CoP, the
+      //     stack weathercocks the wrong way and departs controlled flight.
+      var wasTumbling = state.tumbling;
+      if (canTumble && !state.tumbling && liftedOff &&
+          Math.abs(d.v) > TUMBLE_SPEED_MIN) {
+        var pf = model.propellantMass > 0
+          ? d.propRemaining / model.propellantMass : 1;
+        var comAxis = model.comDryAxisM +
+          (model.comWetAxisM - model.comDryAxisM) * pf;
+        if (model.copAxisM - comAxis <= 0) {
+          state.tumbling = true;
+          d.tumbling = true;
+          tumbleT = d.t;
+        }
       }
 
-      state = { t: d.t, y: d.y, v: d.v, propRemaining: d.propRemaining };
+      if (d.t >= nextSample || (state.tumbling && !wasTumbling)) {
+        trajectory.push(toState(d, tumbleT));
+        if (d.t >= nextSample) nextSample += sampleEvery;
+      }
+
+      state = {
+        t: d.t, y: d.y, v: d.v, propRemaining: d.propRemaining,
+        tumbling: state.tumbling
+      };
 
       if (liftedOff && d.onPad) {
-        reason = 'ยานแตะพื้นแล้ว';
-        trajectory.push(toState(d));           // guarantee the impact sample
+        reason = state.tumbling ? 'จรวดเสียการควบคุมแล้วตกกระแทกพื้น' : 'ยานแตะพื้นแล้ว';
+        trajectory.push(toState(d, tumbleT));  // guarantee the impact sample
         break;
       }
       if (!liftedOff && state.t > 30 &&
@@ -244,7 +300,16 @@
   }
 
   /** Raw step output -> contract TrajectoryState. */
-  function toState(d) {
+  function toState(d, tumbleT) {
+    // Straight up until the vehicle departs controlled flight; then it pitches
+    // over and spins — a wild, escalating attitude the replay can show literally.
+    var o = { pitch: 90, yaw: 0, roll: 0 };
+    if (d.tumbling && isFinite(tumbleT)) {
+      var tt = Math.max(0, d.t - tumbleT);
+      o.pitch = 90 - (tt * 130 + Math.sin(tt * 9) * 55);
+      o.yaw = Math.sin(tt * 5.5) * 45 + tt * 70;
+      o.roll = tt * 260;
+    }
     return {
       time: round(d.t, 3),
       position: { x: 0, y: round(d.y, 3), z: 0 },
@@ -252,14 +317,14 @@
       speed: round(Math.abs(d.v), 3),
       acceleration: round(d.a, 3),
       mass: round(d.mass, 4),
-      // no attitude dynamics yet: everything points straight up
-      orientation: { pitch: 90, yaw: 0, roll: 0 },
+      orientation: { pitch: round(o.pitch, 2), yaw: round(o.yaw, 2), roll: round(o.roll, 2) },
       altitude: round(d.y, 3),
       q: round(d.q, 2),
       thrust: round(d.thrust, 3),
       buoyancy: round(d.buoyancy, 3),
       drag: round(d.drag, 3),
-      propRemaining: round(d.propRemaining, 4)
+      propRemaining: round(d.propRemaining, 4),
+      tumbling: !!d.tumbling
     };
   }
 

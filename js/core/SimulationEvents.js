@@ -17,6 +17,7 @@
     MAX_Q:    'MAX_Q',
     APOGEE:   'APOGEE',
     BURNOUT:  'BURNOUT',
+    LOSS_OF_CONTROL: 'LOSS_OF_CONTROL',
     IMPACT:   'IMPACT'
   };
 
@@ -26,6 +27,7 @@
     MAX_Q:    'แรงดันอากาศสูงสุด (Max-Q)',
     APOGEE:   'จุดสูงสุด',
     BURNOUT:  'เชื้อเพลิงหมด',
+    LOSS_OF_CONTROL: 'เสียการควบคุม — ตีลังกา',
     IMPACT:   'แตะพื้น'
   };
 
@@ -59,7 +61,7 @@
     }
 
     // --- single-pass scan for peaks & thresholds ---------------------------
-    var liftoffIdx = -1, apogeeIdx = 0, maxQIdx = 0, impactIdx = -1;
+    var liftoffIdx = -1, apogeeIdx = 0, maxQIdx = 0, impactIdx = -1, tumbleIdx = -1;
     var peakForce = 0, burnoutIdx = -1;
 
     for (var i = 0; i < traj.length; i++) {
@@ -70,6 +72,7 @@
       if (liftoffIdx === -1 && s.altitude > LIFT_EPS) liftoffIdx = i;
       if (s.altitude > traj[apogeeIdx].altitude) apogeeIdx = i;
       if ((s.q || 0) > (traj[maxQIdx].q || 0)) maxQIdx = i;
+      if (tumbleIdx === -1 && s.tumbling) tumbleIdx = i;
     }
 
     var lifted = liftoffIdx !== -1;
@@ -104,6 +107,13 @@
       var mq = traj[maxQIdx];
       push(mq.time, TYPES.MAX_Q,
         'Max-Q ' + Math.round(mq.q) + ' Pa', mq.altitude, mq.velocity);
+    }
+    if (tumbleIdx !== -1) {
+      var tb = traj[tumbleIdx];
+      push(tb.time, TYPES.LOSS_OF_CONTROL,
+        'CoP อยู่หน้า CoM — จรวดตีลังกาที่ ' + fmtAlt(tb.altitude) +
+        (hasMotor ? ' (ลองเพิ่มครีบหาง)' : ''),
+        tb.altitude, tb.velocity);
     }
     if (lifted && traj[apogeeIdx].altitude > LIFT_EPS) {
       var ap = traj[apogeeIdx];

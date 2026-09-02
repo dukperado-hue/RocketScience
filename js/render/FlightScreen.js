@@ -26,11 +26,12 @@
     MAX_Q:    'แรงดันอากาศสูงสุด',
     APOGEE:   'จุดสูงสุด',
     BURNOUT:  'เชื้อเพลิงหมด',
+    LOSS_OF_CONTROL: 'เสียการควบคุม',
     IMPACT:   'แตะพื้น'
   };
   var EVENT_COLOR = {
     IGNITION: '#e9f1ff', LIFTOFF: '#5fe0a8', MAX_Q: '#5bd6ff',
-    BURNOUT: '#ffb63a', APOGEE: '#ffce40', IMPACT: '#ff6a5a'
+    BURNOUT: '#ffb63a', APOGEE: '#ffce40', LOSS_OF_CONTROL: '#ff3b3b', IMPACT: '#ff6a5a'
   };
   var RATES = [0.5, 1, 2, 4];
   var CAM_MODES = ['ground', 'chase', 'free'];
@@ -269,8 +270,10 @@
 
     if (!this._glow) {
       this._glow = new THREE.PointLight(0xff8a3a, 0, 140, 2);
-      this._glow.position.y = -0.3;
     }
+    this._glow.position.set(0, (this.vehicleGroup.userData &&
+      this.vehicleGroup.userData.exhaustY != null)
+      ? this.vehicleGroup.userData.exhaustY : -0.3, 0);
     this.vehicleGroup.add(this._glow);
     this._glowPulse = 0;
 
