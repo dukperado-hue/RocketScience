@@ -216,6 +216,22 @@ body.vn-open .wrap{padding-bottom:clamp(220px,30vh,280px)}
     -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
   }
   #screen-vab .screen-nav .btn:hover{background:rgba(20,36,58,.92)}
+
+  /* Phase 18 · ยึดพื้นที่จอคืน — หัวเรื่องบล็อกใหญ่ "4 · โรงประกอบจรวด" → ป้ายลอยเล็กเหนือ canvas */
+  #screen-vab>.screen-title{
+    position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:8;
+    margin:0;padding:5px 15px;pointer-events:none;
+    font-size:12px;font-weight:700;line-height:1;letter-spacing:.3px;color:#eaf2ff;white-space:nowrap;
+    background:rgba(10,20,34,.58);border:1px solid rgba(255,255,255,.18);border-radius:999px;
+    -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+    box-shadow:0 6px 20px rgba(0,0,0,.34);
+  }
+  #screen-vab>.screen-title .vab-blueprint-tag{font-size:9px;padding:2px 6px;margin-left:2px}
+  /* เวที 3 มิติ ดันขึ้นเต็มพื้นที่ที่ได้คืนมา */
+  #screen-vab .vab{height:min(92vh,970px);margin-top:-4px}
+  /* ดันแถบ X-Ray / พาเลท ลงพ้นป้ายชื่อ */
+  #screen-vab .vab3d-bar{top:44px}
+  #screen-vab .vabe-palette{top:82px}
 }
 .vab-panel h3{margin:0 0 4px;font-size:15px}
 .vab-panel-hint{font-size:11.5px;color:var(--ink-soft);margin:0 0 10px}

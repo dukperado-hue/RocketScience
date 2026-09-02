@@ -538,18 +538,97 @@
     if (tier === 1) { tower.visible = false; }   // โคม/พลุ ไม่ได้ยิงจากร้านบั้งไฟ/เสาปล่อย
 
     // ─────────────────────────────────────────────────────────────────────────
-    //  TODO (Phase 18 · "Yi Peng" / ยี่เป็ง) — spawnYiPengBackground()
-    //  เติมท้องฟ้าด้วยโคมลอยพื้นหลังหลายร้อยดวงระหว่างปล่อย Khom เพื่อบรรยากาศงานยี่เป็ง
-    //  แผน implementation:
-    //   • สร้าง THREE.InstancedMesh (ทรงกระบอกกระดาษสาย่อ ~0.3 หน่วย) 200–400 อินสแตนซ์
-    //     กระจายในโดม r≈80–260, y≈8–120, พร้อม emissive สีส้มอุ่น + ต่อ 1 PointLight รวม (แชร์)
-    //   • ต่อเป็นลูกของ worldGroup? — ไม่: ต้องลอยขึ้นอิสระ ใช้ group แยก + ต่อ scene
-    //   • อัปเดตต่อเฟรม: y += drift 0.15–0.5 u/s, ส่าย x/z เบา ๆ (sin), ดวงที่พ้น y>140 รีไซเคิลลงล่าง
-    //   • ความสว่างหายใจต่อดวง: instanceColor *= (0.8 + 0.2·sin(t·rate + phase))
-    //   • เรียกจาก run() เมื่อ meta.lantern (และอาจ meta.firework กลางคืน); dispose ใน cleanup()
-    //   • ผูกจำนวนกับ performance budget / มี flag ปิดสำหรับเครื่องช้า
-    //  function spawnYiPengBackground(count) { /* not yet implemented */ }
+    //  Phase 18 · "Yi Peng" / ยี่เป็ง — spawnYiPengBackground()
+    //  เติมท้องฟ้ายามค่ำด้วยโคมลอยพื้นหลัง ~170 ดวง (InstancedMesh — draw call เดียว)
+    //  ลอยขึ้น + ส่ายตามลม + ไฟในโคม "หายใจ" ผ่าน instanceColor · รีไซเคิลเมื่อพ้นเพดาน
     // ─────────────────────────────────────────────────────────────────────────
+    let yiPeng = null;
+    function spawnYiPengBackground(count) {
+      const N = Math.max(24, count || 170);
+      const geo = new THREE.CylinderGeometry(0.34, 0.26, 0.9, 7, 1, true);
+      const mat = new THREE.MeshBasicMaterial({
+        color: 0xffffff, transparent: true, opacity: 0.9, depthWrite: false,
+        blending: THREE.AdditiveBlending, toneMapped: false, side: THREE.DoubleSide
+      });
+      const mesh = new THREE.InstancedMesh(geo, mat, N);
+      mesh.frustumCulled = false;
+      mesh.renderOrder = -1;
+      mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      const dummy = new THREE.Object3D();
+      const col = new THREE.Color();
+      const data = [];
+      function seed(d, y0) {
+        const ang = Math.random() * Math.PI * 2;
+        const rad = 55 + Math.random() * 205;
+        d.x = Math.cos(ang) * rad;
+        d.z = Math.sin(ang) * rad - 30;
+        d.y = y0 != null ? y0 : 4 + Math.random() * 150;
+        d.rise = 0.14 + Math.random() * 0.42;              // u/s ลอยขึ้นช้า ๆ ไม่เท่ากัน
+        d.sway = 0.4 + Math.random() * 1.1;
+        d.swayF = 0.18 + Math.random() * 0.42;
+        d.phase = Math.random() * Math.PI * 2;
+        d.rate = 1.3 + Math.random() * 2.6;                // อัตราการ "หายใจ" ของไฟ
+        d.scl = 1.2 + Math.random() * 3.0;                 // ไกล = โตขึ้นให้พอเห็น
+        d.hue = 0.055 + Math.random() * 0.055;             // ส้ม→เหลืองอำพัน
+      }
+      for (let i = 0; i < N; i++) {
+        const d = {}; seed(d); data.push(d);
+        col.setHSL(d.hue, 0.95, 0.55);
+        mesh.setColorAt(i, col);
+      }
+      if (mesh.instanceColor) {
+        mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
+        mesh.instanceColor.needsUpdate = true;
+      }
+      scene.add(mesh);
+      // แสงรวมอุ่น ๆ หนึ่งดวง (แชร์) แทนการต่อไฟรายดวง
+      const fill = new THREE.PointLight(0xff8a3a, 0.5, 800, 2);
+      fill.position.set(0, 80, -30);
+      scene.add(fill);
+      yiPeng = { mesh, data, dummy, col, fill, seed, t: 0, cc: 0 };
+    }
+    function updateYiPeng(dt) {
+      if (!yiPeng) return;
+      yiPeng.t += dt;
+      const t = yiPeng.t, d = yiPeng.dummy;
+      const doColor = (yiPeng.cc = (yiPeng.cc + 1) % 2) === 0;   // อัปเดตสีสลับเฟรม (เบาลง)
+      for (let i = 0; i < yiPeng.data.length; i++) {
+        const p = yiPeng.data[i];
+        p.y += p.rise * dt;
+        if (p.y > 172) yiPeng.seed(p, 2 + Math.random() * 6);
+        const breathe = 0.78 + 0.22 * Math.sin(t * p.rate + p.phase);
+        d.position.set(
+          p.x + Math.sin(t * p.swayF + p.phase) * p.sway,
+          p.y,
+          p.z + Math.cos(t * p.swayF * 0.8 + p.phase) * p.sway
+        );
+        d.scale.setScalar(p.scl * (0.94 + 0.1 * Math.sin(t * p.rate * 0.7 + p.phase)));
+        d.rotation.set(0, p.phase + t * 0.05, 0);
+        d.updateMatrix();
+        yiPeng.mesh.setMatrixAt(i, d.matrix);
+        if (doColor) {
+          yiPeng.col.setHSL(p.hue, 0.95, 0.34 + 0.36 * breathe);
+          yiPeng.mesh.setColorAt(i, yiPeng.col);
+        }
+      }
+      yiPeng.mesh.instanceMatrix.needsUpdate = true;
+      if (doColor && yiPeng.mesh.instanceColor) yiPeng.mesh.instanceColor.needsUpdate = true;
+    }
+    if (meta.lantern) {
+      try { spawnYiPengBackground(170); }
+      catch (e) { console.warn("[Launch3D] Yi Peng", e); yiPeng = null; }
+    }
+
+    // Phase 18 · SoundStage — บรรยากาศเสียงกลางคืน (โคมลอย / พลุ)
+    const SS = window.SoundStage || null;
+    let nightBed = null, fwHiss = null, fwSawArmed = false;
+    const fwCrackle = [];
+    if (SS && (meta.lantern || nightFW)) {
+      try {
+        nightBed = SS.startNight({ crickets: true, wind: true });
+        if (nightBed && nightFW) nightBed.setWind(0.5);
+      } catch (e) { nightBed = null; }
+    }
 
     if (tier === 1 && meta.lantern) {
       // ---- โคมลอย: ทรงกระบอกกระดาษสา เปิดก้น มีไฟเรืองข้างใน ยืนใกล้พื้น ----
@@ -1311,6 +1390,12 @@
       }
       const s = flight.state;
 
+      // Phase 18 · ลูกพลุออกจากท่อครก — "ตุ้บ" มอร์ตาร์ + ลมหวีดขาขึ้น
+      if (nightFW && fwArmed && !fwSawArmed) {
+        fwSawArmed = true;
+        if (SS) { SS.thump(); fwHiss = SS.hiss(3.6); }
+      }
+
       // events
       while (seenEvents < s.events.length) {
         const e = s.events[seenEvents++];
@@ -1367,6 +1452,17 @@
               new THREE.Vector3(rocket.position.x, my, 0), meta.firework));
             shake = Math.max(shake, 0.5);
             showEvent("หัวพลุแตก! เปลว" + (meta.firework.flame || "สี") + " 🎆");
+            // Phase 18 · เสียงเชิงพื้นที่ — หน่วง BOOM ตามระยะกล้อง→จุดแตก + ประกายค้างฟ้า
+            if (SS) {
+              const bp = new THREE.Vector3(rocket.position.x, my, 0);
+              const dist = camera.position.distanceTo(bp);
+              const size = meta.firework.burstScale || 1;
+              SS.boom(dist, { size });
+              const pat = window.Fireworks.PATTERNS && window.Fireworks.PATTERNS[meta.firework.pattern];
+              const cr = SS.crackle((pat && pat.life ? pat.life : 20) * 0.9, dist);
+              if (cr) fwCrackle.push(cr);
+              if (fwHiss) { fwHiss.stop(); fwHiss = null; }
+            }
           } catch (e) { console.warn("[Launch3D] firework", e); }
         }
       }
@@ -1453,6 +1549,11 @@
         if (glowL) glowL.intensity = litK ? 2.0 * flick : Math.max(0, glowL.intensity * 0.93);
         if (fl) { fl.visible = litK; fl.scale.y = 1.2 + 0.35 * Math.sin(tt * 6.1) + Math.random() * 0.35; fl.scale.x = fl.scale.z = 0.82 + 0.12 * Math.sin(tt * 4.3) + Math.random() * 0.18; }
         if (core) { core.visible = litK; core.scale.setScalar(0.88 + 0.14 * Math.sin(tt * 7.7) + Math.random() * 0.22); }
+        // Phase 18 · เสียงหึ่งของไฟคบ — หรี่ลงเมื่อโคมไต่ขึ้นสูงมาก (เสียงจางตามระยะ)
+        if (nightBed) {
+          const far = Math.max(0.1, 1 - alt / 260);
+          nightBed.setBurner(litK ? (0.5 + 0.35 * (flick - 0.85)) * far : 0.05 * far);
+        }
       }
 
       // จุดปลายท่อ (nozzle) = ใต้ท่อนล่างสุดที่ยังติดอยู่ (+yOff = ลูกพลุยกตัวขึ้นในฉากกลางคืน)
@@ -1520,6 +1621,7 @@
       updateTraffic(dt * Math.min(simSpeed, 4), alt);
       updateCloudDecks(dt * Math.min(simSpeed, 3), alt, spaceT);   // Task 3
       updateDust(dt * Math.min(simSpeed, 3), alt);                 // Task 3
+      if (yiPeng) updateYiPeng(Math.min(0.05, dt * Math.min(simSpeed, 2)));   // Phase 18 · ยี่เป็ง
 
       // sky / space blend (พื้น → อวกาศ) + สภาพอากาศทำให้ฟ้ามืด
       const dark = weather.skyDark * (1 - spaceT);
@@ -1638,6 +1740,12 @@
       if (fwChemEl) { fwChemEl.hidden = true; fwChemEl.classList.remove("fade"); }
       if (fwIgniteBtn) { fwIgniteBtn.hidden = true; fwIgniteBtn.onclick = null; }
       if (canvas && canvas.parentElement) canvas.parentElement.classList.remove("fw-mode");
+      // Phase 18 · หยุดเสียงบรรยากาศทั้งหมด
+      if (nightBed) { try { nightBed.stop(); } catch (e) {} nightBed = null; }
+      if (fwHiss) { try { fwHiss.stop(); } catch (e) {} fwHiss = null; }
+      fwCrackle.forEach(c => { try { c.stop(); } catch (e) {} });
+      fwCrackle.length = 0;
+      yiPeng = null;   // geometry/material ถูก dispose โดย scene.traverse ด้านล่าง
       try {
         scene.traverse(o => {
           if (o.geometry) o.geometry.dispose();
