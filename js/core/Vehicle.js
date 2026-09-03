@@ -206,6 +206,7 @@
     var massMomentX = 0, massMomentY = 0;   // Σ m·r  (uses WET mass)
     var dryMomentY = 0;                      // Σ m·y  (DRY mass only — for burnout CoM)
     var areaMomentX = 0, areaMomentY = 0;   // Σ A·r  (aerodynamic reference area)
+    var launchAngleDeg = 0;                  // an angled-rail part sets this
 
     this.instances.forEach(function (inst) {
       var p = inst.part;
@@ -216,6 +217,10 @@
       s.propellantMass += (p.propulsion ? p.propulsion.propellantMass : 0) +
                           (p.propellantMass || 0);   // + tank load for the shared pool
       if (p.propulsion && p.propulsion.guidance) s.guided = true;
+      if (p.launchAngleDeg > 0) {
+        launchAngleDeg = launchAngleDeg > 0
+          ? Math.min(launchAngleDeg, p.launchAngleDeg) : p.launchAngleDeg;
+      }
       s.cost += p.cost;
 
       massMomentX += wet * c.x;
@@ -263,6 +268,24 @@
     // metre-space copies (origin = vehicle bounding-box top-left)
     s.comM = { x: s.com.x * mpc, y: s.com.y * mpc };
     s.copM = { x: s.cop.x * mpc, y: s.cop.y * mpc };
+
+    // ---- MOMENT OF INERTIA about the CoM, pitch plane (flight axis) --------
+    //  I = Σ mᵢ·(rᵢ² + Lᵢ²/12)   — parallel-axis (mass on a lever from the CoM)
+    //  plus each part's own slender-rod self-inertia. This is the number that
+    //  proves the Bang Fai tail stick: a light stick way out on a long lever
+    //  contributes mᵢ·rᵢ² that dwarfs the compact body — the rocket becomes
+    //  sluggish to rotate, so gusts can't flip it. (I ∝ m·L².)
+    var I = 0;
+    this.instances.forEach(function (inst) {
+      var cyM = partCenterCell(inst).y * mpc;
+      var rM = cyM - s.comM.y;
+      var lenM = inst.part.size.h * mpc;
+      I += inst.part.wetMass() * (rM * rM + lenM * lenM / 12);
+    });
+    s.momentOfInertia = I;                       // kg·m²
+    // aft lever arm: CoM → the tail of the stack (m). The pitch-damping arm.
+    s.aftArmM = isFinite(s.maxY) ? Math.max(0.2, (s.maxY * mpc) - s.comM.y) : 0.5;
+    s.launchAngleDeg = launchAngleDeg;           // 0 = vertical pad, >0 = angled rail
 
     // flight-axis (grid +y = aft) scalars for the dynamic-stability check.
     // As propellant burns, the true CoM slides from comWet toward comDry; a
@@ -313,6 +336,7 @@
     return {
       id: p.id, mode: p.propulsion.mode, thrust: p.propulsion.thrust,
       burnTime: p.propulsion.burnTime, spoolTime: p.propulsion.spoolTime,
+      taperTime: p.propulsion.taperTime,
       specificImpulse: p.propulsion.specificImpulse,
       propellantMass: p.propulsion.propellantMass, massFlow: p.propulsion.massFlow,
       coolingTime: p.propulsion.coolingTime,
@@ -399,6 +423,11 @@
       comWetAxisM: s.comWetAxisM,
       comDryAxisM: s.comDryAxisM,
       copAxisM: s.copAxisM,
+      // rotational-stability inputs — a long tail stick makes I huge (I ∝ mL²)
+      momentOfInertia: s.momentOfInertia,
+      aftArmM: s.aftArmM,
+      // an angled traditional-rocket launch rail (deg from horizontal); 0 = vertical
+      launchAngleDeg: s.launchAngleDeg,
       // full stats snapshot so Diagnostics needs only the model, never the graph
       stats: s
     };

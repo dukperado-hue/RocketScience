@@ -21,9 +21,11 @@
 
   function ExhaustFX(opts) {
     opts = opts || {};
-    this.max = opts.max || 320;
+    this.max = opts.max || 520;          // headroom for a dirty หมื่อ plume
     this.available = !!THREE;
     if (!this.available) return;
+
+    this.group = new THREE.Group();
 
     this._pos = new Float32Array(this.max * 3);
     for (var i = 0; i < this.max; i++) this._pos[i * 3 + 1] = -99999;
@@ -31,13 +33,41 @@
     var geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(this._pos, 3));
 
+    // a soft radial-gradient sprite so each particle reads as a smoke PUFF,
+    // not a hard square — turns the pooled Points into a billowing volume
+    var sc = document.createElement('canvas');
+    sc.width = sc.height = 64;
+    var sx = sc.getContext('2d');
+    var sg = sx.createRadialGradient(32, 32, 0, 32, 32, 32);
+    sg.addColorStop(0, 'rgba(255,255,255,0.95)');
+    sg.addColorStop(0.5, 'rgba(255,255,255,0.35)');
+    sg.addColorStop(1, 'rgba(255,255,255,0)');
+    sx.fillStyle = sg; sx.beginPath(); sx.arc(32, 32, 32, 0, 7); sx.fill();
+    var puff = new THREE.CanvasTexture(sc);
+
     this.material = new THREE.PointsMaterial({
-      color: 0xcdcdd4, size: 2.4, sizeAttenuation: true,
+      color: 0xcdcdd4, size: 2.4, sizeAttenuation: true, map: puff,
       transparent: true, opacity: 0.5, depthWrite: false
     });
     this.points = new THREE.Points(geo, this.material);
     this.points.frustumCulled = false;
     this.points.renderOrder = 2;
+    this.group.add(this.points);
+
+    // ---- the flame JET — a bright additive flare driving through the smoke
+    //  right at the nozzle base (used only for a "dirty" หมื่อ engine)
+    this.jet = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.12, 0.42, 1, 14, 1, true),
+      new THREE.MeshBasicMaterial({
+        color: 0xffc766, transparent: true, opacity: 0, depthWrite: false,
+        blending: THREE.AdditiveBlending, side: THREE.DoubleSide, toneMapped: false
+      }));
+    this.jet.frustumCulled = false;
+    this.jet.renderOrder = 3;
+    this.jet.visible = false;
+    this.jetLight = new THREE.PointLight(0xffcf6a, 0, 26, 2);
+    this.group.add(this.jet);
+    this.group.add(this.jetLight);
 
     this._p = [];
     for (var k = 0; k < this.max; k++) {
@@ -47,7 +77,7 @@
     this._emitAcc = 0;
   }
 
-  ExhaustFX.prototype.object3d = function () { return this.points; };
+  ExhaustFX.prototype.object3d = function () { return this.group; };
 
   /** Wipe every live particle (call on open / restart). */
   ExhaustFX.prototype.reset = function () {
@@ -57,6 +87,11 @@
       this._pos[i * 3 + 1] = -99999;
     }
     this._emitAcc = 0;
+    this.material.color.setHex(0xcdcdd4);
+    this.material.size = 2.4;
+    this.material.opacity = 0.5;
+    if (this.jet) { this.jet.visible = false; this.jet.material.opacity = 0; }
+    if (this.jetLight) this.jetLight.intensity = 0;
     this.points.geometry.attributes.position.needsUpdate = true;
   };
 
@@ -78,6 +113,7 @@
    * @param {boolean} st.padLocked   welded to the pad, fighting inertia
    * @param {boolean} st.buoyant     hot-air lantern (no hard exhaust)
    * @param {boolean} st.wisp        a lantern warming on the pad — thin heat-haze only
+   * @param {boolean} st.bigPlume    a dirty solid หมื่อ — huge white cloud + a nozzle jet
    * @param {number} st.exhaustY     motor exhaust offset below the vehicle origin
    */
   ExhaustFX.prototype.update = function (dt, st) {
@@ -89,8 +125,49 @@
     var onPad = !!st.padLocked || (st.y || 0) <= 0.03;
     var exhaustBase = (st.y || 0) + (st.exhaustY != null ? st.exhaustY : -0.3);
 
+    // ---- the flame jet (dirty หมื่อ only) ---------------------------------
+    var jetOn = !!(st.powered && st.bigPlume);
+    if (this.jet) {
+      this.jet.visible = jetOn;
+      if (jetOn) {
+        var jl = 2.0 + Math.random() * 1.4;
+        this.jet.scale.set(1 + Math.random() * 0.3, jl, 1 + Math.random() * 0.3);
+        this.jet.position.set(ex, exhaustBase - jl * 0.5 + 0.25, 0);
+        this.jet.material.opacity = 0.5 + Math.random() * 0.22;
+        this.jetLight.position.set(ex, exhaustBase - 0.4, 0);
+        this.jetLight.intensity = 3.0 + Math.random() * 2.0;
+      } else {
+        this.jet.material.opacity = 0;
+        this.jetLight.intensity = 0;
+      }
+    }
+
     // ---- emit -----------------------------------------------------------
-    if (st.powered && st.wisp) {
+    if (st.powered && st.bigPlume) {
+      // a hand-rammed black-powder หมื่อ burns filthy — a dense, fast-expanding
+      // white/grey cloud that dwarfs the rocket. On the rail it piles into a
+      // wall of smoke; climbing, it unspools into a fat billowing trail.
+      var pr = onPad ? 460 : 300;
+      this._emitAcc += pr * dt;
+      var pn = this._emitAcc | 0;
+      this._emitAcc -= pn;
+      for (var pi = 0; pi < pn; pi++) {
+        var pa = Math.random() * Math.PI * 2;
+        var pk = onPad ? (2.2 + Math.random() * 6.5) : (1.4 + Math.random() * 3.4);
+        this._spawn({
+          x: ex + Math.cos(pa) * (0.2 + Math.random() * 0.7),
+          y: (onPad ? GROUND + Math.random() * 0.6 : exhaustBase - Math.random() * 1.4),
+          z: Math.sin(pa) * (0.2 + Math.random() * 0.7),
+          vx: Math.cos(pa) * pk,
+          vy: onPad ? (0.5 + Math.random() * 2.0) : (-2.0 - Math.random() * 3.5 - Math.abs(st.v || 0) * 0.04),
+          vz: Math.sin(pa) * pk,
+          max: 2.6 + Math.random() * 3.0
+        });
+      }
+      this.material.size = onPad ? 5.5 : 3.6;
+      this.material.opacity = onPad ? 0.72 : 0.5;
+      this.material.color.setHex(0xe6e6ea);
+    } else if (st.powered && st.wisp) {
       // a khom loy being held on the pad while the wax catches: no roaring
       // exhaust, just a slow thread of warm smoke rising off the flame
       this._emitAcc += 15 * dt;
@@ -145,6 +222,7 @@
       // fatter, denser smoke while it is stuck fighting its own weight
       this.material.size = onPad ? 3.6 : 1.9;
       this.material.opacity = onPad ? 0.62 : 0.4;
+      this.material.color.setHex(0xcdcdd4);
     }
 
     // ---- integrate + write buffer -------------------------------------

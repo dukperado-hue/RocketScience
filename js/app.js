@@ -255,14 +255,16 @@
         [{ node: 'bottom', toIid: charge.iid, toNode: 'top' }]);
       builder._afterEdit('ครกดอกไม้ไฟตัวอย่าง — กด ▶ แล้วดูมันกระชากขึ้นทันทีที่จุด (อิมพัลส์เดียว)');
     } else if (eraId === '1-bangfai') {
-      // a DELIBERATELY finless stack — the fastest way to see the tumble.
-      // Add fin_wood on the motor's radial nodes to tame it.
-      var motor = vehicle.addInstance(C.get('motor_blackpowder'), 0, 4, []);
-      var tube = vehicle.addInstance(C.get('body_tube_bamboo'), 0, 2,
-        [{ node: 'bottom', toIid: motor.iid, toNode: 'top' }]);
-      vehicle.addInstance(C.get('nose_cone_wood'), 0, 1,
-        [{ node: 'bottom', toIid: tube.iid, toNode: 'top' }]);
-      builder._afterEdit('บั้งไฟตัวอย่าง (ยังไม่มีครีบ!) — ลองจำลองดู แล้วลากครีบหางมาติดที่มอเตอร์');
+      // a complete traditional บั้งไฟ: โหวด · เลา · หมื่อ · หาง — stable, fires
+      // off the angled scaffold. Remove the หาง and it tumbles off the rail.
+      var howot = vehicle.addInstance(C.get('payload_howot'), 0, 0, []);
+      var lao = vehicle.addInstance(C.get('body_lao'), 0, 1,
+        [{ node: 'top', toIid: howot.iid, toNode: 'bottom' }]);
+      vehicle.addInstance(C.get('propulsion_mue'), 0, 4,
+        [{ node: 'top', toIid: lao.iid, toNode: 'bottom' }]);
+      vehicle.addInstance(C.get('frame_tailstick'), 1, 3,
+        [{ node: 'mountR', toIid: lao.iid, toNode: 'tailL' }]);
+      builder._afterEdit('บั้งไฟอีสานตัวอย่าง (โหวด·เลา·หมื่อ·หาง) — กด ▶ ยิงจากฐานเฉียง · ลองถอด "หาง" ออกแล้วจะเห็นมันคว้าง');
     } else {
       var paper = vehicle.addInstance(C.get('cover_paper'), 0, 0, []);
       var frame = vehicle.addInstance(C.get('frame_bamboo'), 0, 2,

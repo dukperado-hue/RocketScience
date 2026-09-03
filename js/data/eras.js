@@ -24,12 +24,10 @@
       id: '1-bangfai',
       order: 1,
       name: 'ยุค 1 · บั้งไฟ',
-      tagline: 'ดินปืนอัดในกระบอกไม้ไผ่ — แรงขับจริงครั้งแรก · CoP ต้องอยู่ท้าย CoM',
-      partIds: ['nose_cone_wood', 'body_tube_bamboo', 'motor_blackpowder', 'fin_wood'],
-      // Phase 3: default-open so the aero-stability lesson is reachable now.
-      // Campaign gating (2 khom missions) returns when the mission flow lands.
+      tagline: 'บั้งไฟอีสาน — ไม่มีครีบ นิ่งด้วย "หาง" ไม้ไผ่ยาว: ลาก CoP ไปท้าย + โมเมนต์ความเฉื่อย I ∝ mL² · ยิงจากฐานเฉียง',
+      partIds: ['payload_howot', 'body_lao', 'propulsion_mue', 'frame_tailstick'],
       unlock: { type: 'default' },
-      envelope: { apogee: 3000, note: 'พุ่งขึ้นตรง หางถ่วงให้นิ่ง' }
+      envelope: { apogee: 3000, note: 'พุ่งเฉียงตามราง หางยาวถ่วงให้นิ่ง แล้วโค้งลงตามแรงโน้มถ่วง' }
     },
     {
       id: '1p5-fireworks',

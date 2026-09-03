@@ -155,8 +155,77 @@
     return (global.performance && global.performance.now) ? global.performance.now() : Date.now();
   }
 
+  // ---------------------------------------------------------------------------
+  //  A traditional Bang Fai launch rig — ฐานปล่อยเฉียง. A rough wooden
+  //  scaffold with a guide rail leaning at `angleDeg` from horizontal, so the
+  //  rocket slides up it and arcs downrange instead of going straight up.
+  //  Returns a THREE.Group anchored at the origin (rail foot at ~ground).
+  // ---------------------------------------------------------------------------
+  function makeLaunchRig(angleDeg) {
+    if (!THREE) return null;
+    var a = ((angleDeg || 80) * Math.PI) / 180;
+    var tilt = Math.PI / 2 - a;                 // lean off vertical
+    var g = new THREE.Group();
+    var woodDark = new THREE.MeshStandardMaterial({ color: 0x4a3625, roughness: 0.95 });
+    var woodMid = new THREE.MeshStandardMaterial({ color: 0x6b4f36, roughness: 0.9 });
+    var railMat = new THREE.MeshStandardMaterial({ color: 0x8a6a44, roughness: 0.8, metalness: 0.05 });
+
+    // --- the guide rail: a long leaning beam the rocket rides ---
+    var railLen = 9;
+    var rail = new THREE.Mesh(new THREE.BoxGeometry(0.16, railLen, 0.16), railMat);
+    rail.geometry.translate(0, railLen / 2, 0);
+    rail.rotation.z = tilt;
+    rail.position.set(-Math.sin(tilt) * 0.35, 0.15, 0);
+    g.add(rail);
+    // a second rail bar, offset, so it reads as a channel/trough
+    var rail2 = rail.clone();
+    rail2.position.z = 0.42;
+    g.add(rail2);
+    // rungs across the two rails, stepping up ALONG the rail vector
+    for (var r = 1; r < 6; r++) {
+      var rung = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.09, 0.62), woodMid);
+      var up = r * 1.5;
+      rung.position.set(
+        -Math.sin(tilt) * 0.35 - Math.cos(a) * up,
+        0.15 + Math.sin(a) * up,
+        0.21);
+      g.add(rung);
+    }
+
+    // --- the A-frame support legs ---
+    function leg(x, z, len, lean) {
+      var m = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, len, 7), woodDark);
+      m.geometry.translate(0, len / 2, 0);
+      m.position.set(x, 0, z);
+      m.rotation.z = lean;
+      m.rotation.x = z > 0 ? -0.18 : 0.18;
+      return m;
+    }
+    g.add(leg(0.4, -0.5, 3.4, 0.5));
+    g.add(leg(0.4, 0.9, 3.4, 0.5));
+    g.add(leg(-1.9, -0.5, 2.2, -0.32));
+    g.add(leg(-1.9, 0.9, 2.2, -0.32));
+    // cross-brace
+    var brace = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.09, 0.09), woodMid);
+    brace.position.set(-0.7, 1.5, 0.2);
+    brace.rotation.z = -0.12;
+    g.add(brace);
+
+    // a scorched earth patch at the foot
+    var scorch = new THREE.Mesh(
+      new THREE.CircleGeometry(2.4, 20),
+      new THREE.MeshStandardMaterial({ color: 0x1c1712, roughness: 1 }));
+    scorch.rotation.x = -Math.PI / 2;
+    scorch.position.y = 0.02;
+    g.add(scorch);
+
+    g.userData.angleDeg = angleDeg;
+    return g;
+  }
+
   global.RS = global.RS || {};
   global.RS.render = global.RS.render || {};
   global.RS.render.Scene = Scene;
+  global.RS.render.makeLaunchRig = makeLaunchRig;
 
 })(typeof window !== 'undefined' ? window : this);

@@ -66,6 +66,20 @@
   var TUMBLE_THRUST_FRAC = 0.30;  // thrust still fires but points every which way
   var TUMBLE_CLIMB_BLEED = 2.6;   // per-second bleed applied to UPWARD velocity only
 
+  // --- unguided pitch dynamics — a 1-DOF weathercock oscillator ---------------
+  //  An unguided rocket's nose is a pendulum in the airstream: the static
+  //  margin (CoP behind CoM) is the spring, the tail sweeping air is the
+  //  damper, and the whole thing is divided by the moment of inertia. A long
+  //  Bang Fai tail stick makes I enormous → the oscillation is slow and shallow
+  //  and a gust barely moves it. A finless / tail-less stack has a NEGATIVE
+  //  margin → the "spring" pushes the wrong way → alpha diverges → it departs.
+  var WEATHERCOCK_DAMP = 2.0;     // pitch-damping coefficient (× q·A·arm²/(v·I))
+  var WEATHERCOCK_STIFF = 1.0;    // aero-stiffness coefficient (× q·A·margin/I)
+  var GUST_TORQUE = 0.11;         // wind-gust disturbance torque scale (× q·A·wind/I)
+  var DEPART_ALPHA = 1.35;        // rad (~77°) — |angle of attack| past this = tumbling
+  var RAIL_LENGTH_M = 4.2;        // m — the guide-rail / scaffold holds the rocket
+                                 //     rigid on the launch vector for this distance
+
   // --- hot-air buoyancy: a lantern floats, it never "launches" ----------------
   var BUOY_RISE_MAX = 1.5;        // m/s — the graceful ceiling on rise rate
   var BUOY_SINK_MAX = 2.0;        // m/s — gentle descent as the flame dies
@@ -207,10 +221,21 @@
       return { force: Math.max(lift, 0), mdot: mdot };
     }
 
-    // rocket mode: spool ramp, flat thrust, hard cutoff at burnTime (a ceiling
-    // when the motor draws from a shared tank — see the pool check in step()).
+    // rocket mode: spool ramp → flat peak → optional regressive TAPER → hard
+    // cutoff at burnTime (a ceiling when the motor draws from a shared tank —
+    // see the pool check in step()). A hand-rammed black-powder หมื่อ tails off
+    // for its last `taperTime` seconds as the bore widens; a liquid engine
+    // (taperTime 0) just holds flat until cutoff.
     if (t > bt || bt <= 0) return { force: 0, mdot: 0 };
-    var f = spool > 0 && t < spool ? motor.thrust * (t / spool) : motor.thrust;
+    var f;
+    var taper = motor.taperTime || 0;
+    if (spool > 0 && t < spool) {
+      f = motor.thrust * (t / spool);
+    } else if (taper > 0 && t > bt - taper) {
+      f = motor.thrust * Math.max(0, (bt - t) / taper);
+    } else {
+      f = motor.thrust;
+    }
     var flow = motor.massFlow > 0
       ? motor.massFlow
       : (motor.propellantMass > 0 ? motor.propellantMass / bt : 0);
@@ -448,7 +473,14 @@
       ? +opts.safeZoneRadius : null;
     var meta = {
       dt: dt, maxTime: maxTime, sampleEvery: sampleEvery,
-      wind: wind, safeZoneRadius: safeZoneRadius
+      wind: wind, safeZoneRadius: safeZoneRadius,
+      // an angled traditional launch rail (deg); 0 = a vertical pad
+      launchAngleDeg: (model && isFinite(model.launchAngleDeg) && model.launchAngleDeg > 0)
+        ? model.launchAngleDeg : 0,
+      // a hand-rammed หมื่อ burns dirty — the render layer gives it the big plume
+      dirtyExhaust: !!(model && model.motors && model.motors.some(function (m) {
+        return m.id === 'propulsion_mue';
+      }))
     };
     var motorMode = (model && model.stats && model.stats.motorMode) || 'none';
 
@@ -484,6 +516,22 @@
     // a guided vehicle follows a pitch program and never passively tumbles
     var canTumble = !!model.rocketDominant && isFinite(model.copAxisM) && !model.gravityTurn;
     var pitchCmd = PITCH_UP;                   // current commanded thrust attitude
+
+    // --- UNGUIDED PITCH DYNAMICS (Bang Fai) --------------------------------
+    //  An unguided rocket flies a passive weathercock — a 1-DOF pitch
+    //  oscillator driven by the static margin, damped by the tail, ÷ I. It
+    //  slides up an angled rail first (traditional บั้งไฟ scaffold).
+    var launchAngle = (isFinite(model.launchAngleDeg) && model.launchAngleDeg > 0)
+      ? clamp(model.launchAngleDeg * Math.PI / 180, Math.PI / 6, Math.PI / 2)
+      : PITCH_UP;
+    var weathercock = !model.gravityTurn && !!model.rocketDominant && isFinite(model.copAxisM);
+    var Ipitch = (model.momentOfInertia > 0)
+      ? model.momentOfInertia : Math.max(0.05, (model.totalMass || 1) * 0.25);
+    var pitchDampArm = (model.aftArmM > 0) ? model.aftArmM : 0.5;
+    var pitchRate = 0;                         // rad/s — nose pitch angular velocity
+    var railCleared = !weathercock;            // guided / vertical stacks aren't railed
+    var railClearTime = null;
+    if (weathercock) pitchCmd = launchAngle;   // start pointed up the rail
     var turnT0 = null;                         // time the gravity turn began
     var pitchOverTime = null, pitchOverAlt = 0, pitchOverVel = 0;
     var stageEvents = [];                      // SEPARATE_STAGE, emitted live
@@ -494,10 +542,12 @@
     var softLimit = maxTime;
     var reason = 'สิ้นสุดการบิน';
 
-    // seed t=0 state so playback starts exactly on the pad
+    // seed t=0 state so playback starts exactly on the pad (angled, for a Bang Fai)
     trajectory.push(toState({ t: 0, y: 0, v: 0, x: 0, vx: 0, alt: 0, a: 0,
       mass: model.totalMass, thrust: 0, buoyancy: 0, drag: 0, q: 0,
-      propRemaining: eff.propellantMass }, tumbleT));
+      propRemaining: eff.propellantMass,
+      pitchCmd: weathercock ? launchAngle : PITCH_UP,
+      padLocked: true, onRail: weathercock }, tumbleT));
     nextSample += sampleEvery;
 
     while (state.t < softLimit) {
@@ -573,7 +623,79 @@
         }
       }
 
+      // --- UNGUIDED PITCH · rail hold, then the weathercock oscillator -----
+      if (weathercock && !state.tumbling) {
+        if (!railCleared) {
+          // ON THE ANGLED RAIL — the scaffold holds the stack rigid on the
+          // launch vector: thrust up the rail, no weathercock, no drift.
+          pitchCmd = launchAngle;
+          if (Math.hypot(state.x, state.y) >= RAIL_LENGTH_M) {
+            railCleared = true; railClearTime = state.t;
+          }
+        } else if (liftedOff && curSpeed > 1) {
+          // OFF THE RAIL — a 1-DOF damped pitch oscillator. The nose is a
+          // pendulum in the airstream: aero STIFFNESS from the static margin
+          // (CoP behind CoM), DAMPING from the tail sweeping air, a GUST
+          // disturbance from the wind — every term ÷ the moment of inertia.
+          // A long Bang Fai tail stick makes I huge, so the response is slow
+          // and shallow and a gust barely moves it. Negative margin (no tail /
+          // no fins) → the stiffness pushes the WRONG way → alpha diverges.
+          var vAirX = state.vx - wind, vAirY = state.v;
+          var fpaAir = Math.atan2(vAirY, vAirX);
+          var alpha = pitchCmd - fpaAir;
+          while (alpha > Math.PI) alpha -= 2 * Math.PI;
+          while (alpha < -Math.PI) alpha += 2 * Math.PI;
+          var spd2 = vAirX * vAirX + vAirY * vAirY;
+          var qLoc = 0.5 * airDensity(curAlt) * spd2;
+          var pfNow = eff.propellantMass > 0 ? state.propRemaining / eff.propellantMass : 1;
+          var comNow = model.comDryAxisM + (model.comWetAxisM - model.comDryAxisM) * pfNow;
+          var marginNow = model.copAxisM - comNow;          // static margin, m
+          var qA = qLoc * (model.refArea || 0.01);
+          var vMag = Math.max(2, Math.sqrt(spd2));
+          // aero stiffness (rad/s²) and damping (1/s), both ÷ I. Damping carries
+          // a 1/v (air-traversal time over the tail) and clamps so the
+          // explicit-stiffness / implicit-damping integrator stays well-behaved.
+          var kStiff = clamp(WEATHERCOCK_STIFF * qA * marginNow / Ipitch, -80, 80);
+          var kDamp = Math.min(
+            WEATHERCOCK_DAMP * qA * pitchDampArm * pitchDampArm / (vMag * Ipitch), 60);
+          // a small ever-present disturbance (thrust misalignment, asymmetry) +
+          // the wind gust — this is what a metastable finless stack rides into a
+          // tumble, and what a high-I tail-stick rocket simply damps away.
+          var disturb = (0.04 * Math.sin(state.t * 4.7 + 0.3) +
+            (wind ? GUST_TORQUE * wind * Math.sin(state.t * 3.3 + 1.1) : 0)) * qA / Ipitch;
+          // explicit stiffness + disturbance, IMPLICIT damping (unconditionally
+          // stable even when the tail makes kDamp huge)
+          var pitchAcc0 = -kStiff * Math.sin(alpha) + disturb;
+          pitchRate = (pitchRate + pitchAcc0 * dt) / (1 + kDamp * dt);
+          pitchCmd += pitchRate * dt;
+          if (pitchCmd > PITCH_UP + 0.9) { pitchCmd = PITCH_UP + 0.9; pitchRate = Math.min(pitchRate, 0); }
+          if (pitchCmd < -PITCH_UP - 0.9) { pitchCmd = -PITCH_UP - 0.9; pitchRate = Math.max(pitchRate, 0); }
+          // DEPARTURE = a real loss of control, and only judged while it still
+          // matters: under thrust or still climbing. A spent stick arcing over
+          // and falling nose-down past apogee is a normal Bang Fai, not a fail.
+          var poweredOrClimbing = prevForce > 1e-6 || state.v > 1;
+          if (Math.abs(alpha) > DEPART_ALPHA && spd2 > TUMBLE_SPEED_MIN * TUMBLE_SPEED_MIN &&
+              poweredOrClimbing) {
+            state.tumbling = true; tumbleT = state.t;
+          }
+        }
+      }
+
       var d = step(state, eff, dt, wind, pitchCmd, state.t - stageT0, burnEnable);
+
+      // --- ANGLED-RAIL CONSTRAINT — while on the scaffold, motion is locked
+      //  to the launch vector; the rail cancels the perpendicular component of
+      //  gravity so it slides straight instead of arcing over at 2 m altitude.
+      if (weathercock && !railCleared) {
+        var rc = Math.cos(launchAngle), rs = Math.sin(launchAngle);
+        var along = Math.max(0, d.vx * rc + d.v * rs);      // no sliding back down
+        d.vx = along * rc; d.v = along * rs;
+        d.x = state.x + d.vx * dt; d.y = state.y + d.v * dt;
+        d.alt = altitudeOf(d.x, d.y);
+        d.padLocked = along < 1e-6;
+        d.onRail = true;
+        d.liftedOff = along > 1e-6;
+      }
 
       var force = d.thrust + d.buoyancy;
       if (force > 1e-6) everFired = true;
@@ -655,15 +777,20 @@
         }
       }
 
-      // --- dynamic aero-stability (unguided rockets only) --------------
+      // --- dynamic aero-stability -------------------------------------
+      //  Weathercock vehicles depart via the pitch oscillator above (which
+      //  models I and damping); this static fallback only fires for any other
+      //  unguided rocket that somehow isn't running the oscillator.
       var wasTumbling = state.tumbling;
-      if (canTumble && !state.tumbling && liftedOff && spdNow > TUMBLE_SPEED_MIN) {
+      if (canTumble && !weathercock && !state.tumbling && liftedOff && spdNow > TUMBLE_SPEED_MIN) {
         var pf = eff.propellantMass > 0 ? d.propRemaining / eff.propellantMass : 1;
         var comAxis = model.comDryAxisM + (model.comWetAxisM - model.comDryAxisM) * pf;
         if (model.copAxisM - comAxis <= 0) {
           state.tumbling = true; d.tumbling = true; tumbleT = d.t;
         }
       }
+      // the oscillator sets state.tumbling before step(); reflect it on d
+      if (weathercock && state.tumbling && !d.tumbling) { d.tumbling = true; }
 
       // --- MIDAIR_BURN (lanterns only) : carried sideways fast enough by the
       //  wind that it tips over, the flame licks the paper, and the whole
@@ -832,10 +959,12 @@
       o.pitch = 90 - (Math.sin(ft * 1.7 + 0.3) * 17 + Math.sin(ft * 0.83 + 1.1) * 9) * fall;
       o.roll = (Math.sin(ft * 1.31 + 0.7) * 30 + Math.sin(ft * 2.09) * 13) * fall;
       o.yaw = Math.sin(ft * 1.03) * 22 * fall;
-    } else if (d.vectored && (Math.abs(vx) > 0.5 || (isFinite(d.pitchCmd) && d.pitchCmd < Math.PI / 2 - 1e-3))) {
-      // point along the thrust vector while burning, else along the velocity
-      // vector — atan2(vertical, horizontal) is already the "90° = up" convention
-      var ang = (d.thrust > 1 && isFinite(d.pitchCmd))
+    } else if ((d.vectored || d.onRail || (d.padLocked && isFinite(d.pitchCmd) && d.pitchCmd < Math.PI / 2 - 1e-3)) &&
+               (Math.abs(vx) > 0.5 || (isFinite(d.pitchCmd) && Math.abs(d.pitchCmd - Math.PI / 2) > 1e-3))) {
+      // point along the commanded thrust attitude while it has meaningful
+      // thrust or is held on the rail; otherwise follow the velocity vector.
+      // atan2(vertical, horizontal) is already the "90° = up" convention.
+      var ang = (isFinite(d.pitchCmd) && (d.thrust > 1 || d.onRail || d.padLocked))
         ? d.pitchCmd
         : Math.atan2(d.v, vx);
       o.pitch = ang * 180 / Math.PI;

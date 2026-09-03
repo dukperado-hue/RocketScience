@@ -344,6 +344,11 @@
     );
     pad.position.y = 0.09;
     sc.add(pad);
+    this._pad = pad;
+    // a traditional Bang Fai fires off an ANGLED wooden scaffold, not this pad —
+    // built lazily in open() when meta.launchAngleDeg says so, and swapped in.
+    this._launchRig = null;
+    this._rigAngle = 0;
 
     // launch-pad exhaust / smoke field — fed the contract state every frame
     if (RS.render.ExhaustFX) {
@@ -599,6 +604,25 @@
     this._exhaustY = Math.min(0, rawEY) - 0.1;
     if (this._exhaust) this._exhaust.reset();
 
+    // ---- launch structure — angled scaffold for a Bang Fai, else the pad ----
+    var meta = simResult.meta || {};
+    this._dirtyExhaust = !!meta.dirtyExhaust;         // a หมื่อ → the big plume
+    var la = +meta.launchAngleDeg || 0;
+    var angled = la > 0 && la < 89;
+    if (angled && RS.render.makeLaunchRig) {
+      if (!this._launchRig || Math.abs(this._rigAngle - la) > 1) {
+        if (this._launchRig) RS.render.VehicleRenderer.disposeGroup(this._launchRig);
+        this._launchRig = RS.render.makeLaunchRig(la);
+        this._rigAngle = la;
+        if (this._launchRig) this.scene.add(this._launchRig);
+      }
+      if (this._launchRig) this._launchRig.visible = true;
+      if (this._pad) this._pad.visible = false;
+    } else {
+      if (this._launchRig) this._launchRig.visible = false;
+      if (this._pad) this._pad.visible = true;
+    }
+
     if (!this._glow) {
       this._glow = new THREE.PointLight(0xff8a3a, 0, 140, 2);
     }
@@ -824,6 +848,7 @@
         powered: powered && st.altitude < 45000,   // no visible plume up in vacuum
         padLocked: !!st.padLocked,
         buoyant: this.flight.buoyant,
+        bigPlume: this._dirtyExhaust,               // a หมื่อ burns filthy
         exhaustY: this._exhaustY
       });
     }

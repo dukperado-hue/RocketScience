@@ -322,6 +322,106 @@
       return g;
     }
 
+    // ---- ERA 1 · Bang Fai (traditional Isan rocket) ------------------
+    if (entry.partId === 'payload_howot') {
+      // โหวด — a cluster of split bamboo whistle tubes lashed at the nose
+      var hg2 = new THREE.Group();
+      var tubeMat = new THREE.MeshStandardMaterial({ color: 0x9a7b45, roughness: 0.85 });
+      var nT = 6;
+      for (var ht = 0; ht < nT; ht++) {
+        var ang2 = ht / nT * Math.PI * 2;
+        var tube = new THREE.Mesh(
+          new THREE.CylinderGeometry(d.w * 0.09, d.w * 0.09, d.h * 0.9, 7),
+          tubeMat);
+        tube.position.set(Math.cos(ang2) * d.w * 0.16, 0, Math.sin(ang2) * d.w * 0.16);
+        tube.rotation.x = 0.08 * Math.cos(ang2);
+        tube.rotation.z = 0.08 * Math.sin(ang2);
+        hg2.add(tube);
+      }
+      var band = new THREE.Mesh(
+        new THREE.TorusGeometry(d.w * 0.26, d.w * 0.04, 6, 16),
+        new THREE.MeshStandardMaterial({ color: 0x5a3a1e, roughness: 0.9 }));
+      band.rotation.x = Math.PI / 2;
+      band.position.y = -d.h * 0.15;
+      hg2.add(band);
+      hg2.position.set(entry.world.x, entry.world.y, entry.world.z);
+      hg2.userData.iid = entry.iid;
+      return hg2;
+    }
+
+    if (entry.partId === 'body_lao') {
+      // เลา — a fat bamboo / rope-wound PVC tube
+      var lg2 = new THREE.Group();
+      var laoMat = new THREE.MeshStandardMaterial({ color: 0xc9b487, roughness: 0.78 });
+      var body2 = new THREE.Mesh(
+        new THREE.CylinderGeometry(d.w * 0.40, d.w * 0.40, d.h * 0.98, 20), laoMat);
+      lg2.add(body2);
+      // lashings of cord every ~0.4 m
+      var lashMat = new THREE.MeshStandardMaterial({ color: 0x6b4a28, roughness: 0.95 });
+      var nL = Math.max(2, Math.round(d.h / 0.4));
+      for (var li = 0; li < nL; li++) {
+        var lash = new THREE.Mesh(
+          new THREE.TorusGeometry(d.w * 0.41, d.w * 0.045, 5, 18), lashMat);
+        lash.rotation.x = Math.PI / 2;
+        lash.position.y = -d.h * 0.46 + (li + 0.5) * (d.h * 0.92 / nL);
+        lg2.add(lash);
+      }
+      lg2.position.set(entry.world.x, entry.world.y, entry.world.z);
+      lg2.userData.iid = entry.iid;
+      return lg2;
+    }
+
+    if (entry.partId === 'propulsion_mue') {
+      // หมื่อ — a heavy hand-rammed black-powder cartridge, wide clay nozzle
+      var mg = new THREE.Group();
+      var casing2 = new THREE.Mesh(
+        new THREE.CylinderGeometry(d.w * 0.38, d.w * 0.40, d.h * 0.82, 20),
+        new THREE.MeshStandardMaterial({ color: 0x2e2620, roughness: 0.7, metalness: 0.05 }));
+      var wrap = new THREE.Mesh(
+        new THREE.CylinderGeometry(d.w * 0.41, d.w * 0.41, d.h * 0.5, 20, 1, true),
+        new THREE.MeshStandardMaterial({ color: 0x7a5230, roughness: 0.95, side: THREE.DoubleSide }));
+      wrap.position.y = d.h * 0.1;
+      var nozzle2 = new THREE.Mesh(
+        new THREE.CylinderGeometry(d.w * 0.14, d.w * 0.42, d.h * 0.22, 20, 1, true),
+        new THREE.MeshStandardMaterial({ color: 0x4a2f1c, roughness: 0.9, side: THREE.DoubleSide }));
+      nozzle2.position.y = -d.h * 0.5;
+      var flame2 = new THREE.Mesh(
+        new THREE.ConeGeometry(d.w * 0.26, d.h * 0.9, 16),
+        new THREE.MeshBasicMaterial({ color: 0xffd24a, toneMapped: false }));
+      flame2.position.y = -d.h * 0.95;
+      flame2.rotation.x = Math.PI;
+      mg.add(casing2); mg.add(wrap); mg.add(nozzle2); mg.add(flame2);
+      mg.position.set(entry.world.x, entry.world.y, entry.world.z);
+      mg.userData.iid = entry.iid;
+      mg.userData.isMotor = true;
+      // a หมื่อ throws a plume far below the nozzle — anchor the exhaust deep
+      mg.userData.exhaustLocalY = -d.h * 0.85;
+      return mg;
+    }
+
+    if (entry.partId === 'frame_tailstick') {
+      // หาง — a very long, thin bamboo stick lashed alongside the เลา, running
+      // metres past the nozzle. The whole reason the rocket flies straight.
+      var tg2 = new THREE.Group();
+      var stickMat = new THREE.MeshStandardMaterial({ color: 0xbfa25f, roughness: 0.82 });
+      var stick = new THREE.Mesh(
+        new THREE.CylinderGeometry(d.w * 0.06, d.w * 0.085, d.h * 0.99, 8), stickMat);
+      tg2.add(stick);
+      // a few bamboo nodes + the lashings that tie it to the body
+      var nodeMat = new THREE.MeshStandardMaterial({ color: 0x8a7038, roughness: 0.9 });
+      var segs = Math.max(3, Math.round(d.h / 0.8));
+      for (var si = 0; si < segs; si++) {
+        var kn = new THREE.Mesh(
+          new THREE.TorusGeometry(d.w * 0.08, d.w * 0.02, 4, 10), nodeMat);
+        kn.rotation.x = Math.PI / 2;
+        kn.position.y = -d.h * 0.49 + (si + 0.5) * (d.h * 0.98 / segs);
+        tg2.add(kn);
+      }
+      tg2.position.set(entry.world.x, entry.world.y, entry.world.z);
+      tg2.userData.iid = entry.iid;
+      return tg2;
+    }
+
     // ---- ERA 1.5 · Fireworks ------------------------------------------
     if (entry.partId === 'fw_mortar_tube') {
       geo = new THREE.CylinderGeometry(d.w * 0.44, d.w * 0.46, d.h * 0.94, 22);

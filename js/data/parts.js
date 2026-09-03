@@ -107,95 +107,110 @@
   RS.PartsCatalog.registerAll(ERA0);
 
   // ---------------------------------------------------------------------------
-  //  ERA 1 · Bang Fai — the first REAL thrust. A solid black-powder charge in a
-  //  bamboo tube. Same schema; now `propulsion.mode === 'rocket'`, mass drops as
-  //  the grain burns, and — crucially — a bare tube is aerodynamically UNSTABLE:
-  //  the Center of Pressure sits ahead of the Center of Mass and it tumbles.
-  //  Fins drag the CoP aft and tame it. That lesson is the whole era.
+  //  ERA 1 · BANG FAI (บั้งไฟ) — the Isan traditional rocket, built the way the
+  //  village สล่า builds it. Four parts: เลา (Lao, the body) · หมื่อ (Mue, the
+  //  packed black-powder motor) · หาง (Hang, the long bamboo tail stick) ·
+  //  โหวด (Howot, the whistle payload at the nose).
+  //
+  //  CRITICAL PHYSICS: a traditional Bang Fai has NO aerodynamic fins. It is
+  //  stabilised entirely by the หาง — an exceedingly long, light bamboo stick
+  //  lashed alongside the เลา that runs metres past the nozzle. It does two
+  //  things: (1) its drag area sits so far behind the CoM that the Centre of
+  //  Pressure is dragged way aft (nose weathercocks into the wind), and (2) its
+  //  mass, out on a long lever, multiplies the vehicle's moment of inertia
+  //  (I ∝ m·L²) — so the rocket is SLUGGISH to rotate and shrugs off gusts.
+  //  Remove the หาง and the very same เลา + หมื่อ tumbles off the rail.
+  //
+  //  It is also NOT launched vertically — it slides up an angled wooden
+  //  scaffold (ฐานปล่อยเฉียง) at ~80°, so it arcs downrange like a real one.
   // ---------------------------------------------------------------------------
   var ERA1 = [
     {
-      id: 'nose_cone_wood',
-      name: 'หัวจรวดไม้',
-      category: C.AERODYNAMICS,
-      icon: '🔺',
+      id: 'payload_howot',
+      name: 'โหวด (นกหวีดหัวบั้งไฟ)',
+      category: C.PAYLOAD,
+      icon: '🎐',
       era: '1-bangfai',
-      blurb: 'หัวไม้กลึงเรียว ลดแรงต้านด้านหน้า — แต่พื้นที่หน้าตัดของมันดึง CoP ไปข้างหน้า',
-      mass: 0.10,
-      cost: 20,
+      blurb: 'พวงกระบอกไม้ไผ่ผ่าปากที่หัวบั้งไฟ ร้องหวีดตอนพุ่ง — เพิ่มมวลและแรงต้านที่หัวเล็กน้อย (ดึง CoP มาหน้า นิดหน่อย)',
+      mass: 0.08,
+      cost: 14,
       size: { w: 1, h: 1 },
-      aerodynamics: { dragCoefficient: 0.32, crossSectionArea: 0.010 },
-      structural: { maxDynamicPressure: 9000 },
+      // a draggy little cluster of split tubes at the very nose — it pulls the
+      // CoP slightly FORWARD, a disturbance the tail stick has to out-vote
+      aerodynamics: { dragCoefficient: 0.55, crossSectionArea: 0.016 },
+      // the split-tube whistle is the weak point: over-power the หมื่อ and the
+      // slipstream shreds it first (Max-Q lesson)
+      structural: { maxDynamicPressure: 6200 },
       attachNodes: [
-        { id: 'bottom', dx: 0.5, dy: 1, type: NODE.STACK, accepts: ['Structural', 'Propulsion'] }
+        { id: 'bottom', dx: 0.5, dy: 1, type: NODE.STACK, accepts: ['Structural'] }
       ]
     },
     {
-      id: 'body_tube_bamboo',
-      name: 'ลำตัวไม้ไผ่',
+      id: 'body_lao',
+      name: 'เลา (ลำตัวบั้งไฟ)',
       category: C.STRUCTURAL,
-      icon: '🪈',
+      icon: '🫙',
       era: '1-bangfai',
-      blurb: 'ปล้องไม้ไผ่ตรง เป็นลำตัวหลัก — ต่อซ้อนได้ และมีจุดยึดครีบด้านข้าง',
-      mass: 0.12,
-      cost: 15,
-      size: { w: 1, h: 2 },
-      aerodynamics: { dragCoefficient: 0.45, crossSectionArea: 0.018 },
-      structural: { maxDynamicPressure: 7000 },
+      blurb: 'ลำตัวหลัก — ไม้ไผ่ลำใหญ่หรือท่อ PVC พันเชือก ต่อซ้อนได้ (ยิ่งซ้อน = ยิ่งใหญ่: หมื่น → แสน → ล้าน) และมีจุดผูก "หาง" ที่ข้างลำ',
+      mass: 0.35,
+      cost: 16,
+      size: { w: 1, h: 3 },
+      aerodynamics: { dragCoefficient: 0.42, crossSectionArea: 0.020 },
+      structural: { maxDynamicPressure: 9500 },
       attachNodes: [
-        { id: 'top',    dx: 0.5, dy: 0, type: NODE.STACK,  accepts: ['Aerodynamics', 'Payload'] },
-        { id: 'bottom', dx: 0.5, dy: 2, type: NODE.STACK,  accepts: ['Propulsion', 'Structural'] },
-        { id: 'finL',   dx: 0,   dy: 1.7, type: NODE.RADIAL, accepts: ['Aerodynamics'] },
-        { id: 'finR',   dx: 1,   dy: 1.7, type: NODE.RADIAL, accepts: ['Aerodynamics'] }
+        { id: 'top',    dx: 0.5, dy: 0,   type: NODE.STACK,  accepts: ['Aerodynamics', 'Payload', 'Structural'] },
+        { id: 'bottom', dx: 0.5, dy: 3,   type: NODE.STACK,  accepts: ['Propulsion', 'Structural'] },
+        { id: 'tailL',  dx: 0,   dy: 2.6, type: NODE.RADIAL, accepts: ['Structural'] },
+        { id: 'tailR',  dx: 1,   dy: 2.6, type: NODE.RADIAL, accepts: ['Structural'] }
       ]
     },
     {
-      id: 'motor_blackpowder',
-      name: 'มอเตอร์ดินปืน',
+      id: 'propulsion_mue',
+      name: 'หมื่อ (ดินขับบั้งไฟ)',
       category: C.PROPULSION,
       icon: '🧨',
       era: '1-bangfai',
-      blurb: 'กระบอกดินปืนอัดแน่น จุดแล้วต้องสร้างแรงดันในกระบอกก่อน ~1.5 วิ ค่อย ๆ ดันจนพ้นความเฉื่อย แล้วจึงพุ่ง',
-      mass: 0.30,
-      cost: 40,
-      size: { w: 1, h: 2 },
-      aerodynamics: { dragCoefficient: 0.42, crossSectionArea: 0.020 },
-      structural: { maxDynamicPressure: 7000 },
+      blurb: 'ดินปืนตำอัดแน่นในกระบอก เจาะรูแกน จุดแล้วอัดแรงดัน ~1.8 วิ ค่อยพุ่ง แรงพีคสูง แล้วค่อย ๆ อ่อนลงตอนท้าย — เผาสกปรก ควันมหาศาล',
+      mass: 0.55,
+      cost: 42,
+      size: { w: 1, h: 3 },
+      aerodynamics: { dragCoefficient: 0.42, crossSectionArea: 0.022 },
+      structural: { maxDynamicPressure: 8500 },
       propulsion: {
         mode: 'rocket',
-        thrust: 125,            // N steady
-        burnTime: 4.8,          // s — short, violent
-        specificImpulse: 80,    // s — crude compressed black powder
-        propellantMass: 0.52,   // kg of grain burned off
-        spoolTime: 1.5          // s — pressure builds in the bamboo tube; the
-                               //     rocket sits smoking on the pad, thrust
-                               //     ramping, until it finally beats its weight
+        thrust: 190,            // N peak
+        burnTime: 5.6,          // s
+        specificImpulse: 72,    // s — hand-rammed compressed black powder, dirty
+        propellantMass: 0.95,   // kg of grain
+        spoolTime: 1.8,         // s — pressure builds in the packed bore; it sits
+                               //     on the rail smoking until thrust beats weight
+        taperTime: 2.2          // s — the bore widens as it burns: a long, slow
+                               //     regressive tail from peak thrust down to 0
       },
       attachNodes: [
-        { id: 'top',  dx: 0.5, dy: 0, type: NODE.STACK,  accepts: ['Structural'] },
-        { id: 'finL', dx: 0,   dy: 1.6, type: NODE.RADIAL, accepts: ['Aerodynamics'] },
-        { id: 'finR', dx: 1,   dy: 1.6, type: NODE.RADIAL, accepts: ['Aerodynamics'] }
+        { id: 'top', dx: 0.5, dy: 0, type: NODE.STACK, accepts: ['Structural'] }
       ]
     },
     {
-      id: 'fin_wood',
-      name: 'ครีบหางไม้ (ชุด)',
-      category: C.AERODYNAMICS,
-      icon: '🪶',
+      id: 'frame_tailstick',
+      name: 'หาง (ไม้ไผ่ถ่วงท้าย)',
+      category: C.STRUCTURAL,
+      icon: '🎋',
       era: '1-bangfai',
-      blurb: 'ชุดครีบไม้บางลูบ ลากศูนย์แรงดัน (CoP) ไปท้ายจรวด — ไม่มีมันจรวดจะตีลังกา',
-      mass: 0.14,
-      cost: 18,
-      size: { w: 1, h: 1 },
-      // Large SIDE area drags the CoP aft (the whole point) but the blades are
-      // edge-on to the airstream, so their frontal Cd is tiny — big A, small Cd.
-      aerodynamics: { dragCoefficient: 0.08, crossSectionArea: 0.11 },
-      structural: { maxDynamicPressure: 6000 },
-      // two mount nodes (one per edge) so the snap solver can seat the set on
-      // either the left or the right radial node without a footprint clash
+      blurb: 'ไม้ไผ่ลำยาว 3–10 เมตร ผูกขนาบลำบั้งไฟ ยื่นเลยหางกระบอกไปไกล — ไม่ใช่ครีบ แต่คือหัวใจของความนิ่ง: ลาก CoP ไปท้ายสุด และเพิ่มโมเมนต์ความเฉื่อย (I ∝ mL²) มหาศาล',
+      mass: 0.55,
+      cost: 12,
+      size: { w: 1, h: 12 },   // 6 m in the grid; real ones run 3–10 m
+      // thin bamboo, edge-on to the airflow: a HUGE side area for the CoP but a
+      // tiny frontal drag coefficient (the same big-A / small-Cd trick fins use,
+      // taken to its extreme). Its area centre sits far aft of everything else.
+      aerodynamics: { dragCoefficient: 0.09, crossSectionArea: 0.10 },
+      structural: { maxDynamicPressure: 7500 },
+      // the tail stick is what declares the launch rig angle for the whole stack
+      launchAngleDeg: 80,
       attachNodes: [
-        { id: 'mountR', dx: 0, dy: 0.5, type: NODE.RADIAL, accepts: ['Structural', 'Propulsion'] },
-        { id: 'mountL', dx: 1, dy: 0.5, type: NODE.RADIAL, accepts: ['Structural', 'Propulsion'] }
+        { id: 'mountL', dx: 1, dy: 1, type: NODE.RADIAL, accepts: ['Structural'] },
+        { id: 'mountR', dx: 0, dy: 1, type: NODE.RADIAL, accepts: ['Structural'] }
       ]
     }
   ];

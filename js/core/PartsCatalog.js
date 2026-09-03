@@ -100,6 +100,9 @@
     this.meshUrl = def.meshUrl || null;    // optional .glb model
     this.meshScale = num(def.meshScale, 1);
     this.decoupler = !!def.decoupler;      // staging separation ring
+    // a traditional Bang Fai is fired off an ANGLED scaffold, not a vertical
+    // pad. A part (the tail stick) can declare the rail angle; 0 = vertical.
+    this.launchAngleDeg = num(def.launchAngleDeg, 0);
     this.size = {
       w: num(def.size && def.size.w, 1),
       h: num(def.size && def.size.h, 1)
@@ -121,6 +124,9 @@
         propellantMass: num(p.propellantMass, 0),    // kg (self-contained motor)
         massFlow: num(p.massFlow, 0),                // kg/s draw from the shared pool
         spoolTime: num(p.spoolTime, 0),              // s
+        taperTime: num(p.taperTime, 0),              // s — a regressive solid grain tails
+                                                     //     thrust linearly to 0 over the LAST
+                                                     //     taperTime seconds of the burn
         coolingTime: num(p.coolingTime, 0),          // s — buoyancy heat-loss 1/e time after burnout
         guidance: !!p.guidance                       // actively guided (pitch program, no tumble)
       };
