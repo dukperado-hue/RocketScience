@@ -127,6 +127,7 @@
       thrust: a.thrust || 0,
       buoyancy: a.buoyancy || 0,
       tumbling: !!a.tumbling,
+      burning: !!a.burning,
       padLocked: !!a.padLocked
     };
   };
@@ -141,7 +142,9 @@
           roll = state.orientation.roll;
 
       // hot-air lantern: a slow, layered sinusoidal sway — it drifts and dances
-      if (this.buoyant && !state.tumbling) {
+      // (not while tumbling or once the envelope is ablaze — then the
+      // pre-computed attitude already has it pitching over and swinging)
+      if (this.buoyant && !state.tumbling && !state.burning) {
         var t = state.time || 0;
         pitch += Math.sin(t * 0.63) * 4.5 + Math.sin(t * 1.9 + 1.1) * 1.8;
         roll  += Math.sin(t * 0.47 + 0.6) * 6.0 + Math.sin(t * 2.3) * 2.2;
@@ -155,12 +158,13 @@
     }
 
     // khom-loy flame: flicker the interior PointLight + flame meshes while the
-    // wax is still doing work (spoolTime ramp + burnTime), snuff it once dead.
+    // wax is doing work; if the whole envelope caught fire, BLAZE it; snuff
+    // only once it is cold and dead.
     var ud = this.group.userData;
     if (ud && ud.flicker && ud.flicker.length &&
         global.RS && global.RS.render && global.RS.render.VehicleRenderer) {
-      var burning = (state.buoyancy || 0) > 0.01 || (state.thrust || 0) > 0.01;
-      global.RS.render.VehicleRenderer.flicker(this.group, burning);
+      var lit = (state.buoyancy || 0) > 0.01 || (state.thrust || 0) > 0.01 || state.burning;
+      global.RS.render.VehicleRenderer.flicker(this.group, lit, !!state.burning);
     }
   };
 

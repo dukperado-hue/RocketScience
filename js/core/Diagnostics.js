@@ -112,6 +112,14 @@
         ' m/s — CoM เลื่อนไปหน้า CoP ตอนเชื้อเพลิงเผาไหม้');
     }
 
+    // --- 4b′ · lantern caught fire mid-air (blown over) -------------
+    var mab = events.filter(function (e) { return e.type === 'MIDAIR_BURN'; })[0];
+    if (mab) {
+      add('control', FAIL, 'โคมไฟไหม้กลางอากาศ',
+        'ที่ ' + fmtAlt(mab.altitude) + ' — ลมพัดจนโคมเอียง เปลวไฟเลียกระดาษสา ' +
+        'ติดไฟทั้งลูก (ลดลม / เพิ่มป้ายถ่วง / โครงหนักขึ้น)');
+    }
+
     // --- 4c · gravity turn + orbit (guided vehicles) --------------
     if (model && model.gravityTurn) {
       var pv = events.filter(function (e) { return e.type === 'PITCH_OVER'; })[0];

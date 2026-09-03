@@ -28,15 +28,21 @@
     APOGEE:   'จุดสูงสุด',
     BURNOUT:  'เชื้อเพลิงหมด',
     LOSS_OF_CONTROL: 'เสียการควบคุม',
+    MIDAIR_BURN: 'โคมไฟไหม้กลางอากาศ',
     IMPACT:   'แตะพื้น'
   };
   var EVENT_COLOR = {
     IGNITION: '#e9f1ff', LIFTOFF: '#5fe0a8', PITCH_OVER: '#b98cff', MAX_Q: '#5bd6ff',
-    BURNOUT: '#ffb63a', APOGEE: '#ffce40', LOSS_OF_CONTROL: '#ff3b3b', IMPACT: '#ff6a5a'
+    BURNOUT: '#ffb63a', APOGEE: '#ffce40', LOSS_OF_CONTROL: '#ff3b3b',
+    MIDAIR_BURN: '#ff7420', IMPACT: '#ff6a5a'
   };
+  var UP = THREE ? new THREE.Vector3(0, 1, 0) : null;
   var RATES = [0.5, 1, 2, 4];
-  var CAM_MODES = ['ground', 'chase', 'free', 'map'];
-  var CAM_LABEL = { ground: 'มุมแหงนพื้น', chase: 'ลอยตาม', free: 'อิสระ', map: 'แผนที่วงโคจร' };
+  var CAM_MODES = ['observer', 'chase', 'ground', 'free', 'map'];
+  var CAM_LABEL = {
+    observer: 'ผู้ชมภาคพื้น', chase: 'ลอยตาม', ground: 'มุมแหงนพื้น',
+    free: 'อิสระ', map: 'แผนที่วงโคจร'
+  };
 
   function $(id) { return document.getElementById(id); }
   function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
@@ -90,6 +96,14 @@
     this._zoom = 1;
     this._drag = null;
     this._freeTarget = new (THREE ? THREE.Vector3 : Object)();
+    // observer / launcher's-POV cam: a fixed eye-level stance near the pad,
+    // plus scratch vectors + transient drag-to-look-around offsets
+    this._obsEye  = new (THREE ? THREE.Vector3 : Object)();
+    this._obsTmp  = new (THREE ? THREE.Vector3 : Object)();
+    this._obsTmp2 = new (THREE ? THREE.Vector3 : Object)();
+    if (THREE) this._obsEye.set(-8, 1.7, 33);   // a spectator ~34 m back from the pad
+    this._obsYaw = 0;
+    this._obsPitch = 0;
     this._scrubbing = false;
     this._vmax = 0;
     this._summary = null;
@@ -164,8 +178,14 @@
       if (!self._drag) return;
       var dx = e.clientX - self._drag.x, dy = e.clientY - self._drag.y;
       self._drag.x = e.clientX; self._drag.y = e.clientY;
-      self._theta -= dx * 0.008;
-      self._phi = clamp(self._phi - dy * 0.008, 0.16, 1.5);
+      if (CAM_MODES[self._camIdx] === 'observer') {
+        // a transient look-around; _updateCamera eases it back to the vehicle
+        self._obsYaw   = clamp(self._obsYaw   - dx * 0.005, -1.1, 1.1);
+        self._obsPitch = clamp(self._obsPitch + dy * 0.005, -0.55, 0.75);
+      } else {
+        self._theta -= dx * 0.008;
+        self._phi = clamp(self._phi - dy * 0.008, 0.16, 1.5);
+      }
     });
     global.addEventListener('pointerup', function () { self._drag = null; });
     this.canvas.addEventListener('wheel', function (e) {
@@ -179,8 +199,9 @@
       self._showToast((LABEL_TH[evt.type] || evt.type) + ' · ' + evt.message);
       if (self._glow && evt.type === 'IGNITION') self._glowPulse = 1;
       // reaching orbit → swing the camera out to the orbital map
-      if (evt.type === 'ORBIT' && self._camIdx !== 3) {
-        self._camIdx = 3; self._zoom = 1;
+      var mapIdx = CAM_MODES.indexOf('map');
+      if (evt.type === 'ORBIT' && self._camIdx !== mapIdx) {
+        self._camIdx = mapIdx; self._zoom = 1;
         self.btnCam.textContent = CAM_LABEL.map;
       }
     });
@@ -215,7 +236,8 @@
     this._RE = RE;
     this.scene = new RS.render.Scene(this.canvas, {
       ground: false, background: 0x05080f, fov: 50,
-      logDepth: true, far: RE * 6
+      logDepth: true, far: RE * 6,
+      fog: { color: 0x060912, density: 0.0011 }   // dissolves the hard horizon
     });
     if (!this.scene.available) { this._built = true; return; }
     var sc = this.scene.scene;
@@ -238,6 +260,29 @@
     atmo.position.set(0, -RE, 0);
     sc.add(atmo);
     this._planet = planet;
+    this._atmo = atmo;
+
+    // ---- near-pad ground : a soft radial-gradient disc that fades out into
+    //  the haze so there is no hard terrain edge, just a pool of ground that
+    //  dissolves into the night. Sits a hair under the grid + planet surface.
+    var gtc = document.createElement('canvas');
+    gtc.width = gtc.height = 256;
+    var gg = gtc.getContext('2d');
+    var grd = gg.createRadialGradient(128, 128, 8, 128, 128, 128);
+    grd.addColorStop(0.00, 'rgba(38,46,64,0.95)');
+    grd.addColorStop(0.45, 'rgba(20,27,42,0.75)');
+    grd.addColorStop(1.00, 'rgba(6,9,18,0)');
+    gg.fillStyle = grd; gg.fillRect(0, 0, 256, 256);
+    var groundTex = new THREE.CanvasTexture(gtc);
+    var nearGround = new THREE.Mesh(
+      new THREE.CircleGeometry(3200, 64),
+      new THREE.MeshBasicMaterial({
+        map: groundTex, transparent: true, depthWrite: false, fog: true
+      }));
+    nearGround.rotation.x = -Math.PI / 2;
+    nearGround.position.y = 0.005;
+    sc.add(nearGround);
+    this._nearGround = nearGround;
 
     // ---- near-pad detail (only visible when zoomed right in) --------
     var grid = new THREE.GridHelper(2400, 96, 0x356b41, 0x1d3a27);
@@ -284,10 +329,22 @@
       if (L.rim.color && L.rim.color.setHex) L.rim.color.setHex(on ? 0x3355aa : 0x88aaff);
     }
     if (this._planet && this._planet.material) {
-      this._planet.material.color.setHex(on ? 0x0a1a10 : 0x1f5133);
+      // night ground: dark, desaturated blue-grey terrain — not fluorescent grass
+      this._planet.material.color.setHex(on ? 0x0d1119 : 0x1f5133);
     }
     if (this._padGrid && this._padGrid.material) {
-      this._padGrid.material.opacity = on ? 0.14 : 0.42;
+      this._padGrid.material.opacity = on ? 0.10 : 0.42;
+    }
+    if (this._atmo && this._atmo.material) {
+      this._atmo.material.opacity = on ? 0.05 : 0.10;
+      this._atmo.material.color.setHex(on ? 0x2a4a80 : 0x5aa9ff);
+    }
+    // the soft ground pool is a night-scene device — the daytime planet is green
+    if (this._nearGround) this._nearGround.visible = on;
+    if (this.scene && this.scene.fog) {
+      // thicker, cooler haze at night so the horizon truly melts away
+      this.scene.fog.density = on ? 0.0016 : 0.0011;
+      this.scene.fog.color.setHex(on ? 0x080a12 : 0x060912);
     }
   };
 
@@ -408,8 +465,13 @@
     this.autopsy.hidden = true;
     if (this.elVerdict) this.elVerdict.hidden = true;
     this._rateIdx = 1; this.flight.setRate(1); this.btnRate.textContent = '1×';
-    this._camIdx = 1; this.btnCam.textContent = CAM_LABEL.chase;
+    // a khom loy is watched from the ground — default to the launcher's POV;
+    // anything with real thrust defaults to the chase cam.
+    this._camIdx = ((simResult && simResult.mode) === 'buoyancy')
+      ? CAM_MODES.indexOf('observer') : CAM_MODES.indexOf('chase');
+    this.btnCam.textContent = CAM_LABEL[CAM_MODES[this._camIdx]];
     this._theta = 0.7; this._phi = 1.12; this._zoom = 1; this._camX = 0;
+    this._obsYaw = 0; this._obsPitch = 0;   // transient look-around offsets (observer cam)
     this._phaseText = 'อยู่บนแท่น';
     this._hideToast();
     this._buildMarkers(simResult.events || [], this.flight.duration);
@@ -539,6 +601,15 @@
     var mode = CAM_MODES[this._camIdx];
     var RE = this._RE || 600000;
 
+    // ground haze is for the near-pad views only — the orbital map needs to see
+    // the whole planet, and by high altitude there's no atmosphere to haze
+    var wantFog = this.scene.fog && mode !== 'map' && alt < 60000;
+    this.scene.scene.fog = wantFog ? this.scene.fog : null;
+
+    // observer POV goes a touch wider; every other rig is the standard 50°
+    var wantFov = mode === 'observer' ? 55 : 50;
+    if (cam.fov !== wantFov) { cam.fov = wantFov; cam.updateProjectionMatrix(); }
+
     // camera target = the vehicle's true FIXED-FRAME position (so it tracks
     // correctly all the way around the planet, not just near the pad)
     var vx = (st && st.position) ? st.position.x : 0;
@@ -562,6 +633,29 @@
     }
 
     var focus = alt + Math.min(this._vehH * 0.5, 2.5);
+
+    if (mode === 'observer') {
+      // LAUNCHER'S POV — planted on the ground at eye level near the pad,
+      // auto-tracking the vehicle as it climbs. Wide angle so the foreground
+      // ground is in frame while it is low; the gaze then tilts up to follow
+      // it into the sky (you crane your neck back — the ground drops away).
+      // The vehicle stays the subject. Drag nudges the gaze; it eases back.
+      var eye = this._obsEye;
+      var horiz = Math.hypot(tx - eye.x, 0 - eye.z) || 0.001;
+      var aimY = eye.y + clamp((this._camTY - eye.y) * 0.55, -2, horiz * 1.6);
+      var dir = this._obsTmp.set(tx - eye.x, aimY - eye.y, 0 - eye.z);
+      if (Math.abs(this._obsYaw) > 1e-4) dir.applyAxisAngle(UP, this._obsYaw);
+      if (Math.abs(this._obsPitch) > 1e-4) {
+        var right = this._obsTmp2.copy(dir).cross(UP);
+        if (right.lengthSq() > 1e-6) dir.applyAxisAngle(right.normalize(), this._obsPitch);
+      }
+      cam.position.copy(eye);
+      cam.lookAt(eye.x + dir.x, eye.y + dir.y, eye.z + dir.z);
+      var ease = this.flight.playing ? 0.90 : 0.80;
+      this._obsYaw *= ease;
+      this._obsPitch *= ease;
+      return;
+    }
 
     if (mode === 'ground') {
       // pinned near the pad, tilts up + pans to track the vehicle

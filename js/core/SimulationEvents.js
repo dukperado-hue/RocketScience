@@ -21,6 +21,7 @@
     BURNOUT:  'BURNOUT',
     ORBIT:    'ORBIT',
     LOSS_OF_CONTROL: 'LOSS_OF_CONTROL',
+    MIDAIR_BURN: 'MIDAIR_BURN',
     IMPACT:   'IMPACT'
   };
 
@@ -34,6 +35,7 @@
     BURNOUT:  'เชื้อเพลิงหมด',
     ORBIT:    'เข้าสู่วงโคจร',
     LOSS_OF_CONTROL: 'เสียการควบคุม — ตีลังกา',
+    MIDAIR_BURN: 'โคมไฟไหม้กลางอากาศ',
     IMPACT:   'แตะพื้น'
   };
 

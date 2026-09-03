@@ -68,9 +68,19 @@
 
   // --- hot-air buoyancy: a lantern floats, it never "launches" ----------------
   var BUOY_RISE_MAX = 1.5;        // m/s — the graceful ceiling on rise rate
-  var BUOY_SINK_MAX = 2.4;        // m/s — gentle descent as the flame dies
+  var BUOY_SINK_MAX = 2.0;        // m/s — gentle descent as the flame dies
   var BUOY_ACCEL_UP = 0.85;       // m/s^2 — how briskly it may gain rise speed
-  var BUOY_ACCEL_DOWN = 3.2;      // m/s^2
+  var BUOY_ACCEL_DOWN = 2.4;      // m/s^2
+
+  // --- MIDAIR_BURN: a lantern carried hard sideways tilts until the flame
+  //  licks the paper and the whole envelope goes up. Heat (lift) is lost at
+  //  once, the envelope burns away and COLLAPSES (drag area craters), so the
+  //  charred remains drop noticeably faster than a graceful cool-down — but
+  //  still fluttering + spinning, not a dead stone.
+  var BURN_DRIFT_AIRSPEED = 3.6;  // m/s — |vx| above this while lit = ignition
+  var BURN_MIN_ALT = 22;         // m — let it have a real flight first
+  var BURN_DRAG_MULT = 0.2;       // collapsed / burnt-away envelope = little area
+  var BURN_FALL_MAX = 5.0;        // m/s — descent cap for the burning wreckage
 
   /**
    * @typedef {Object} TrajectoryState
@@ -178,15 +188,19 @@
     var spool = motor.spoolTime || 0;
 
     if (motor.mode === 'buoyancy') {
+      // warm-up ramp → steady hot → gentle EXPONENTIAL cool-down. The wax is
+      // spent at burnTime but the envelope's trapped heat (and so its lift)
+      // bleeds away on a `coolingTime` 1/e timescale — the lantern eases down
+      // over ~30–50 s instead of dropping the instant the flame dies.
       var lift;
       if (t < spool) {
         lift = motor.thrust * (t / Math.max(spool, 1e-6));
       } else if (t <= bt) {
         lift = motor.thrust;
-      } else if (t <= bt + spool) {
-        lift = motor.thrust * (1 - (t - bt) / Math.max(spool, 1e-6));
       } else {
-        lift = 0;
+        var coolTau = motor.coolingTime > 0 ? motor.coolingTime : 12;
+        lift = motor.thrust * Math.exp(-(t - bt) / coolTau);
+        if (lift < motor.thrust * 0.02) lift = 0;   // heat is gone
       }
       var mdot = (t <= bt && bt > 0 && motor.propellantMass > 0)
         ? motor.propellantMass / bt : 0;
@@ -262,7 +276,7 @@
         thrust: thrust, buoyancy: buoyancy, drag: 0, gx: gv.gx, gy: gv.gy,
         q: 0, g: g, rho: rho, onPad: true, padLocked: true,
         pitchCmd: pitchCmd, vectored: false,
-        liftedOff: false, tumbling: false
+        liftedOff: false, tumbling: false, burning: false
       };
     }
 
@@ -286,11 +300,18 @@
       // Net lift is a whisper above weight when hot, negative as it cools.
       // Cap both the acceleration and the rise/sink rate so a lantern eases
       // upward at ~1 m/s and drifts — it is poetry, not propulsion.
-      drag = 0.5 * rho * model.dragArea * state.v * Math.abs(state.v);
+      // If the envelope caught fire (state.burning) the heat is gone, the
+      // charred paper flaps broadside (drag ×BURN_DRAG_MULT) and it drops
+      // faster — but capped, so it still flutters down rather than plummets.
+      var dragMult = state.burning ? BURN_DRAG_MULT : 1;
+      if (state.burning) buoyancy = 0;
+      drag = 0.5 * rho * model.dragArea * dragMult * state.v * Math.abs(state.v);
       var netUp = buoyancy - mass * g;
       a = (netUp - drag) / mass;
-      a = clamp(a, -BUOY_ACCEL_DOWN, BUOY_ACCEL_UP);
-      v = clamp(state.v + a * dt, -BUOY_SINK_MAX, BUOY_RISE_MAX);
+      var accelDown = state.burning ? BUOY_ACCEL_DOWN * 2.2 : BUOY_ACCEL_DOWN;
+      var sinkMax = state.burning ? BURN_FALL_MAX : BUOY_SINK_MAX;
+      a = clamp(a, -accelDown, BUOY_ACCEL_UP);
+      v = clamp(state.v + a * dt, -sinkMax, BUOY_RISE_MAX);
       y = state.y + v * dt;
 
     } else {
@@ -353,7 +374,7 @@
       q: 0.5 * rho * (v * v + vx * vx), g: g, rho: rho, onPad: onPad,
       pitchCmd: pitchCmd, vectored: vectorX,
       padLocked: false, liftedOff: !!state.liftedOff || newAlt > 1e-6,
-      tumbling: !!state.tumbling
+      tumbling: !!state.tumbling, burning: !!state.burning
     };
   }
 
@@ -447,7 +468,8 @@
 
     var state = {
       t: 0, y: 0, v: 0, x: 0, vx: 0,
-      propRemaining: eff.propellantMass, tumbling: false, liftedOff: false
+      propRemaining: eff.propellantMass, tumbling: false, burning: false,
+      liftedOff: false
     };
     var trajectory = [];
     var apogee = 0, apogeeTime = 0, maxV = 0, maxQ = 0;
@@ -457,6 +479,8 @@
     var prevForce = 0;                          // to catch sub-sample burn edges
     var everFired = false, burnoutT = null, burnoutAlt = 0, burnoutVel = 0;
     var tumbleT = Infinity;                    // time the tumble started
+    var burnT = Infinity;                      // time a lantern's envelope ignited
+    var midairBurn = null;                     // {time,alt,vel} for the event
     // a guided vehicle follows a pitch program and never passively tumbles
     var canTumble = !!model.rocketDominant && isFinite(model.copAxisM) && !model.gravityTurn;
     var pitchCmd = PITCH_UP;                   // current commanded thrust attitude
@@ -558,7 +582,7 @@
       if (liftoffTime === null && !state.liftedOff && d.alt > 1e-6) {
         state.liftedOff = true;
         liftoffTime = d.t; liftoffAlt = d.alt; liftoffVel = Math.hypot(d.v, d.vx);
-        trajectory.push(toState(d, tumbleT));
+        trajectory.push(toState(d, tumbleT, burnT));
       }
       var forceEdge = (prevForce <= 1e-6) !== (force <= 1e-6);
       var densePhase = force > 1e-6 && d.t < 3.0;
@@ -586,7 +610,7 @@
           message: 'สลัดท่อนที่ ' + stageIdx + ' ทิ้ง — จุดเครื่องยนต์ท่อนถัดไป',
           altitude: round(d.alt, 2), velocity: round(spdNow, 2)
         });
-        trajectory.push(toState(d, tumbleT));
+        trajectory.push(toState(d, tumbleT, burnT));
         wasStaged = true;
       }
 
@@ -636,9 +660,23 @@
         }
       }
 
+      // --- MIDAIR_BURN (lanterns only) : carried sideways fast enough by the
+      //  wind that it tips over, the flame licks the paper, and the whole
+      //  envelope goes up. |vx| (ground drift) — a lantern rides WITH the air,
+      //  so its drift speed is the wind it is fighting. One-way latch, and only
+      //  while the flame is actually lit and it is genuinely airborne.
+      var wasBurning = state.burning;
+      if (motorMode === 'buoyancy' && !state.burning && liftedOff &&
+          d.alt > BURN_MIN_ALT && d.buoyancy > 1e-4 &&
+          Math.abs(d.vx) > BURN_DRIFT_AIRSPEED) {
+        state.burning = true; d.burning = true; burnT = d.t;
+        midairBurn = { time: d.t, alt: d.alt, vel: spdNow };
+      }
+
       if (!wasStaged &&
-          (d.t >= nextSample || (state.tumbling && !wasTumbling) || forceEdge || densePhase)) {
-        trajectory.push(toState(d, tumbleT));
+          (d.t >= nextSample || (state.tumbling && !wasTumbling) ||
+           (state.burning && !wasBurning) || forceEdge || densePhase)) {
+        trajectory.push(toState(d, tumbleT, burnT));
         if (d.t >= nextSample) nextSample += sampleEvery;
       }
       while (nextSample <= d.t) nextSample += sampleEvery;
@@ -646,13 +684,15 @@
       state = {
         t: d.t, y: d.y, v: d.v, x: d.x, vx: d.vx,
         propRemaining: d.propRemaining, tumbling: state.tumbling,
+        burning: state.burning,
         liftedOff: state.liftedOff || d.liftedOff
       };
 
       if (liftedOff && d.onPad) {
-        reason = state.tumbling ? 'จรวดเสียการควบคุมแล้วตกกระแทกพื้น'
+        reason = state.burning ? 'โคมไฟไหม้กลางอากาศแล้วร่วงลงพื้น'
+          : state.tumbling ? 'จรวดเสียการควบคุมแล้วตกกระแทกพื้น'
           : (orbit ? 'กลับเข้าชั้นบรรยากาศแล้วแตะพื้น' : 'ยานแตะพื้นแล้ว');
-        trajectory.push(toState(d, tumbleT));
+        trajectory.push(toState(d, tumbleT, burnT));
         break;
       }
       if (!liftedOff && state.t > 30 &&
@@ -702,6 +742,13 @@
       });
     }
     physicsEvents = physicsEvents.concat(stageEvents);
+    if (midairBurn) {
+      physicsEvents.push({
+        time: round(midairBurn.time, 3), type: 'MIDAIR_BURN',
+        message: 'โคมเอียงจนไฟลามเปลือกกระดาษ — เสียแรงพยุง ร่วงลงทั้งที่ยังลุกไหม้',
+        altitude: round(midairBurn.alt, 2), velocity: round(midairBurn.vel, 2)
+      });
+    }
     if (burnoutT !== null) {
       physicsEvents.push({
         time: round(burnoutT, 3), type: 'BURNOUT', message: 'เชื้อเพลิงหมดทุกท่อน',
@@ -749,7 +796,7 @@
   }
 
   /** Raw step output -> contract TrajectoryState. */
-  function toState(d, tumbleT) {
+  function toState(d, tumbleT, burnT) {
     // Straight up until the vehicle departs controlled flight; then it pitches
     // over and spins — a wild, escalating attitude the replay can show literally.
     var o = { pitch: 90, yaw: 0, roll: 0 };
@@ -759,6 +806,13 @@
       o.pitch = 90 - (tt * 130 + Math.sin(tt * 9) * 55);
       o.yaw = Math.sin(tt * 5.5) * 45 + tt * 70;
       o.roll = tt * 260;
+    } else if (d.burning && isFinite(burnT)) {
+      // a burning lantern tips right over and swings as it falls — steep,
+      // slower than a rocket tumble, and it keeps its wind-driven yaw drift
+      var bt = Math.max(0, d.t - burnT);
+      o.pitch = 90 - Math.min(150, bt * 55 + Math.sin(bt * 3.1) * 26);
+      o.roll = Math.sin(bt * 2.3) * 40 + bt * 55;
+      o.yaw = Math.sin(bt * 1.7) * 30;
     } else if (d.vectored && (Math.abs(vx) > 0.5 || (isFinite(d.pitchCmd) && d.pitchCmd < Math.PI / 2 - 1e-3))) {
       // point along the thrust vector while burning, else along the velocity
       // vector — atan2(vertical, horizontal) is already the "90° = up" convention
@@ -789,6 +843,7 @@
       drag: round(d.drag, 3),
       propRemaining: round(d.propRemaining, 4),
       tumbling: !!d.tumbling,
+      burning: !!d.burning,
       padLocked: !!d.padLocked
     };
   }

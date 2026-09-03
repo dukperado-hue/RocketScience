@@ -315,6 +315,7 @@
       burnTime: p.propulsion.burnTime, spoolTime: p.propulsion.spoolTime,
       specificImpulse: p.propulsion.specificImpulse,
       propellantMass: p.propulsion.propellantMass, massFlow: p.propulsion.massFlow,
+      coolingTime: p.propulsion.coolingTime,
       guidance: !!p.propulsion.guidance
     };
   }

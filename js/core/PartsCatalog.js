@@ -121,6 +121,7 @@
         propellantMass: num(p.propellantMass, 0),    // kg (self-contained motor)
         massFlow: num(p.massFlow, 0),                // kg/s draw from the shared pool
         spoolTime: num(p.spoolTime, 0),              // s
+        coolingTime: num(p.coolingTime, 0),          // s — buoyancy heat-loss 1/e time after burnout
         guidance: !!p.guidance                       // actively guided (pitch program, no tumble)
       };
     } else {

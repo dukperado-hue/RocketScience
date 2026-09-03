@@ -37,9 +37,13 @@
         burnTime: 55,         // s of usable flame before it cools & descends
         specificImpulse: 0,   // buoyancy: no exhaust
         propellantMass: 0.008,
-        spoolTime: 4.0        // s — the envelope heats gradually before it has
+        spoolTime: 4.0,       // s — the envelope heats gradually before it has
                              //     any positive buoyancy at all; until then the
                              //     lantern just sits on the ground, warming up
+        coolingTime: 6       // s — after the wax is spent the trapped heat bleeds
+                             //     away on this 1/e timescale (~20 s full fade),
+                             //     so the lantern eases down at ~1–2 m/s instead
+                             //     of dropping the instant the flame dies
       },
       // the wax cradle hangs UNDER the bamboo hoop; live node up (frame or a
       // second wax for more heat) and a live node down (a wish-tag / ballast)

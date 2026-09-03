@@ -146,15 +146,18 @@
 
       if (o.surviveFlight) {
         var lost = has('LOSS_OF_CONTROL');
+        var burnt = has('MIDAIR_BURN');
         var flew = !!sum.liftedOff && !!sim.ok;
         var structFail = (sim.diagnostics || []).some(function (d) {
           return d.id === 'structure' && d.status === 'FAIL';
         });
-        var survived = flew && !lost && !structFail;
+        var survived = flew && !lost && !burnt && !structFail;
         res.objectives.push({ label: 'บินได้โดยไม่เสียการควบคุม', met: survived,
-          actual: lost ? 'เสียการควบคุม' : structFail ? 'โครงสร้างพัง'
+          actual: lost ? 'เสียการควบคุม' : burnt ? 'โคมไฟไหม้กลางอากาศ'
+            : structFail ? 'โครงสร้างพัง'
             : flew ? 'ควบคุมได้ตลอด' : 'ไม่ขึ้นจากพื้น' });
         if (lost) res.failReasons.push('จรวดเสียการควบคุม (ตีลังกากลางอากาศ)');
+        else if (burnt) res.failReasons.push('โคมเอียงจนไฟลามกระดาษ — ไหม้กลางอากาศ');
         else if (structFail) res.failReasons.push('โครงสร้างพังจากแรงดันอากาศ (Max-Q)');
         else if (!flew) res.failReasons.push('ยานไม่ขึ้นจากพื้น');
       }

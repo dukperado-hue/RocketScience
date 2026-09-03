@@ -52,6 +52,16 @@
 
     this.scene = new THREE.Scene();
 
+    // opt-in distance haze — dissolves a hard horizon line so the ground melts
+    // into the sky. FogExp2 so near geometry (the vehicle) stays crisp while
+    // the far terrain / planet limb washes out. Callers re-tune via `this.fog`.
+    if (opts.fog) {
+      var fc = (opts.fog.color != null) ? opts.fog.color
+        : (opts.background != null ? opts.background : 0x05080f);
+      this.fog = new THREE.FogExp2(fc, opts.fog.density || 0.0018);
+      this.scene.fog = this.fog;
+    }
+
     this.camera = new THREE.PerspectiveCamera(opts.fov || 45, 1, 0.02, opts.far || 5000);
     this.camera.position.set(2.4, 1.8, 3.4);
     this.camera.lookAt(0, 0.6, 0);

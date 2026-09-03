@@ -388,16 +388,13 @@
     }
 
     // ---- ERA 0 · Khom Loy — the renderer's showpiece -----------------
-    //  A real khom loy: an octagonal mulberry-paper envelope on a thin
-    //  bamboo skeleton with a wax core burning at its mouth. We build it
-    //  to look exactly like that — MeshPhysicalMaterial paper that lets the
-    //  interior flame bleed through (bright at the base, dark amber at the
-    //  crown), an EdgesGeometry bamboo skeleton, and a flickering PointLight
-    //  + glowing flame at the core (driven by RS.render.VehicleRenderer.flicker).
+    //  A real khom loy: an octagonal mulberry-paper TUBE, open at the mouth,
+    //  gathered to a FLAT (slightly folded) top — like a paper bag. NO point.
+    //  It drapes over a thin bamboo skeleton with a wax core burning at its
+    //  mouth. MeshPhysicalMaterial paper lets the flame + skeleton read
+    //  through it; a flickering PointLight + glowing flame live at the core
+    //  (driven by RS.render.VehicleRenderer.flicker).
     if (entry.partId === 'cover_paper') {
-      // The envelope IS the lantern — it drapes DOWN over the bamboo frame and
-      // the wax core so the skeleton + flame silhouette through the glowing
-      // translucent paper, exactly like the real thing.
       var pr = Math.max(d.w, d.d) * 1.0;      // ~1 m across — a real big khom loy
       var ph = d.h * 1.85;
       var paperMat = new THREE.MeshPhysicalMaterial({
@@ -412,27 +409,31 @@
         opacity: 0.7,
         emissive: 0xffffff,
         emissiveIntensity: 0.85,       // the paper itself glows…
-        emissiveMap: paperGradientTex() // …hot at the mouth, dark amber at the crown
+        emissiveMap: paperGradientTex() // …hot at the mouth, dark amber up top
       });
-      var pg = new THREE.Group();
-      // octagonal envelope — flared skirt · barrel body · domed crown
-      var pskirt = new THREE.Mesh(
-        new THREE.CylinderGeometry(pr * 1.0, pr * 0.74, ph * 0.26, 8, 1, true), paperMat);
-      pskirt.position.y = -ph * 0.34;
-      var pbody = new THREE.Mesh(
-        new THREE.CylinderGeometry(pr * 0.8, pr * 1.0, ph * 0.5, 8, 1, true), paperMat);
-      pbody.position.y = -ph * 0.05;
-      // the crown catches little of the flame — its own dimmer amber material
-      var crownMat = new THREE.MeshPhysicalMaterial({
+      // the gathered top catches little of the flame — a dimmer amber material
+      var topMat = new THREE.MeshPhysicalMaterial({
         color: 0xe9caa6, roughness: 0.55, metalness: 0.0,
         transmission: 0.3, thickness: 0.4, ior: 1.35,
-        side: THREE.DoubleSide, transparent: true, opacity: 0.9,
-        emissive: 0x2c1506, emissiveIntensity: 0.4
+        side: THREE.DoubleSide, transparent: true, opacity: 0.92,
+        emissive: 0x24110a, emissiveIntensity: 0.35
       });
-      var pcrown = new THREE.Mesh(
-        new THREE.ConeGeometry(pr * 0.8, ph * 0.3, 8, 1, true), crownMat);
-      pcrown.position.y = ph * 0.34;
-      [pskirt, pbody, pcrown].forEach(function (m) {
+      var pg = new THREE.Group();
+      // slightly flared mouth · near-straight octagonal barrel · short gathered
+      // shoulder · flat octagonal lid — a paper bag, not a circus tent.
+      var pskirt = new THREE.Mesh(
+        new THREE.CylinderGeometry(pr * 0.98, pr * 0.72, ph * 0.20, 8, 1, true), paperMat);
+      pskirt.position.y = -ph * 0.37;
+      var pbody = new THREE.Mesh(
+        new THREE.CylinderGeometry(pr * 0.95, pr * 1.0, ph * 0.56, 8, 1, true), paperMat);
+      pbody.position.y = -ph * 0.03;
+      var pshoulder = new THREE.Mesh(
+        new THREE.CylinderGeometry(pr * 0.5, pr * 0.95, ph * 0.13, 8, 1, true), topMat);
+      pshoulder.position.y = ph * 0.315;
+      var plid = new THREE.Mesh(new THREE.CircleGeometry(pr * 0.5, 8), topMat);
+      plid.rotation.x = -Math.PI / 2;
+      plid.position.y = ph * 0.38;
+      [pskirt, pbody, pshoulder, plid].forEach(function (m) {
         m.castShadow = true; m.receiveShadow = true; pg.add(m);
       });
       // drop the whole envelope so its mouth wraps the frame + wax below it
@@ -632,13 +633,15 @@
   /**
    * Drive every khom-loy flame in a built vehicle group: flickers the interior
    * PointLight and jitters the flame meshes. Call once per rendered frame.
-   * `active === false` snuffs them all (the flame has died). A pure per-frame
-   * side effect — no allocation, safe to call on any group (no-op without flames).
+   * `active === false` snuffs them all (the flame has died). `blaze` truthy =
+   * the whole envelope is on fire — pump the light + swell the flame. A pure
+   * per-frame side effect — no allocation, safe on any group (no-op w/o flames).
    */
-  function flicker(group, active) {
+  function flicker(group, active, blaze) {
     var fl = group && group.userData && group.userData.flicker;
     if (!fl || !fl.length) return;
     var now = Date.now();
+    var b = blaze ? 1 : 0;
     for (var i = 0; i < fl.length; i++) {
       var f = fl[i];
       if (active === false) {
@@ -651,16 +654,17 @@
       // PointLight stays lively but always positive
       var jitter = Math.sin(now * 0.015) + Math.random() * 0.2;
       if (f.light) {
-        f.light.intensity = Math.max(0.15, (f.base || 2.5) * (0.78 + 0.16 * jitter));
+        f.light.intensity = Math.max(0.15,
+          (f.base || 2.5) * (0.78 + 0.16 * jitter) * (1 + b * (2.0 + Math.random())));
       }
       if (f.flame) {
         f.flame.visible = true;
-        f.flame.scale.set(1,
-          0.86 + 0.26 * (0.5 + 0.5 * Math.sin(now * 0.023)) + Math.random() * 0.12, 1);
+        var sy = 0.86 + 0.26 * (0.5 + 0.5 * Math.sin(now * 0.023)) + Math.random() * 0.12;
+        f.flame.scale.set(1 + b * 1.6, sy * (1 + b * 1.4), 1 + b * 1.6);
       }
       if (f.flameCore) {
         f.flameCore.visible = true;
-        f.flameCore.scale.setScalar(0.85 + Math.random() * 0.22);
+        f.flameCore.scale.setScalar((0.85 + Math.random() * 0.22) * (1 + b * 1.2));
       }
     }
   }
