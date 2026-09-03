@@ -38,11 +38,14 @@
   };
   var UP = THREE ? new THREE.Vector3(0, 1, 0) : null;
   var RATES = [0.5, 1, 2, 4];
-  var CAM_MODES = ['observer', 'chase', 'ground', 'free', 'map'];
+  // C key / the 🎥 button cycles these in order; a drag while an auto-tracking
+  // rig is running hands control straight to 'free' (see the pointermove below)
+  var CAM_MODES = ['observer', 'chase', 'free', 'ground', 'map'];
   var CAM_LABEL = {
-    observer: 'ผู้ชมภาคพื้น', chase: 'ลอยตาม', ground: 'มุมแหงนพื้น',
-    free: 'อิสระ', map: 'แผนที่วงโคจร'
+    observer: 'ผู้ชมภาคพื้น', chase: 'ลอยตาม', free: 'อิสระ (คุมเอง)',
+    ground: 'มุมแหงนพื้น', map: 'แผนที่วงโคจร'
   };
+  var AUTO_CAM = { observer: 1, chase: 1, ground: 1 };   // rigs a drag breaks out of
 
   function $(id) { return document.getElementById(id); }
   function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
@@ -170,6 +173,7 @@
     // camera drag + wheel on the canvas
     this.canvas.addEventListener('pointerdown', function (e) {
       self._drag = { x: e.clientX, y: e.clientY };
+      self._dragDist = 0;
       if (self.canvas.setPointerCapture && e.pointerId != null) {
         try { self.canvas.setPointerCapture(e.pointerId); } catch (x) {}
       }
@@ -178,14 +182,22 @@
       if (!self._drag) return;
       var dx = e.clientX - self._drag.x, dy = e.clientY - self._drag.y;
       self._drag.x = e.clientX; self._drag.y = e.clientY;
-      if (CAM_MODES[self._camIdx] === 'observer') {
-        // a transient look-around; _updateCamera eases it back to the vehicle
-        self._obsYaw   = clamp(self._obsYaw   - dx * 0.005, -1.1, 1.1);
-        self._obsPitch = clamp(self._obsPitch + dy * 0.005, -0.55, 0.75);
-      } else {
-        self._theta -= dx * 0.008;
-        self._phi = clamp(self._phi - dy * 0.008, 0.16, 1.5);
+      self._dragDist += Math.abs(dx) + Math.abs(dy);
+
+      // a real drag while a cinematic auto-cam is tracking → hand control to the
+      // FREE rig, anchored where the vehicle is now, so the view isn't wrested back
+      if (self._dragDist > 6 && AUTO_CAM[CAM_MODES[self._camIdx]]) {
+        var st = self.flight.sampleAt(self.flight.time);
+        self._freeTarget.set(
+          (st && st.position) ? st.position.x : 0,
+          (st && st.position) ? st.position.y + 2 : 2, 0);
+        self._camIdx = CAM_MODES.indexOf('free');
+        self.btnCam.textContent = CAM_LABEL.free;
+        self._showToast('กล้อง: อิสระ (คุมเอง) — กด C เพื่อกลับโหมดอัตโนมัติ');
       }
+
+      self._theta -= dx * 0.008;
+      self._phi = clamp(self._phi - dy * 0.008, 0.16, 1.5);
     });
     global.addEventListener('pointerup', function () { self._drag = null; });
     this.canvas.addEventListener('wheel', function (e) {
@@ -268,16 +280,19 @@
     var gtc = document.createElement('canvas');
     gtc.width = gtc.height = 256;
     var gg = gtc.getContext('2d');
+    // white RGB, alpha fades out — a soft mask so the disc dissolves into haze;
+    // colour + warm oil-lamp light come from the (lit) material, not the texture
     var grd = gg.createRadialGradient(128, 128, 8, 128, 128, 128);
-    grd.addColorStop(0.00, 'rgba(38,46,64,0.95)');
-    grd.addColorStop(0.45, 'rgba(20,27,42,0.75)');
-    grd.addColorStop(1.00, 'rgba(6,9,18,0)');
+    grd.addColorStop(0.00, 'rgba(255,255,255,0.95)');
+    grd.addColorStop(0.5, 'rgba(255,255,255,0.7)');
+    grd.addColorStop(1.00, 'rgba(255,255,255,0)');
     gg.fillStyle = grd; gg.fillRect(0, 0, 256, 256);
     var groundTex = new THREE.CanvasTexture(gtc);
     var nearGround = new THREE.Mesh(
       new THREE.CircleGeometry(3200, 64),
-      new THREE.MeshBasicMaterial({
-        map: groundTex, transparent: true, depthWrite: false, fog: true
+      new THREE.MeshLambertMaterial({          // Lambert → reacts to the oil lamps
+        map: groundTex, color: 0x141a24,
+        transparent: true, depthWrite: false, fog: true
       }));
     nearGround.rotation.x = -Math.PI / 2;
     nearGround.position.y = 0.005;
@@ -315,6 +330,13 @@
       sc.add(ring);
     }
 
+    // ---- the Lantern Festival environment (stylized ground + Rapunzel sky) --
+    //  built once, kept hidden until a buoyancy-mode (khom loy) flight opens
+    if (RS.render.FestivalEnv) {
+      this._festival = new RS.render.FestivalEnv(this.scene);
+      this._festival.build();
+    }
+
     this._built = true;
   };
 
@@ -323,7 +345,7 @@
     this._night = on;
     var L = this.scene && this.scene.lights;
     if (L) {
-      L.hemi.intensity = on ? 0.28 : 0.95;
+      L.hemi.intensity = on ? 0.38 : 0.95;
       L.key.intensity  = on ? 0.35 : 1.05;
       L.rim.intensity  = on ? 0.5  : 0.35;
       if (L.rim.color && L.rim.color.setHex) L.rim.color.setHex(on ? 0x3355aa : 0x88aaff);
@@ -341,6 +363,8 @@
     }
     // the soft ground pool is a night-scene device — the daytime planet is green
     if (this._nearGround) this._nearGround.visible = on;
+    // the whole lantern-festival environment is night-only
+    if (this._festival) this._festival.setVisible(on);
     if (this.scene && this.scene.fog) {
       // thicker, cooler haze at night so the horizon truly melts away
       this.scene.fog.density = on ? 0.0016 : 0.0011;
@@ -590,6 +614,8 @@
       });
     }
 
+    if (this._festival) this._festival.update(this._frameDt || 0.016);
+
     this._updateCamera(alt, st);
     this._recomputePhase(this.flight.time);
     this._updateHud(st);
@@ -637,23 +663,15 @@
     if (mode === 'observer') {
       // LAUNCHER'S POV — planted on the ground at eye level near the pad,
       // auto-tracking the vehicle as it climbs. Wide angle so the foreground
-      // ground is in frame while it is low; the gaze then tilts up to follow
-      // it into the sky (you crane your neck back — the ground drops away).
-      // The vehicle stays the subject. Drag nudges the gaze; it eases back.
+      // (grass, lamps, tree) is in frame while it is low; the gaze then tilts
+      // up to follow it into the lantern-filled sky. The vehicle stays the
+      // subject — a real drag hands you the FREE rig instead (pointermove).
       var eye = this._obsEye;
       var horiz = Math.hypot(tx - eye.x, 0 - eye.z) || 0.001;
       var aimY = eye.y + clamp((this._camTY - eye.y) * 0.55, -2, horiz * 1.6);
       var dir = this._obsTmp.set(tx - eye.x, aimY - eye.y, 0 - eye.z);
-      if (Math.abs(this._obsYaw) > 1e-4) dir.applyAxisAngle(UP, this._obsYaw);
-      if (Math.abs(this._obsPitch) > 1e-4) {
-        var right = this._obsTmp2.copy(dir).cross(UP);
-        if (right.lengthSq() > 1e-6) dir.applyAxisAngle(right.normalize(), this._obsPitch);
-      }
       cam.position.copy(eye);
       cam.lookAt(eye.x + dir.x, eye.y + dir.y, eye.z + dir.z);
-      var ease = this.flight.playing ? 0.90 : 0.80;
-      this._obsYaw *= ease;
-      this._obsPitch *= ease;
       return;
     }
 

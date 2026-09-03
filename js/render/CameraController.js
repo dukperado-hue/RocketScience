@@ -135,6 +135,18 @@
     this.update(0);
   };
 
+  /** Toggle between the auto orbit rig and the observer rig (e.g. a hotkey). */
+  CameraController.prototype.cycleMode = function () {
+    this.setMode(this.mode === 'observer' ? 'orbit' : 'observer');
+    return this.mode;
+  };
+
+  /**
+   * A drag already drops `autoRotate` (see _onDown), so the orbit rig hands
+   * control to the user the instant they pan — the caller only needs to make
+   * sure it does not force `autoRotate` back on while the user is steering.
+   */
+
   CameraController.prototype.setTarget = function (x, y, z) {
     if (this.available) this.target.set(x, y, z);
   };
