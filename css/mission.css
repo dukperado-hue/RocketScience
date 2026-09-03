@@ -13,22 +13,28 @@
 }
 .bp-mission-btn:hover { border-color: var(--bp-accent, #5bd6ff); color: var(--bp-accent, #5bd6ff); }
 
-/* ---- active-mission strip under the status line ---------------------- */
+/* ---- active-mission strip — floats over the top of the drafting board -- */
 .bp-mbar {
-  margin: 0 20px 8px; padding: 8px 14px;
-  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px;
-  background: linear-gradient(90deg, rgba(91,214,255,0.10), rgba(15,36,69,0.6));
+  position: absolute; left: 10px; right: 10px; top: 10px; z-index: 5;
+  padding: 7px 12px;
+  display: flex; align-items: center; gap: 8px 14px;
+  overflow-x: auto; white-space: nowrap;
+  scrollbar-width: none; -ms-overflow-style: none;
+  background: linear-gradient(90deg, rgba(10,24,48,0.92), rgba(12,32,60,0.82));
   border: 1px solid rgba(91,214,255,0.28);
   border-left: 3px solid var(--bp-accent, #5bd6ff);
   border-radius: 8px;
-  font-family: var(--bp-mono, monospace); font-size: 11.5px; color: var(--bp-ink-dim, #9db4d8);
+  backdrop-filter: blur(4px);
+  font-family: var(--bp-mono, monospace); font-size: 11px; color: var(--bp-ink-dim, #9db4d8);
 }
+.bp-mbar::-webkit-scrollbar { display: none; }
 .bp-mbar[hidden] { display: none; }
-.bp-mbar b { color: var(--bp-ink, #e9f1ff); font-weight: 700; }
+.bp-mbar b { color: var(--bp-ink, #e9f1ff); font-weight: 700; flex: none; }
 .bp-mbar .bp-mbar-chip {
+  flex: none;
   display: inline-flex; align-items: center; gap: 5px;
-  padding: 2px 8px; border-radius: 999px;
-  background: rgba(10,24,48,0.6); border: 1px solid var(--bp-line, rgba(120,180,255,0.16));
+  padding: 2px 9px; border-radius: 999px;
+  background: rgba(6,16,32,0.7); border: 1px solid var(--bp-line, rgba(120,180,255,0.16));
 }
 .bp-mbar .bp-mbar-chip.met { color: var(--bp-go, #5fe0a8); border-color: rgba(95,224,168,0.4); }
 

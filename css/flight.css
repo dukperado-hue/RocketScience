@@ -209,3 +209,95 @@
   background: linear-gradient(180deg, #21507f, #16375c);
   border-color: rgba(91,214,255,0.5); color: #eaf6ff;
 }
+
+/* ===========================================================================
+ *  3D PREVIEW MODAL  (Phase 5 — off the 2D drafting board)
+ * ===========================================================================*/
+.pv-modal {
+  position: fixed; inset: 0; z-index: 88;
+  display: grid; place-items: center; padding: 24px;
+  background: rgba(4,9,20,0.72);
+  backdrop-filter: blur(7px);
+  animation: pv-fade .22s ease;
+}
+.pv-modal[hidden] { display: none; }
+@keyframes pv-fade { from { opacity: 0; } to { opacity: 1; } }
+
+.pv-panel {
+  width: min(760px, 100%); height: min(70vh, 640px);
+  display: flex; flex-direction: column;
+  background: rgba(9,19,37,0.96);
+  border: 1px solid rgba(91,214,255,0.35);
+  border-radius: 14px; overflow: hidden;
+  box-shadow: 0 30px 90px rgba(0,0,0,0.6);
+}
+.pv-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px 14px; border-bottom: 1px solid rgba(120,180,255,0.14);
+}
+.pv-tag {
+  font-family: var(--bp-mono, monospace); font-size: 10px; letter-spacing: 0.12em;
+  color: var(--bp-accent, #5bd6ff);
+}
+.pv-close {
+  background: rgba(18,41,79,0.9); border: 1px solid rgba(120,180,255,0.3);
+  color: var(--bp-ink, #e9f1ff); border-radius: 7px; padding: 5px 12px;
+  font-family: var(--bp-mono, monospace); font-size: 12px; cursor: pointer;
+}
+.pv-close:hover { border-color: #ff6a5a; color: #ff6a5a; }
+.pv-canvas-wrap { position: relative; flex: 1; min-height: 0; }
+#preview-canvas { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+#preview-canvas:active { cursor: grabbing; }
+.pv-hint {
+  padding: 8px 14px; text-align: center;
+  font-family: var(--bp-mono, monospace); font-size: 10px; color: #6f86ad;
+  border-top: 1px solid rgba(120,180,255,0.1);
+}
+
+/* ===========================================================================
+ *  LAUNCH TRANSITION  (Phase 5 — 2D board → 3D pad)
+ * ===========================================================================*/
+.lt-overlay {
+  position: fixed; inset: 0; z-index: 110;
+  display: grid; place-items: center;
+  background: #04070f;
+  opacity: 0; transition: opacity .3s ease;
+}
+.lt-overlay[hidden] { display: none; }
+.lt-overlay.show { opacity: 1; }
+
+.lt-inner {
+  position: relative; width: min(420px, 80vw);
+  text-align: center;
+  font-family: var(--bp-mono, "JetBrains Mono", monospace);
+  color: var(--bp-accent, #5bd6ff);
+}
+.lt-scan {
+  position: absolute; left: -40px; right: -40px; top: -30px; height: 2px;
+  background: linear-gradient(90deg, transparent, #5bd6ff, transparent);
+  animation: lt-scan 1.4s ease-in-out infinite;
+}
+@keyframes lt-scan {
+  0%, 100% { transform: translateY(0); opacity: 0.3; }
+  50% { transform: translateY(64px); opacity: 1; }
+}
+.lt-label { margin: 0 0 14px; font-size: 15px; letter-spacing: 0.18em; }
+.lt-dots { display: inline-block; width: 1.6em; text-align: left; animation: lt-dots 1.2s steps(4) infinite; }
+@keyframes lt-dots { 0% { clip-path: inset(0 100% 0 0); } 100% { clip-path: inset(0 0 0 0); } }
+.lt-bar {
+  height: 4px; border-radius: 2px; overflow: hidden;
+  background: rgba(91,214,255,0.15);
+}
+.lt-bar i {
+  display: block; height: 100%; width: 40%;
+  background: linear-gradient(90deg, transparent, #5bd6ff);
+  animation: lt-bar 1.1s ease-in-out infinite;
+}
+@keyframes lt-bar { 0% { transform: translateX(-100%); } 100% { transform: translateX(320%); } }
+.lt-sub { margin: 12px 0 0; font-size: 10px; color: #4f6a8f; letter-spacing: 0.08em; }
+
+/* ---- cinematic reveal: replay chrome hidden until interaction ------- */
+.fs-hud, .fs-bar, .fs-hint { transition: opacity .45s ease; }
+.fs-overlay.fs-cinematic .fs-hud,
+.fs-overlay.fs-cinematic .fs-bar,
+.fs-overlay.fs-cinematic .fs-hint { opacity: 0; pointer-events: none; }

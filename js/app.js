@@ -47,16 +47,72 @@
     }
   });
 
-  // ---- 3D preview (Phase 2A prelude) --------------------------------
-  var preview = new RS.render.Scene(document.getElementById('preview-canvas'), { ground: true });
-  var orbit = null, vehicleGroup = null, previewRAF = 0;
-  var flight = new RS.render.FlightRenderer();   // used by the builder preview binding
   var flightScreen = RS.render.FlightScreen ? new RS.render.FlightScreen() : null;
+  var flight = new RS.render.FlightRenderer();   // legacy console handle
 
   watchBtn.addEventListener('click', function () {
     if (lastSim && lastSim.ok && flightScreen && flightScreen.available) {
-      flightScreen.open(lastSim, vehicle, activeMission);
+      flightScreen.open(lastSim, vehicle, activeMission);   // re-watch: no cinematic
     }
+  });
+
+  // ---- 3D preview — a floating modal, lazily built, only spins while open
+  var preview = null, previewOrbit = null, previewGroup = null;
+  var previewModal = document.getElementById('preview-modal');
+
+  function ensurePreview() {
+    if (preview) return preview;
+    preview = new RS.render.Scene(document.getElementById('preview-canvas'),
+      { ground: true, background: 0x0a1830 });
+    if (preview.available) {
+      previewOrbit = new RS.render.CameraController(preview.camera, preview.canvas, {
+        target: [0, 0.4, 0], radius: 3, autoRotate: true
+      });
+    }
+    return preview;
+  }
+
+  function refreshPreview() {
+    if (!preview || !preview.available) return;
+    if (previewGroup) { RS.render.VehicleRenderer.disposeGroup(previewGroup); previewGroup = null; }
+    var empty = document.getElementById('preview-empty');
+    if (!vehicle.instances.length) { empty.hidden = false; return; }
+    empty.hidden = true;
+    previewGroup = RS.render.VehicleRenderer.build(vehicle);
+    preview.add(previewGroup);
+    var b = previewGroup.userData.bounds;
+    previewOrbit.frame(b.center, b.radius);
+    previewOrbit.radius *= 1.35;        // a little breathing room in the panel
+    previewOrbit.update(0);
+  }
+
+  function openPreview() {
+    ensurePreview();
+    previewModal.hidden = false;
+    if (!preview.available) {
+      document.getElementById('preview-empty').hidden = false;
+      document.getElementById('preview-empty').textContent = '3D preview ต้องใช้ WebGL';
+      return;
+    }
+    refreshPreview();
+    preview.resize();
+    preview.startLoop(function (dt) { previewOrbit.update(dt); });
+  }
+  function closePreview() {
+    previewModal.hidden = true;
+    if (preview) preview.stopLoop();
+  }
+
+  document.getElementById('bp-preview-open').addEventListener('click', openPreview);
+  document.getElementById('preview-close').addEventListener('click', closePreview);
+  previewModal.addEventListener('click', function (e) {
+    if (e.target === previewModal) closePreview();
+  });
+  window.addEventListener('resize', function () {
+    if (!previewModal.hidden && preview) preview.resize();
+  });
+  window.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !previewModal.hidden) closePreview();
   });
 
   // ---- mission state ------------------------------------------------
@@ -111,32 +167,9 @@
     openBriefing(activeMission || RS.MissionEngine.firstUnfinished(currentEra));
   });
 
-  if (preview.available) {
-    orbit = new RS.render.CameraController(preview.camera, preview.canvas, {
-      target: [0, 0.4, 0], radius: 3, autoRotate: true
-    });
-    preview.startLoop(function (dt) { orbit.update(dt); });
-    window.addEventListener('resize', function () { preview.resize(); });
-    rebuildPreview();   // sync whatever the builder already holds
-  } else {
-    document.getElementById('preview-empty').textContent = '3D preview ต้องใช้ WebGL';
-  }
-
+  // keep the preview in sync only while its modal is on screen
   function schedulePreview() {
-    if (!preview || !preview.available || !orbit || previewRAF) return;
-    previewRAF = requestAnimationFrame(function () { previewRAF = 0; rebuildPreview(); });
-  }
-
-  function rebuildPreview() {
-    if (vehicleGroup) { RS.render.VehicleRenderer.disposeGroup(vehicleGroup); vehicleGroup = null; }
-    var empty = document.getElementById('preview-empty');
-    if (!vehicle.instances.length) { empty.hidden = false; return; }
-    empty.hidden = true;
-    vehicleGroup = RS.render.VehicleRenderer.build(vehicle);
-    preview.add(vehicleGroup);
-    flight.attach(vehicleGroup);
-    var b = vehicleGroup.userData.bounds;
-    orbit.frame(b.center, b.radius);
+    if (previewModal && !previewModal.hidden) refreshPreview();
   }
 
   // ---- toolbar ---------------------------------------------------------
@@ -189,32 +222,57 @@
     openBriefing(m);
   });
 
-  // ---- run the simulation contract ---------------------------------
+  // ---- LAUNCH — the cinematic transition from drafting board to launch pad
+  var transEl = document.getElementById('launch-transition');
+  var launching = false;
+
   document.getElementById('bp-run').addEventListener('click', function () {
+    if (launching) return;
+    launching = true;
     var model = vehicle.toPhysicsModel();
-    var result = RS.Physics.simulate(model, { dt: 0.02, sampleEvery: 0.25 });
-    lastSim = result;
-    flight.load(result);
 
-    renderSummary(result);
-    renderEvents(result.events);
-    renderDiagnostics(result.diagnostics);
-    drawTrace(result.trajectory);
+    transEl.hidden = false;
+    void transEl.offsetWidth;             // flush so the fade-in actually plays
+    transEl.classList.add('show');
 
-    watchBtn.disabled = !(result.ok && result.summary && result.summary.liftedOff &&
-      flightScreen && flightScreen.available);
+    // hold the "CALCULATING…" screen ~650ms, then resolve everything at once
+    setTimeout(function () {
+      try {
+        var result = RS.Physics.simulate(model, { dt: 0.02, sampleEvery: 0.25 });
+        lastSim = result;
 
-    // ---- mission evaluation --------------------------------------
-    if (activeMission) {
-      var mres = RS.MissionEngine.evaluate(activeMission, result, vehicle);
-      renderMissionResult(mres);
-      if (mres.passed && !RS.MissionEngine.isDone(activeMission.id)) {
-        RS.MissionEngine.markComplete(activeMission.id);
-        RS.EraManager.refreshUnlocks(RS.MissionEngine.completedCountByEra());
+        renderSummary(result);
+        renderEvents(result.events);
+        renderDiagnostics(result.diagnostics);
+        drawTrace(result.trajectory);
+
+        var cinematic = !!(result.ok && result.summary && result.summary.liftedOff &&
+          flightScreen && flightScreen.available);
+        watchBtn.disabled = !cinematic;
+
+        if (activeMission) {
+          var mres = RS.MissionEngine.evaluate(activeMission, result, vehicle);
+          renderMissionResult(mres);
+          if (mres.passed && !RS.MissionEngine.isDone(activeMission.id)) {
+            RS.MissionEngine.markComplete(activeMission.id);
+            RS.EraManager.refreshUnlocks(RS.MissionEngine.completedCountByEra());
+          }
+          console.log('[FIRE→ORBIT] mission "' + activeMission.title + '"', mres);
+        }
+        console.log('[FIRE→ORBIT] SimulationResult v' + result.contractVersion, result);
+
+        if (cinematic) {
+          flightScreen.open(lastSim, vehicle, activeMission, { cinematic: true });
+        } else {
+          document.querySelector('.bp-sim').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      } catch (err) {
+        console.error('[FIRE→ORBIT] launch failed', err);
       }
-      console.log('[FIRE→ORBIT] mission "' + activeMission.title + '"', mres);
-    }
-    console.log('[FIRE→ORBIT] SimulationResult v' + result.contractVersion, result);
+      transEl.classList.remove('show');
+      setTimeout(function () { transEl.hidden = true; }, 360);
+      launching = false;
+    }, 650);
   });
 
   function renderMissionResult(r) {
@@ -346,12 +404,14 @@
 
   // console handle
   window.FIRE_TO_ORBIT = {
-    vehicle: vehicle, builder: builder, preview: preview, flight: flight,
+    vehicle: vehicle, builder: builder, flight: flight,
     flightScreen: flightScreen, RS: RS,
+    get preview() { return preview; },
     get mission() { return activeMission; },
+    openPreview: openPreview,
     simulate: function () { return RS.Physics.simulate(vehicle.toPhysicsModel()); }
   };
-  console.log('%cFROM FIRE TO ORBIT — Reboot Phase 4 ready', 'color:#5fe0a8;font-weight:bold');
+  console.log('%cFROM FIRE TO ORBIT — Reboot Phase 5 ready', 'color:#5fe0a8;font-weight:bold');
   console.log('contract v' + RS.Physics.CONTRACT_VERSION +
     ' · try FIRE_TO_ORBIT.simulate()');
 })();

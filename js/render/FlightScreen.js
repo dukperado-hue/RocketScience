@@ -113,6 +113,14 @@
       self.btnRate.textContent = RATES[self._rateIdx] + '×';
     });
     this.btnCam.addEventListener('click', function () { self._cycleCam(); });
+
+    // cinematic reveal: after a launch the HUD/transport start hidden and
+    // fade in on the first real interaction (or a short auto-timeout).
+    var reveal = function () { self._revealChrome(); };
+    ['pointerdown', 'pointermove', 'wheel', 'keydown'].forEach(function (ev) {
+      self.root.addEventListener(ev, reveal, { passive: true });
+    });
+
     $('fs-close-x').addEventListener('click', function () { self.close(); });
     $('fs-close').addEventListener('click', function () { self.close(); });
     $('fs-replay').addEventListener('click', function () { self._restart(); });
@@ -255,12 +263,33 @@
     }));
   }
 
+  // ---- cinematic chrome reveal --------------------------------------
+  FlightScreen.prototype._revealChrome = function () {
+    if (!this._chromeHidden) return;
+    this._chromeHidden = false;
+    if (this._chromeTimer) { global.clearTimeout(this._chromeTimer); this._chromeTimer = 0; }
+    this.root.classList.remove('fs-cinematic');
+  };
+
   // ---- per-open setup --------------------------------------------------
-  FlightScreen.prototype.open = function (simResult, vehicle, mission) {
+  FlightScreen.prototype.open = function (simResult, vehicle, mission, opts) {
     if (!this.available) return;
+    opts = opts || {};
     this._mission = mission || null;
     this._vehicle = vehicle || null;
     this.root.hidden = false;
+
+    // cinematic entry: hide HUD + transport until the viewer interacts
+    if (this._chromeTimer) { global.clearTimeout(this._chromeTimer); this._chromeTimer = 0; }
+    if (opts.cinematic) {
+      this._chromeHidden = true;
+      this.root.classList.add('fs-cinematic');
+      var self = this;
+      this._chromeTimer = global.setTimeout(function () { self._revealChrome(); }, 3000);
+    } else {
+      this._chromeHidden = false;
+      this.root.classList.remove('fs-cinematic');
+    }
     this._buildScene();
     if (!this.scene.available) { this.root.hidden = true; return; }
 
@@ -327,6 +356,9 @@
   FlightScreen.prototype.close = function () {
     this.flight.pause();
     if (this._raf) { global.cancelAnimationFrame(this._raf); this._raf = 0; }
+    if (this._chromeTimer) { global.clearTimeout(this._chromeTimer); this._chromeTimer = 0; }
+    this.root.classList.remove('fs-cinematic');
+    this._chromeHidden = false;
     this.root.hidden = true;
   };
 
@@ -481,6 +513,7 @@
   // ---- Physics Autopsy report ------------------------------------
   FlightScreen.prototype._showAutopsy = function () {
     this._autopsyShown = true;
+    this._revealChrome();          // flight's over — bring the controls back
     this._renderVerdict();
     var s = this._summary || {};
     var cells = [

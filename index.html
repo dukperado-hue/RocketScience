@@ -4,14 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FROM FIRE TO ORBIT — Blueprint Builder</title>
-<meta name="description" content="เกมจำลองวิศวกรรมจรวด: ระบบเดียว ประกอบได้ทุกอย่างตั้งแต่โคมลอยถึงจรวดวงโคจร — Reboot Phase 4: The Mission & Story Engine">
+<meta name="description" content="เกมจำลองวิศวกรรมจรวด: ระบบเดียว ประกอบได้ทุกอย่างตั้งแต่โคมลอยถึงจรวดวงโคจร — Reboot Phase 5: UI Context Split & Cinematic Transitions">
 <meta name="theme-color" content="#0a1830">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/blueprint.css?v=7">
-<link rel="stylesheet" href="css/flight.css?v=7">
-<link rel="stylesheet" href="css/mission.css?v=7">
+<link rel="stylesheet" href="css/blueprint.css?v=8">
+<link rel="stylesheet" href="css/flight.css?v=8">
+<link rel="stylesheet" href="css/mission.css?v=8">
 </head>
 <body class="bp-body">
 
@@ -23,7 +23,7 @@
     <button type="button" class="bp-era-btn" data-era="1-bangfai">ยุค 1 · บั้งไฟ</button>
   </span>
   <button type="button" class="bp-mission-btn" id="bp-mission">📋 ภารกิจ</button>
-  <span class="bp-tagline">Reboot Phase 4 — The Mission &amp; Story Engine</span>
+  <span class="bp-tagline">Reboot Phase 5 — Drafting Board ⇄ Launch Pad</span>
 </header>
 
 <div class="bp-stage">
@@ -34,9 +34,10 @@
     <div id="bp-catalog" class="bp-rail"></div>
   </section>
 
-  <!-- CENTER · 2D orthographic blueprint grid + live 3D preview -->
+  <!-- CENTER · pure 2D orthographic drafting board -->
   <div class="bp-center">
     <section class="bp-canvas-wrap">
+      <div class="bp-mbar" id="bp-mission-bar" hidden></div>
       <canvas id="bp-canvas"></canvas>
       <div class="bp-legend">
         <div><i style="background:#c79a6a"></i>Structural</div>
@@ -50,14 +51,8 @@
         <button type="button" id="bp-zoom-in">+</button>
         <button type="button" id="bp-reset">รีเซ็ต</button>
         <button type="button" id="bp-sample">โคมตัวอย่าง</button>
+        <button type="button" id="bp-preview-open" class="bp-tool-accent">👁️ 3D พรีวิว</button>
       </div>
-    </section>
-
-    <section class="bp-preview">
-      <span class="bp-preview-tag">3D PREVIEW · จาก graph เดียวกัน</span>
-      <canvas id="preview-canvas"></canvas>
-      <div class="bp-preview-empty" id="preview-empty">ยังไม่มีชิ้นส่วน</div>
-      <span class="bp-preview-hint">ลากหมุน · สกรอลล์ซูม</span>
     </section>
   </div>
 
@@ -69,16 +64,14 @@
 
 </div>
 
-<div class="bp-mbar" id="bp-mission-bar" hidden></div>
-
 <p class="bp-status" id="bp-status">ลากชิ้นส่วนจากด้านซ้ายมาวางบนกริด</p>
 
 <!-- Physics runs in core/ and returns a locked SimulationResult; render just plays it back -->
 <section class="bp-sim">
   <div class="bp-sim-head">
     <h2>Simulation Contract · Physics → SimulationResult</h2>
-    <button type="button" class="bp-btn" id="bp-run" disabled>▶ จำลองการบิน</button>
-    <button type="button" class="bp-btn bp-btn-alt" id="bp-watch" disabled>🎬 ดูการบิน 3D</button>
+    <button type="button" class="bp-btn" id="bp-run" disabled>🚀 ปล่อยจรวด</button>
+    <button type="button" class="bp-btn bp-btn-alt" id="bp-watch" disabled>🎬 ดูรีเพลย์อีกครั้ง</button>
     <span class="bp-sim-note">core/ คำนวณ trajectory + events + diagnostics — render/ ไม่แตะฟิสิกส์</span>
   </div>
 
@@ -154,6 +147,31 @@
   </div>
 </div>
 
+<!-- ═══ 3D preview — floating modal, off the drafting board (Phase 5) ═══ -->
+<div class="pv-modal" id="preview-modal" hidden>
+  <div class="pv-panel">
+    <div class="pv-head">
+      <span class="pv-tag">3D PREVIEW · จาก assembly graph เดียวกัน</span>
+      <button type="button" class="pv-close" id="preview-close">ปิด ✕</button>
+    </div>
+    <div class="pv-canvas-wrap">
+      <canvas id="preview-canvas"></canvas>
+      <div class="bp-preview-empty" id="preview-empty" hidden>ยังไม่มีชิ้นส่วน</div>
+    </div>
+    <span class="pv-hint">ลากเพื่อหมุน · สกรอลล์เพื่อซูม · Esc เพื่อปิด</span>
+  </div>
+</div>
+
+<!-- ═══ Launch transition — 2D drafting board → 3D launch pad (Phase 5) ═══ -->
+<div class="lt-overlay" id="launch-transition" hidden>
+  <div class="lt-inner">
+    <div class="lt-scan"></div>
+    <p class="lt-label">CALCULATING TRAJECTORY<span class="lt-dots">…</span></p>
+    <div class="lt-bar"><i></i></div>
+    <p class="lt-sub">core/ Physics.simulate() → SimulationResult</p>
+  </div>
+</div>
+
 <!-- ═══ Mission briefing — the pre-assembly engineering brief (Phase 4) ═══ -->
 <div class="mb-overlay" id="mission-briefing" hidden>
   <div class="mb-panel">
@@ -192,33 +210,33 @@
 </div>
 
 <!-- ═══ core/ — ZERO dependency on render/ or Three.js ═══ -->
-<script src="js/core/PartsCatalog.js?v=7"></script>
-<script src="js/core/Vehicle.js?v=7"></script>
-<script src="js/core/SimulationEvents.js?v=7"></script>
-<script src="js/core/Diagnostics.js?v=7"></script>
-<script src="js/core/Physics.js?v=7"></script>
-<script src="js/core/Blueprint2D.js?v=7"></script>
+<script src="js/core/PartsCatalog.js?v=8"></script>
+<script src="js/core/Vehicle.js?v=8"></script>
+<script src="js/core/SimulationEvents.js?v=8"></script>
+<script src="js/core/Diagnostics.js?v=8"></script>
+<script src="js/core/Physics.js?v=8"></script>
+<script src="js/core/Blueprint2D.js?v=8"></script>
 
 <!-- ═══ data/ — pure content ═══ -->
-<script src="js/data/parts.js?v=7"></script>
-<script src="js/data/eras.js?v=7"></script>
-<script src="js/data/missions.js?v=7"></script>
+<script src="js/data/parts.js?v=8"></script>
+<script src="js/data/eras.js?v=8"></script>
+<script src="js/data/missions.js?v=8"></script>
 
 <!-- ═══ game/ — rules, consumes the contract ═══ -->
-<script src="js/game/EraManager.js?v=7"></script>
-<script src="js/game/MissionEngine.js?v=7"></script>
-<script src="js/game/MissionBriefing.js?v=7"></script>
+<script src="js/game/EraManager.js?v=8"></script>
+<script src="js/game/MissionEngine.js?v=8"></script>
+<script src="js/game/MissionBriefing.js?v=8"></script>
 
 <!-- ═══ vendor ═══ -->
-<script src="vendor/three/three.min.js?v=7"></script>
+<script src="vendor/three/three.min.js?v=8"></script>
 
 <!-- ═══ render/ — consumes data, needs Three.js ═══ -->
-<script src="js/render/Scene.js?v=7"></script>
-<script src="js/render/CameraController.js?v=7"></script>
-<script src="js/render/VehicleRenderer.js?v=7"></script>
-<script src="js/render/FlightRenderer.js?v=7"></script>
-<script src="js/render/FlightScreen.js?v=7"></script>
+<script src="js/render/Scene.js?v=8"></script>
+<script src="js/render/CameraController.js?v=8"></script>
+<script src="js/render/VehicleRenderer.js?v=8"></script>
+<script src="js/render/FlightRenderer.js?v=8"></script>
+<script src="js/render/FlightScreen.js?v=8"></script>
 
-<script src="js/app.js?v=7"></script>
+<script src="js/app.js?v=8"></script>
 </body>
 </html>
