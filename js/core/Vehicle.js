@@ -339,6 +339,7 @@
       stable: s.stable,
       // dynamic aero-stability inputs (flight axis, metres; +y = aft)
       rocketDominant: s.totalThrust > s.totalBuoyancy && s.totalThrust > 0,
+      buoyancyDominant: s.totalBuoyancy > s.totalThrust && s.totalBuoyancy > 0,
       comWetAxisM: s.comWetAxisM,
       comDryAxisM: s.comDryAxisM,
       copAxisM: s.copAxisM,

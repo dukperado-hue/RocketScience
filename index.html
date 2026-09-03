@@ -4,14 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FROM FIRE TO ORBIT — Blueprint Builder</title>
-<meta name="description" content="เกมจำลองวิศวกรรมจรวด: ระบบเดียว ประกอบได้ทุกอย่างตั้งแต่โคมลอยถึงจรวดวงโคจร — Reboot Phase 5: UI Context Split & Cinematic Transitions">
+<meta name="description" content="เกมจำลองวิศวกรรมจรวด: ระบบเดียว ประกอบได้ทุกอย่างตั้งแต่โคมลอยถึงจรวดวงโคจร — Reboot Phase 6: True Buoyancy, Wind & The Law (NOTAM)">
 <meta name="theme-color" content="#0a1830">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/blueprint.css?v=8">
-<link rel="stylesheet" href="css/flight.css?v=8">
-<link rel="stylesheet" href="css/mission.css?v=8">
+<link rel="stylesheet" href="css/blueprint.css?v=9">
+<link rel="stylesheet" href="css/flight.css?v=9">
+<link rel="stylesheet" href="css/mission.css?v=9">
 </head>
 <body class="bp-body">
 
@@ -23,7 +23,7 @@
     <button type="button" class="bp-era-btn" data-era="1-bangfai">ยุค 1 · บั้งไฟ</button>
   </span>
   <button type="button" class="bp-mission-btn" id="bp-mission">📋 ภารกิจ</button>
-  <span class="bp-tagline">Reboot Phase 5 — Drafting Board ⇄ Launch Pad</span>
+  <span class="bp-tagline">Reboot Phase 6 — True Buoyancy · Wind · NOTAM</span>
 </header>
 
 <div class="bp-stage">
@@ -109,7 +109,7 @@
       <div><span>ระดับความสูง</span><b id="fs-alt">0 m</b></div>
       <div><span>ความเร็ว</span><b id="fs-vel">0 m/s</b></div>
       <div><span>ความเร็วสูงสุด</span><b id="fs-vmax">0 m/s</b></div>
-      <div><span>ความเร่ง</span><b id="fs-acc">0 m/s²</b></div>
+      <div><span>ระยะลอยเบี่ยง</span><b id="fs-drift">0 m</b></div>
       <div><span>มวลยาน</span><b id="fs-mass">0 g</b></div>
       <div><span>แรงดันอากาศ q</span><b id="fs-q">0 Pa</b></div>
     </div>
@@ -210,33 +210,33 @@
 </div>
 
 <!-- ═══ core/ — ZERO dependency on render/ or Three.js ═══ -->
-<script src="js/core/PartsCatalog.js?v=8"></script>
-<script src="js/core/Vehicle.js?v=8"></script>
-<script src="js/core/SimulationEvents.js?v=8"></script>
-<script src="js/core/Diagnostics.js?v=8"></script>
-<script src="js/core/Physics.js?v=8"></script>
-<script src="js/core/Blueprint2D.js?v=8"></script>
+<script src="js/core/PartsCatalog.js?v=9"></script>
+<script src="js/core/Vehicle.js?v=9"></script>
+<script src="js/core/SimulationEvents.js?v=9"></script>
+<script src="js/core/Diagnostics.js?v=9"></script>
+<script src="js/core/Physics.js?v=9"></script>
+<script src="js/core/Blueprint2D.js?v=9"></script>
 
 <!-- ═══ data/ — pure content ═══ -->
-<script src="js/data/parts.js?v=8"></script>
-<script src="js/data/eras.js?v=8"></script>
-<script src="js/data/missions.js?v=8"></script>
+<script src="js/data/parts.js?v=9"></script>
+<script src="js/data/eras.js?v=9"></script>
+<script src="js/data/missions.js?v=9"></script>
 
 <!-- ═══ game/ — rules, consumes the contract ═══ -->
-<script src="js/game/EraManager.js?v=8"></script>
-<script src="js/game/MissionEngine.js?v=8"></script>
-<script src="js/game/MissionBriefing.js?v=8"></script>
+<script src="js/game/EraManager.js?v=9"></script>
+<script src="js/game/MissionEngine.js?v=9"></script>
+<script src="js/game/MissionBriefing.js?v=9"></script>
 
 <!-- ═══ vendor ═══ -->
-<script src="vendor/three/three.min.js?v=8"></script>
+<script src="vendor/three/three.min.js?v=9"></script>
 
 <!-- ═══ render/ — consumes data, needs Three.js ═══ -->
-<script src="js/render/Scene.js?v=8"></script>
-<script src="js/render/CameraController.js?v=8"></script>
-<script src="js/render/VehicleRenderer.js?v=8"></script>
-<script src="js/render/FlightRenderer.js?v=8"></script>
-<script src="js/render/FlightScreen.js?v=8"></script>
+<script src="js/render/Scene.js?v=9"></script>
+<script src="js/render/CameraController.js?v=9"></script>
+<script src="js/render/VehicleRenderer.js?v=9"></script>
+<script src="js/render/FlightRenderer.js?v=9"></script>
+<script src="js/render/FlightScreen.js?v=9"></script>
 
-<script src="js/app.js?v=8"></script>
+<script src="js/app.js?v=9"></script>
 </body>
 </html>

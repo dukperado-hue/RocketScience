@@ -63,7 +63,7 @@
     this.elVmax  = $('fs-vmax');
     this.elMass  = $('fs-mass');
     this.elQ     = $('fs-q');
-    this.elAcc   = $('fs-acc');
+    this.elDrift = $('fs-drift');
     this.elToast = $('fs-toast');
     this.elVerdict = $('fs-autopsy-verdict');
     this.btnPlay = $('fs-play');
@@ -186,7 +186,9 @@
     this.btnCam.textContent = CAM_LABEL[mode];
     if (mode === 'free') {
       var st = this.flight.sampleAt(this.flight.time);
-      this._freeTarget.set(0, (st ? st.altitude : 0) + 2, 0);
+      this._freeTarget.set(
+        (st && st.position) ? st.position.x : 0,
+        (st ? st.altitude : 0) + 2, 0);
     }
   };
 
@@ -341,7 +343,7 @@
     if (this.elVerdict) this.elVerdict.hidden = true;
     this._rateIdx = 1; this.flight.setRate(1); this.btnRate.textContent = '1×';
     this._camIdx = 1; this.btnCam.textContent = CAM_LABEL.chase;
-    this._theta = 0.7; this._phi = 1.12; this._zoom = 1;
+    this._theta = 0.7; this._phi = 1.12; this._zoom = 1; this._camX = 0;
     this._phaseText = 'อยู่บนแท่น';
     this._hideToast();
     this._buildMarkers(simResult.events || [], this.flight.duration);
@@ -455,13 +457,21 @@
     var mode = CAM_MODES[this._camIdx];
     var focus = alt + Math.min(this._vehH * 0.5, 2.5);
 
+    // smoothly follow the vehicle's horizontal drift so a wind-borne lantern
+    // stays centred instead of sliding off-frame
+    var tx = (st && st.position) ? st.position.x : 0;
+    if (this._camX == null) this._camX = 0;
+    // smooth follow during playback; snap when paused / scrubbing
+    this._camX += (tx - this._camX) * (this.flight.playing ? 0.06 : 0.5);
+    var cx = this._camX;
+
     if (mode === 'ground') {
-      // pinned near the pad, tilts up to track the vehicle as it shrinks away
+      // pinned near the pad, tilts up + pans to track the vehicle
       var gd = clamp(10 + alt * 0.02, 10, 70) * clamp(this._zoom, 0.6, 2);
       cam.position.set(
         gd * Math.sin(this._theta), 1.3, gd * Math.cos(this._theta)
       );
-      cam.lookAt(0, focus, 0);
+      cam.lookAt(cx, focus, 0);
 
     } else if (mode === 'free') {
       var r = clamp(40 * this._zoom, 4, 1800);
@@ -475,16 +485,15 @@
       cam.lookAt(tg);
 
     } else {
-      // chase: orbit the vehicle CoM, following it up (stays close so the
-      // vehicle keeps a readable on-screen size — the trail shows the climb)
+      // chase: orbit the vehicle CoM, following it up + across
       var cr = clamp((14 + alt * 0.015) * this._zoom, 6, 140);
       var csp = Math.sin(this._phi), ccp = Math.cos(this._phi);
       cam.position.set(
-        cr * csp * Math.sin(this._theta),
+        cx + cr * csp * Math.sin(this._theta),
         Math.max(focus + cr * ccp, 1.5),
         cr * csp * Math.cos(this._theta)
       );
-      cam.lookAt(0, focus, 0);
+      cam.lookAt(cx, focus, 0);
     }
   };
 
@@ -497,7 +506,11 @@
     this.elVmax.textContent = this._vmax.toFixed(1) + ' m/s';
     this.elMass.textContent = fmtMass(st.mass);
     this.elQ.textContent = Math.round(st.q) + ' Pa';
-    if (this.elAcc) this.elAcc.textContent = (st.acceleration >= 0 ? '+' : '') + st.acceleration.toFixed(1) + ' m/s²';
+    if (this.elDrift) {
+      var dx = (st.position && st.position.x) || 0;
+      this.elDrift.textContent = (Math.abs(dx) < 1 ? '0' : Math.round(dx)) + ' m' +
+        (dx > 1 ? ' →' : (dx < -1 ? ' ←' : ''));
+    }
     this.elPhase.textContent = this._phaseText || '—';
   };
 
@@ -519,9 +532,9 @@
     var cells = [
       ['ยอดสูง (Apogee)', fmtAlt(s.apogee || 0)],
       ['ความเร็วสูงสุด', (s.maxVelocity || 0).toFixed(1) + ' m/s'],
-      ['Max-Q', Math.round(s.maxQ || 0) + ' Pa'],
+      ['ระยะลอยเบี่ยง', Math.round(Math.abs(s.impactX || 0)) + ' m'],
+      ['ลอยไกลสุด', Math.round(s.maxDrift || 0) + ' m'],
       ['เวลาบินรวม', (s.flightTime || 0).toFixed(1) + ' s'],
-      ['เวลาถึงยอด', (s.apogeeTime || 0).toFixed(1) + ' s'],
       ['มวลเมื่อเชื้อเพลิงหมด', fmtMass(s.burnoutMass || 0)]
     ];
     $('fs-autopsy-stats').innerHTML = cells.map(function (c) {

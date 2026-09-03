@@ -101,6 +101,15 @@
           ' — ต้องการ ' + o.targetAltitude + ' ม.');
       }
 
+      if (o.flightTimeMin != null) {
+        var ft = sum.flightTime || 0;
+        var metFt = ft >= o.flightTimeMin;
+        res.objectives.push({ label: 'ลอยอยู่บนฟ้า ≥ ' + o.flightTimeMin + ' วิ',
+          met: metFt, actual: ft.toFixed(0) + ' วิ' });
+        if (!metFt) res.failReasons.push('ลอยอยู่แค่ ' + ft.toFixed(0) +
+          ' วิ — ต้องการ ' + o.flightTimeMin + ' วิ');
+      }
+
       if (o.surviveFlight) {
         var lost = has('LOSS_OF_CONTROL');
         var flew = !!sum.liftedOff && !!sim.ok;
@@ -143,6 +152,17 @@
             actual: got ? '✓ มี' : 'ยังไม่มี' });
           if (!got) res.failReasons.push('ต้องใช้ชิ้นส่วน “' + nm + '”');
         });
+      }
+
+      if (c.safeZoneRadius != null) {
+        var far = (sum.maxDrift != null) ? sum.maxDrift : Math.abs(sum.impactX || 0);
+        var within = far <= c.safeZoneRadius;
+        res.constraints.push({
+          label: 'อยู่ในเขต NOTAM (รัศมี ' + c.safeZoneRadius + ' ม.)',
+          met: within, actual: 'ลอยไปไกลสุด ' + Math.round(far) + ' ม.'
+        });
+        if (!within) res.failReasons.push('LEGAL VIOLATION — ยานลอยหลุดเขตห้ามบิน (' +
+          Math.round(far) + ' ม. > ' + c.safeZoneRadius + ' ม.)');
       }
 
       var allObj = res.objectives.every(function (r) { return r.met; });

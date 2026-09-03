@@ -2,11 +2,12 @@
  * FROM FIRE TO ORBIT
  * js/data/missions.js  ·  mission + story content (not engine)
  *
- * Mission schema (Phase 4):
+ * Mission schema (Phase 4 + 6):
  *   id, era, title, description        — identity + one-line story hook
  *   npc, npc_dialogue[]                — who briefs you, and what they say
- *   objectives { targetAltitude?, surviveFlight? }
- *   constraints { maxCost?, maxMass?, requiredParts?[] }
+ *   wind                              — ambient breeze, m/s (Phase 6)
+ *   objectives  { targetAltitude?, flightTimeMin?, surviveFlight? }
+ *   constraints { maxCost?, maxMass?, requiredParts?[], safeZoneRadius? }
  *   reward { score }
  *
  * MissionEngine.evaluate(mission, sim, vehicle) scores a finished flight +
@@ -35,17 +36,35 @@
     {
       id: 'e0-festival-height',
       era: '0-khomloy',
-      title: 'สูงเทียมดาว',
-      description: 'คืนยี่เป็ง ทั้งหมู่บ้านปล่อยโคม — น้องกะปิอยากให้โคมของเราขึ้นสูงที่สุด',
+      title: 'ลอยนาน',
+      description: 'คืนยี่เป็ง น้องกะปิอยากให้โคมของเราลอยอยู่บนฟ้านานที่สุด — ยิ่งเบา ยิ่งอยู่นาน',
       npc: 'kapi',
       npc_dialogue: [
         'คืนนี้ยี่เป็งแล้วพี่! เขาปล่อยโคมกันทั้งหมู่บ้านเลย',
-        'หนูอยากให้โคมเราขึ้นไปสูง ๆ ให้คนทั้งอำเภอเห็น',
-        'ซองใหญ่ขึ้น = ลอยดีขึ้น แต่ก็หนักและต้านลมมากขึ้นนะ ลองปรับดู'
+        'หนูอยากให้โคมเราลอยอยู่บนฟ้านาน ๆ ให้คนดูได้เยอะ ๆ',
+        'เคล็ดลับคือ "เบา" — ถ่วงน้ำหนักมากไป มันจะร่วงเร็ว',
+        'ขึ้นเกิน 80 เมตร แล้วลอยอยู่ให้ครบ 130 วินาที'
       ],
-      objectives: { targetAltitude: 250, surviveFlight: true },
-      constraints: { maxCost: 220 },
+      objectives: { targetAltitude: 80, flightTimeMin: 130 },
+      constraints: { maxCost: 120 },
       reward: { score: 700 }
+    },
+    {
+      id: 'e0-the-drifter',
+      era: '0-khomloy',
+      title: 'ลอยตามลม',
+      description: 'คืนลมแรง — มีเขตห้ามบิน (NOTAM) รอบลานบินเล็ก. ปล่อยโคมให้สูงพอ แต่ห้ามลอยหลุดเขต',
+      npc: 'kapi',
+      npc_dialogue: [
+        'พี่ คืนนี้ลมแรงกว่าปกติ ~2 เมตรต่อวินาที',
+        'แล้วก็... มีประกาศ NOTAM เขตห้ามบินรอบลานบินเล็ก รัศมี 230 เมตร',
+        'ถ้าโคมเบาไป ลมจะพัดมันลอยหลุดเขต = ผิดกฎการบิน มิชชันล้มทันที',
+        'ต้องถ่วงน้ำหนักด้วย "ป้ายอธิษฐาน" ให้พอดี — ขึ้นเกิน 50 ม. แต่ลงภายในรัศมี 230 ม.'
+      ],
+      wind: 2,
+      objectives: { targetAltitude: 50, surviveFlight: true },
+      constraints: { safeZoneRadius: 230, maxCost: 160 },
+      reward: { score: 950 }
     },
 
     // ---- ERA 1 · Bang Fai --------------------------------------------
@@ -69,14 +88,14 @@
       id: 'e1-reach-for-sky',
       era: '1-bangfai',
       title: 'บั้งไฟงานบุญ',
-      description: 'งานบุญบั้งไฟ พี่ช่างท้าให้ส่งบั้งไฟขึ้นเกิน 380 เมตร โดยงบไม่บานปลายและกระบอกไม่ฉีก',
+      description: 'งานบุญบั้งไฟ พี่ช่างท้าให้ส่งบั้งไฟขึ้นเกิน 320 เมตร โดยงบไม่บานปลายและกระบอกไม่ฉีก',
       npc: 'pchang',
       npc_dialogue: [
         'งานบุญบั้งไฟปีนี้ เราส่งลูกใหญ่',
-        'เกิน 380 เมตรถึงจะได้หน้าหมู่บ้าน — แต่ไม้ไผ่รับแรงดันอากาศได้จำกัดนะ',
+        'เกิน 320 เมตรถึงจะได้หน้าหมู่บ้าน — แต่ไม้ไผ่รับแรงดันอากาศได้จำกัดนะ',
         'อย่าเร่งเครื่องจนกระบอกฉีก และงบก็มีจำกัด — วิศวกรที่ดีทำได้ด้วยของน้อย'
       ],
-      objectives: { targetAltitude: 380, surviveFlight: true },
+      objectives: { targetAltitude: 320, surviveFlight: true },
       constraints: { maxCost: 260, requiredParts: ['motor_blackpowder', 'fin_wood'] },
       reward: { score: 1100 }
     }

@@ -37,6 +37,8 @@
   /** @param {Object} simResult  from RS.Physics.simulate() */
   FlightRenderer.prototype.load = function (simResult) {
     this.sim = simResult || null;
+    // a hot-air lantern "dances" — add a procedural sway on top of the trajectory
+    this.buoyant = !!(simResult && simResult.mode === 'buoyancy');
     this.trajectory = (simResult && simResult.trajectory) || [];
     this.events = ((simResult && simResult.events) || []).slice()
       .sort(function (a, b) { return a.time - b.time; });
@@ -128,11 +130,21 @@
     this.group.position.set(state.position.x, state.position.y, state.position.z);
     if (this.group.rotation && state.orientation) {
       var deg = Math.PI / 180;
+      var pitch = state.orientation.pitch,
+          yaw = state.orientation.yaw,
+          roll = state.orientation.roll;
+
+      // hot-air lantern: a slow, layered sinusoidal sway — it drifts and dances
+      if (this.buoyant && !state.tumbling) {
+        var t = state.time || 0;
+        pitch += Math.sin(t * 0.63) * 4.5 + Math.sin(t * 1.9 + 1.1) * 1.8;
+        roll  += Math.sin(t * 0.47 + 0.6) * 6.0 + Math.sin(t * 2.3) * 2.2;
+        yaw   += Math.sin(t * 0.31) * 9.0;
+      }
+
       // pitch 90° == nose up (our authoring default) -> zero rotation about X
       this.group.rotation.set(
-        (90 - state.orientation.pitch) * deg,
-        state.orientation.yaw * deg,
-        state.orientation.roll * deg
+        (90 - pitch) * deg, yaw * deg, roll * deg
       );
     }
   };

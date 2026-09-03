@@ -136,6 +136,21 @@
       else add('landing', FAIL, 'ตกกระแทก', iDetail);
     }
 
+    // --- 7 · NOTAM / restricted airspace (the law) -------------------
+    //  A drifting Khom Loy that leaves the cleared radius is not a "whoops",
+    //  it is an aviation-safety violation and the mission is void.
+    var szr = sim && sim.meta && sim.meta.safeZoneRadius;
+    if (szr != null && isFinite(szr)) {
+      var far = (sum.maxDrift != null) ? sum.maxDrift : Math.abs(sum.impactX || 0);
+      var nDetail = 'ลอยไปไกลสุด ' + Math.round(far) + ' ม. · ลงที่ ' +
+        Math.round(Math.abs(sum.impactX || 0)) + ' ม. · เขต ' + szr + ' ม.';
+      if (far > szr) {
+        add('notam', FAIL, 'LEGAL VIOLATION: ละเมิดเขตห้ามบิน (NOTAM Breach)', nDetail);
+      } else {
+        add('notam', OK, 'อยู่ในเขตปลอดภัย (NOTAM)', nDetail);
+      }
+    }
+
     return out;
   }
 

@@ -170,6 +170,10 @@
       rows.push({ icon: '🎯', label: 'ระดับความสูง ≥ ' + o.targetAltitude + ' ม.',
         sub: 'ยอดสูงสุด (apogee) ต้องถึงเป้า' });
     }
+    if (o.flightTimeMin != null) {
+      rows.push({ icon: '⏱️', label: 'ลอยอยู่บนฟ้า ≥ ' + o.flightTimeMin + ' วินาที',
+        sub: 'ยิ่งเบา ยิ่งลอยนาน' });
+    }
     if (o.surviveFlight) {
       rows.push({ icon: '🛡️', label: 'บินได้โดยไม่เสียการควบคุม',
         sub: 'ห้ามตีลังกา / โครงสร้างห้ามพัง' });
@@ -178,6 +182,14 @@
   }
   function constraintRows(m) {
     var c = m.constraints || {}, rows = [];
+    if (m.wind) {
+      rows.push({ icon: '🌬️', label: 'ลม ~' + m.wind + ' m/s',
+        sub: 'ยานพื้นที่หน้าตัดมาก มวลน้อย จะถูกลมพัดลอย' });
+    }
+    if (c.safeZoneRadius != null) {
+      rows.push({ icon: '🚫', label: 'เขตห้ามบิน NOTAM — รัศมี ' + c.safeZoneRadius + ' ม.',
+        sub: 'ลอยหลุดเขต = LEGAL VIOLATION → มิชชันล้ม' });
+    }
     if (c.maxCost != null) {
       rows.push({ icon: '💰', label: 'งบประมาณ ≤ ' + c.maxCost + ' ฿',
         sub: 'ราคารวมชิ้นส่วนทั้งยาน' });

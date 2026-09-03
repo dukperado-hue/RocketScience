@@ -139,7 +139,10 @@
       return '<span class="bp-mbar-chip' + (met ? ' met' : '') + '">' + txt + '</span>';
     };
     if (o.targetAltitude != null) chips.push(chip(false, '🎯 ≥ ' + o.targetAltitude + ' ม.'));
+    if (o.flightTimeMin != null) chips.push(chip(false, '⏱️ ≥ ' + o.flightTimeMin + ' วิ'));
     if (o.surviveFlight) chips.push(chip(false, '🛡️ ไม่เสียการควบคุม'));
+    if (m.wind) chips.push(chip(true, '🌬️ ลม ' + m.wind + ' m/s'));
+    if (c.safeZoneRadius != null) chips.push(chip(false, '🚫 NOTAM ' + c.safeZoneRadius + ' ม.'));
     if (c.maxCost != null) chips.push(chip(stats.cost <= c.maxCost, '💰 ' + stats.cost + ' / ' + c.maxCost + ' ฿'));
     if (c.maxMass != null) {
       var okM = stats.totalMass <= c.maxMass + 1e-9;
@@ -212,7 +215,7 @@
     currentEra = eraId;
     builder.setEra(eraId);
     setEraTag(eraId);
-    sampleBtn.textContent = eraId === '1-bangfai' ? 'บั้งไฟตัวอย่าง' : 'โคมตัวอย่าง';
+    syncEraLabels(eraId);
     Array.prototype.forEach.call(this.children, function (c) {
       c.classList.toggle('is-on', c === btn);
     });
@@ -238,7 +241,13 @@
     // hold the "CALCULATING…" screen ~650ms, then resolve everything at once
     setTimeout(function () {
       try {
-        var result = RS.Physics.simulate(model, { dt: 0.02, sampleEvery: 0.25 });
+        var simOpts = { dt: 0.02, sampleEvery: 0.25 };
+        if (activeMission) {
+          if (activeMission.wind != null) simOpts.wind = activeMission.wind;
+          var szr = activeMission.constraints && activeMission.constraints.safeZoneRadius;
+          if (szr != null) simOpts.safeZoneRadius = szr;
+        }
+        var result = RS.Physics.simulate(model, simOpts);
         lastSim = result;
 
         renderSummary(result);
@@ -302,9 +311,9 @@
     var s = r.summary;
     var cells = [
       ['ยอดสูง (apogee)', fmt(s.apogee) + ' m'],
-      ['เวลาถึงยอด', s.apogeeTime + ' s'],
       ['ความเร็วสูงสุด', s.maxVelocity + ' m/s'],
-      ['MaxQ', s.maxQ + ' Pa'],
+      ['ระยะลอยเบี่ยง', Math.round(Math.abs(s.impactX || 0)) + ' m'],
+      ['ลอยไกลสุด', Math.round(s.maxDrift || 0) + ' m'],
       ['เวลาบินรวม', s.flightTime + ' s'],
       ['มวลเชื้อเพลิงหมด', (s.burnoutMass * 1000).toFixed(0) + ' g']
     ];
@@ -389,10 +398,16 @@
   }
 
   // ---- sync the era UI to the persisted era ----------------------
+  var runBtn = document.getElementById('bp-run');
+  function syncEraLabels(eraId) {
+    var bf = eraId === '1-bangfai';
+    sampleBtn.textContent = bf ? 'บั้งไฟตัวอย่าง' : 'โคมตัวอย่าง';
+    runBtn.textContent = bf ? '🚀 ปล่อยบั้งไฟ' : '🏮 ปล่อยโคม';
+  }
   Array.prototype.forEach.call(document.querySelectorAll('.bp-era-btn'), function (b) {
     b.classList.toggle('is-on', b.dataset.era === currentEra);
   });
-  sampleBtn.textContent = currentEra === '1-bangfai' ? 'บั้งไฟตัวอย่าง' : 'โคมตัวอย่าง';
+  syncEraLabels(currentEra);
 
   // ---- open the game on a mission briefing -------------------------
   (function bootMission() {
@@ -411,7 +426,7 @@
     openPreview: openPreview,
     simulate: function () { return RS.Physics.simulate(vehicle.toPhysicsModel()); }
   };
-  console.log('%cFROM FIRE TO ORBIT — Reboot Phase 5 ready', 'color:#5fe0a8;font-weight:bold');
+  console.log('%cFROM FIRE TO ORBIT — Reboot Phase 6 ready', 'color:#5fe0a8;font-weight:bold');
   console.log('contract v' + RS.Physics.CONTRACT_VERSION +
     ' · try FIRE_TO_ORBIT.simulate()');
 })();

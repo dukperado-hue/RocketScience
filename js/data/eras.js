@@ -14,7 +14,7 @@
       order: 0,
       name: 'ยุค 0 · โคมลอย',
       tagline: 'อากาศร้อนเบากว่าอากาศเย็น — หลักการลอยที่เก่าแก่ที่สุด',
-      partIds: ['fuel_wax', 'frame_bamboo', 'cover_paper'],
+      partIds: ['fuel_wax', 'frame_bamboo', 'cover_paper', 'payload_tag'],
       // how this era becomes available
       unlock: { type: 'default' },
       // simple physical envelope the era lives in (for UI hints)

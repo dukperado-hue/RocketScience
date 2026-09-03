@@ -11,11 +11,14 @@
  *
  * NO Three.js. NO DOM. NO game state. Runs unmodified in Node.
  *
- * Force model (vertical axis only, for now):
- *   F_net = thrust(t) + buoyancy(t)  −  m(t)·g(y)  −  drag(y, v)
- *   drag  = 0.5 · ρ(y) · (Σ Cd·A) · v·|v|
- *   ρ(y)  = ρ0 · exp(−y / H)            (isothermal approximation)
- *   g(y)  = g0 · (Re / (Re + y))²
+ * Force model — two vertical regimes + a shared crosswind axis:
+ *   ROCKET/BALLISTIC : F_net = thrust(t) − m(t)·g(y) − drag(y, v)
+ *   HOT-AIR BUOYANCY : rises on a whisper of excess lift, hard-capped rise rate;
+ *                      it FLOATS, it does not accelerate like a motor.
+ *   CROSSWIND (X)    : drag on airspeed (vx − wind); a lantern (huge A / tiny m)
+ *                      is swept to wind speed almost instantly and just drifts.
+ *   drag  = 0.5 · ρ(y) · (Σ Cd·A) · u·|u|
+ *   ρ(y)  = ρ0 · exp(−y / H) ;  g(y) = g0 · (Re / (Re + y))²
  * ===========================================================================*/
 (function (global) {
   'use strict';
@@ -25,13 +28,19 @@
   var RHO0 = 1.225;        // kg/m^3 at sea level
   var SCALE_H = 8500;      // m, density scale height
 
-  var CONTRACT_VERSION = '1.2.0';
+  var CONTRACT_VERSION = '1.3.0';
 
   // --- dynamic aero-instability ("the tumble") ---------------------------------
   var TUMBLE_SPEED_MIN = 12;      // m/s — below this, too slow to weathercock
   var TUMBLE_DRAG_MULT = 3.5;     // broadside Cd·A blow-up once tumbling
   var TUMBLE_THRUST_FRAC = 0.30;  // thrust still fires but points every which way
   var TUMBLE_CLIMB_BLEED = 2.6;   // per-second bleed applied to UPWARD velocity only
+
+  // --- hot-air buoyancy: a lantern floats, it never "launches" ----------------
+  var BUOY_RISE_MAX = 1.5;        // m/s — the graceful ceiling on rise rate
+  var BUOY_SINK_MAX = 2.4;        // m/s — gentle descent as the flame dies
+  var BUOY_ACCEL_UP = 0.85;       // m/s^2 — how briskly it may gain rise speed
+  var BUOY_ACCEL_DOWN = 3.2;      // m/s^2
 
   /**
    * @typedef {Object} TrajectoryState
@@ -49,6 +58,7 @@
    * @property {number} drag                       N
    * @property {number} propRemaining              kg
    * @property {boolean} tumbling                  true once the stack departs controlled flight
+   * @property {number} drift                      == position.x, signed horizontal drift (m)
    *
    * @typedef {Object} FlightEvent
    * @property {number} time
@@ -64,9 +74,11 @@
    * @property {TrajectoryState[]} trajectory
    * @property {FlightEvent[]}     events
    * @property {{apogee:number,maxVelocity:number,maxQ:number,flightTime:number,
-   *            apogeeTime:number,burnoutMass:number,liftedOff:boolean}} summary
+   *            apogeeTime:number,burnoutMass:number,liftedOff:boolean,
+   *            impactX:number,maxDrift:number,mode:string}} summary
+   * @property {'rocket'|'buoyancy'|'mixed'|'none'} mode
    * @property {{id:string,status:'OK'|'WARN'|'FAIL',message:string,detail:string}[]} diagnostics
-   * @property {{dt:number,maxTime:number,sampleEvery:number}} meta
+   * @property {{dt:number,maxTime:number,sampleEvery:number,wind:number,safeZoneRadius:(number|null)}} meta
    */
 
   // ---------------------------------------------------------------------------
@@ -112,12 +124,14 @@
   }
 
   /**
-   * One integration step (semi-implicit Euler).
-   * @param {{t:number,y:number,v:number,propRemaining:number}} state
+   * One integration step (semi-implicit Euler on Y, stable implicit relax on X).
+   * @param {{t:number,y:number,v:number,x:number,vx:number,propRemaining:number,tumbling:boolean}} state
    * @param {Object} model  Vehicle.toPhysicsModel() output
    * @param {number} dt
+   * @param {number} wind   ambient horizontal wind, m/s (+x)
    */
-  function step(state, model, dt) {
+  function step(state, model, dt, wind) {
+    wind = wind || 0;
     var g = gravity(state.y);
     var rho = airDensity(state.y);
 
@@ -137,49 +151,68 @@
     // lift for the same temperature delta, so a lantern naturally levels off.
     buoyancy *= rho / RHO0;
 
-    var v, y, a, drag, onPad = false;
+    var v, y, a, drag;
+    var buoyMode = !!model.buoyancyDominant;
 
     if (state.tumbling) {
       // ---- AERODYNAMICALLY OUT OF CONTROL --------------------------------
-      // The stack has pitched broadside to the airstream: reference area and
-      // Cd balloon, the nozzle no longer points along the velocity vector, and
-      // whatever thrust is left just spins it. Model it as a hard velocity
-      // bleed under gravity + a fraction of misdirected thrust. Deterministic,
-      // never stiff — a tumble should always arc over and come down.
+      // Broadside to the airstream: Cd·A balloons, the nozzle points every
+      // which way. A hard velocity bleed under gravity + misdirected thrust —
+      // deterministic, never stiff. A tumble always arcs over and comes down.
       drag = 0.5 * rho * model.dragArea * TUMBLE_DRAG_MULT * state.v * Math.abs(state.v);
-      var aThr = (thrust * TUMBLE_THRUST_FRAC) / mass;
-      a = aThr - g - drag / mass;
+      a = (thrust * TUMBLE_THRUST_FRAC) / mass - g - drag / mass;
       v = state.v + a * dt;
-      // energy poured into the tumble comes out of the climb — bleed only while
-      // still going up, so a falling wreck still settles at a drag terminal.
       if (v > 2) v *= (1 - Math.min(0.4, TUMBLE_CLIMB_BLEED * dt));
       y = state.y + v * dt;
-      if (y <= 0) { y = 0; if (v < 0) { v = 0; onPad = true; } }
-      return {
-        t: state.t + dt, y: y, v: v, propRemaining: propRemaining,
-        a: clampA(a), mass: mass, thrust: thrust, buoyancy: buoyancy, drag: drag,
-        q: 0.5 * rho * v * v, g: g, rho: rho, onPad: onPad, tumbling: true
-      };
+
+    } else if (buoyMode) {
+      // ---- HOT-AIR BUOYANCY: it floats, it never launches ----------------
+      // Net lift is a whisper above weight when hot, negative as it cools.
+      // Cap both the acceleration and the rise/sink rate so a lantern eases
+      // upward at ~1 m/s and drifts — it is poetry, not propulsion.
+      drag = 0.5 * rho * model.dragArea * state.v * Math.abs(state.v);
+      var netUp = buoyancy - mass * g;
+      a = (netUp - drag) / mass;
+      a = clamp(a, -BUOY_ACCEL_DOWN, BUOY_ACCEL_UP);
+      v = clamp(state.v + a * dt, -BUOY_SINK_MAX, BUOY_RISE_MAX);
+      y = state.y + v * dt;
+
+    } else {
+      // ---- ROCKET / BALLISTIC -----------------------------------------
+      drag = 0.5 * rho * model.dragArea * state.v * Math.abs(state.v);
+      a = clampA((thrust + buoyancy - mass * g - drag) / mass);
+      v = state.v + a * dt;
+      y = state.y + v * dt;
     }
 
-    drag = 0.5 * rho * model.dragArea * state.v * Math.abs(state.v);
-    var fNet = thrust + buoyancy - mass * g - drag;
-    a = clampA(fNet / mass);
-
-    v = state.v + a * dt;
-    y = state.y + v * dt;
-
+    var onPad = false;
     if (y <= 0) { y = 0; if (v < 0) { v = 0; onPad = true; } }
 
+    // ---- SHARED X-AXIS · crosswind drift --------------------------------
+    // dvx/dt = -k·(vx-wind)·|vx-wind|.  Solve it implicitly so it is stable
+    // even for a lantern whose k is enormous — it just snaps vx toward wind.
+    var grounded = state.y <= 1e-3 && y <= 1e-3;
+    var vx, x;
+    if (grounded) {
+      vx = 0; x = state.x;
+    } else {
+      var airX = state.vx - wind;
+      var kx = 0.5 * rho * model.dragArea * (state.tumbling ? TUMBLE_DRAG_MULT : 1) / mass;
+      vx = wind + airX / (1 + kx * Math.abs(airX) * dt);
+      x = state.x + vx * dt;
+    }
+
     return {
-      t: state.t + dt, y: y, v: v, propRemaining: propRemaining,
-      a: a, mass: mass, thrust: thrust, buoyancy: buoyancy, drag: drag,
-      q: 0.5 * rho * v * v, g: g, rho: rho, onPad: onPad, tumbling: false
+      t: state.t + dt, y: y, v: v, x: x, vx: vx, propRemaining: propRemaining,
+      a: clampA(a), mass: mass, thrust: thrust, buoyancy: buoyancy, drag: drag,
+      q: 0.5 * rho * v * v, g: g, rho: rho, onPad: onPad,
+      tumbling: !!state.tumbling
     };
   }
 
   // A crash never needs 40-g fidelity; clamp keeps the integrator well-behaved.
   function clampA(a) { return a < -400 ? -400 : (a > 400 ? 400 : a); }
+  function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
   // ---------------------------------------------------------------------------
   //  simulate() — produces the locked SimulationResult
@@ -191,6 +224,8 @@
    * @param {number} [opts.dt=0.02]
    * @param {number} [opts.maxTime=1800]
    * @param {number} [opts.sampleEvery=0.1]
+   * @param {number} [opts.wind=0]            ambient horizontal breeze, m/s
+   * @param {number} [opts.safeZoneRadius]    NOTAM radius (m); drift past it = LEGAL VIOLATION
    * @returns {SimulationResult}
    */
   function simulate(model, opts) {
@@ -198,7 +233,14 @@
     var dt = opts.dt || 0.02;
     var maxTime = opts.maxTime || 1800;
     var sampleEvery = opts.sampleEvery || 0.1;
-    var meta = { dt: dt, maxTime: maxTime, sampleEvery: sampleEvery };
+    var wind = +opts.wind || 0;
+    var safeZoneRadius = (opts.safeZoneRadius != null && isFinite(opts.safeZoneRadius))
+      ? +opts.safeZoneRadius : null;
+    var meta = {
+      dt: dt, maxTime: maxTime, sampleEvery: sampleEvery,
+      wind: wind, safeZoneRadius: safeZoneRadius
+    };
+    var motorMode = (model && model.stats && model.stats.motorMode) || 'none';
 
     if (!model || !model.valid) {
       var reason = model
@@ -206,30 +248,36 @@
         : 'ไม่มีโมเดลยาน';
       return finalize({
         ok: false, reason: reason, trajectory: [], events: [],
-        summary: emptySummary(), meta: meta
+        summary: emptySummary(), meta: meta, mode: motorMode
       }, model);
     }
 
-    var state = { t: 0, y: 0, v: 0, propRemaining: model.propellantMass, tumbling: false };
+    var state = {
+      t: 0, y: 0, v: 0, x: 0, vx: 0,
+      propRemaining: model.propellantMass, tumbling: false
+    };
     var trajectory = [];
     var apogee = 0, apogeeTime = 0, maxV = 0, maxQ = 0;
+    var finalX = 0, maxDrift = 0;
     var liftedOff = false, nextSample = 0;
     var tumbleT = Infinity;                    // time the tumble started
     var canTumble = !!model.rocketDominant && isFinite(model.copAxisM);
     var reason = 'สิ้นสุดการบิน';
 
     // seed t=0 state so playback starts exactly on the pad
-    trajectory.push(toState({ t: 0, y: 0, v: 0, a: 0, mass: model.totalMass,
+    trajectory.push(toState({ t: 0, y: 0, v: 0, x: 0, vx: 0, a: 0, mass: model.totalMass,
       thrust: 0, buoyancy: 0, drag: 0, q: 0, propRemaining: model.propellantMass }, tumbleT));
     nextSample += sampleEvery;
 
     while (state.t < maxTime) {
-      var d = step(state, model, dt);
+      var d = step(state, model, dt, wind);
 
       if (d.y > 0.02) liftedOff = true;
       if (d.y > apogee) { apogee = d.y; apogeeTime = d.t; }
       if (Math.abs(d.v) > maxV) maxV = Math.abs(d.v);
       if (d.q > maxQ) maxQ = d.q;
+      finalX = d.x;
+      if (Math.abs(d.x) > maxDrift) maxDrift = Math.abs(d.x);
 
       // --- dynamic aero-stability: CoM slides forward as propellant burns.
       //     Once moving fast, if the (interpolated) CoM passes the CoP, the
@@ -254,8 +302,8 @@
       }
 
       state = {
-        t: d.t, y: d.y, v: d.v, propRemaining: d.propRemaining,
-        tumbling: state.tumbling
+        t: d.t, y: d.y, v: d.v, x: d.x, vx: d.vx,
+        propRemaining: d.propRemaining, tumbling: state.tumbling
       };
 
       if (liftedOff && d.onPad) {
@@ -278,12 +326,15 @@
       flightTime: round(state.t, 2),
       apogeeTime: round(apogeeTime, 2),
       burnoutMass: round(model.dryMass + state.propRemaining, 4),
-      liftedOff: liftedOff
+      liftedOff: liftedOff,
+      impactX: round(finalX, 2),
+      maxDrift: round(maxDrift, 2),
+      mode: motorMode
     };
 
     return finalize({
       ok: true, reason: reason, trajectory: trajectory, events: [],
-      summary: summary, meta: meta
+      summary: summary, meta: meta, mode: motorMode
     }, model);
   }
 
@@ -310,9 +361,11 @@
       o.yaw = Math.sin(tt * 5.5) * 45 + tt * 70;
       o.roll = tt * 260;
     }
+    var dx = round(d.x || 0, 3);
     return {
       time: round(d.t, 3),
-      position: { x: 0, y: round(d.y, 3), z: 0 },
+      position: { x: dx, y: round(d.y, 3), z: 0 },
+      drift: dx,
       velocity: round(d.v, 3),
       speed: round(Math.abs(d.v), 3),
       acceleration: round(d.a, 3),
@@ -331,7 +384,8 @@
   function emptySummary() {
     return {
       apogee: 0, maxVelocity: 0, maxQ: 0, flightTime: 0,
-      apogeeTime: 0, burnoutMass: 0, liftedOff: false
+      apogeeTime: 0, burnoutMass: 0, liftedOff: false,
+      impactX: 0, maxDrift: 0, mode: 'none'
     };
   }
 

@@ -34,14 +34,16 @@
       propulsion: {
         mode: 'buoyancy',
         thrust: 3.6,          // N peak hot-air buoyancy once the envelope is hot
-        burnTime: 200,        // ~3.5 min of usable flame
+        burnTime: 55,         // s of usable flame before it cools & descends
         specificImpulse: 0,   // buoyancy: no exhaust
-        propellantMass: 0.012,// 12 g of wax burns off
-        spoolTime: 20         // s to heat the air column to full lift
+        propellantMass: 0.008,
+        spoolTime: 10         // s to heat the air column to full lift
       },
-      // the wax cradle hangs UNDER the bamboo hoop, so its live node points up
+      // the wax cradle hangs UNDER the bamboo hoop; live node up (frame or a
+      // second wax for more heat) and a live node down (a wish-tag / ballast)
       attachNodes: [
-        { id: 'top', dx: 0.5, dy: 0, type: NODE.STACK, accepts: ['Structural'] }
+        { id: 'top',    dx: 0.5, dy: 0, type: NODE.STACK, accepts: ['Structural', 'Propulsion'] },
+        { id: 'bottom', dx: 0.5, dy: 1, type: NODE.STACK, accepts: ['Payload', 'Propulsion'] }
       ]
     },
     {
@@ -75,6 +77,23 @@
       structural: { maxDynamicPressure: 45 },    // Pa — thin sa paper tears easily
       attachNodes: [
         { id: 'bottom', dx: 0.5, dy: 2, type: NODE.STACK, accepts: ['Structural'] }
+      ]
+    },
+    {
+      id: 'payload_tag',
+      name: 'ป้ายอธิษฐาน',
+      category: C.PAYLOAD,
+      icon: '🏷️',
+      era: '0-khomloy',
+      blurb: 'ป้ายกระดาษเขียนคำอธิษฐาน ผูกใต้โคม — ถ่วงน้ำหนักให้โคมลอยช้าลง เตี้ยลง ลงเร็วขึ้น ไม่หลุดเขต',
+      mass: 0.026,
+      cost: 4,
+      size: { w: 1, h: 1 },
+      aerodynamics: { dragCoefficient: 0.5, crossSectionArea: 0.004 },
+      structural: { maxDynamicPressure: 300 },
+      attachNodes: [
+        { id: 'top', dx: 0.5, dy: 0, type: NODE.STACK, accepts: ['Propulsion', 'Payload'] },
+        { id: 'bottom', dx: 0.5, dy: 1, type: NODE.STACK, accepts: ['Payload'] }
       ]
     }
   ];
