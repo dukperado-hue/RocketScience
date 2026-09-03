@@ -185,7 +185,16 @@
   function buildSample(eraId) {
     builder.reset();
     var C = RS.PartsCatalog;
-    if (eraId === '1-bangfai') {
+    if (eraId === '1p5-fireworks') {
+      // tube on the pad · lift charge inside · shell on top. spoolTime 0 —
+      // it will not creep, it will POP the instant it is lit.
+      var tube = vehicle.addInstance(C.get('fw_mortar_tube'), 0, 2, []);
+      var charge = vehicle.addInstance(C.get('fw_lift_charge'), 0, 1,
+        [{ node: 'bottom', toIid: tube.iid, toNode: 'top' }]);
+      vehicle.addInstance(C.get('fw_shell_peony'), 0, 0,
+        [{ node: 'bottom', toIid: charge.iid, toNode: 'top' }]);
+      builder._afterEdit('ครกดอกไม้ไฟตัวอย่าง — กด ▶ แล้วดูมันกระชากขึ้นทันทีที่จุด (อิมพัลส์เดียว)');
+    } else if (eraId === '1-bangfai') {
       // a DELIBERATELY finless stack — the fastest way to see the tumble.
       // Add fin_wood on the motor's radial nodes to tame it.
       var motor = vehicle.addInstance(C.get('motor_blackpowder'), 0, 4, []);
@@ -400,9 +409,16 @@
   // ---- sync the era UI to the persisted era ----------------------
   var runBtn = document.getElementById('bp-run');
   function syncEraLabels(eraId) {
-    var bf = eraId === '1-bangfai';
-    sampleBtn.textContent = bf ? 'บั้งไฟตัวอย่าง' : 'โคมตัวอย่าง';
-    runBtn.textContent = bf ? '🚀 ปล่อยบั้งไฟ' : '🏮 ปล่อยโคม';
+    if (eraId === '1p5-fireworks') {
+      sampleBtn.textContent = 'ครกตัวอย่าง';
+      runBtn.textContent = '🎆 จุดดอกไม้ไฟ';
+    } else if (eraId === '1-bangfai') {
+      sampleBtn.textContent = 'บั้งไฟตัวอย่าง';
+      runBtn.textContent = '🚀 ปล่อยบั้งไฟ';
+    } else {
+      sampleBtn.textContent = 'โคมตัวอย่าง';
+      runBtn.textContent = '🏮 ปล่อยโคม';
+    }
   }
   Array.prototype.forEach.call(document.querySelectorAll('.bp-era-btn'), function (b) {
     b.classList.toggle('is-on', b.dataset.era === currentEra);
@@ -426,7 +442,7 @@
     openPreview: openPreview,
     simulate: function () { return RS.Physics.simulate(vehicle.toPhysicsModel()); }
   };
-  console.log('%cFROM FIRE TO ORBIT — Reboot Phase 6 ready', 'color:#5fe0a8;font-weight:bold');
+  console.log('%cFROM FIRE TO ORBIT — Reboot Phase 7 ready', 'color:#5fe0a8;font-weight:bold');
   console.log('contract v' + RS.Physics.CONTRACT_VERSION +
     ' · try FIRE_TO_ORBIT.simulate()');
 })();

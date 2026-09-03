@@ -234,6 +234,12 @@
     pad.position.y = 0.09;
     sc.add(pad);
 
+    // launch-pad exhaust / smoke field — fed the contract state every frame
+    if (RS.render.ExhaustFX) {
+      this._exhaust = new RS.render.ExhaustFX();
+      if (this._exhaust.available) sc.add(this._exhaust.object3d());
+    }
+
     // altitude reference rings + numeric-ish scale marks
     for (var a = 100; a <= 2000; a += 100) {
       var ring = new THREE.Mesh(
@@ -301,6 +307,12 @@
     this.scene.add(this.vehicleGroup);
     var b = this.vehicleGroup.userData.bounds;
     this._vehH = (b && b.height) || 1.4;
+    // exhaust leaves from the base of the stack — never from above the origin
+    var rawEY = (this.vehicleGroup.userData &&
+      this.vehicleGroup.userData.exhaustY != null)
+      ? this.vehicleGroup.userData.exhaustY : -0.3;
+    this._exhaustY = Math.min(0, rawEY) - 0.1;
+    if (this._exhaust) this._exhaust.reset();
 
     if (!this._glow) {
       this._glow = new THREE.PointLight(0xff8a3a, 0, 140, 2);
@@ -410,6 +422,7 @@
     this._raf = global.requestAnimationFrame(function () { self._loop(); });
     var t = perfNow(), dt = Math.min((t - this._last) / 1000, 0.05);
     this._last = t;
+    this._frameDt = dt;
 
     if (this.flight.playing && !this._scrubbing) this.flight.update(dt);
     var st = this.flight.sampleAt(this.flight.time);
@@ -439,11 +452,26 @@
       this._trail.geometry.setDrawRange(0, clamp(idx + 1, 1, this._trailN));
     }
 
+    var powered = this.flight.time <= this._poweredUntil + 0.01;
+
     if (this._glow) {
-      var on = this.flight.time <= this._poweredUntil + 0.01;
-      var base = on ? 2.4 + Math.random() * 1.3 : 0;
+      var base = powered ? 2.4 + Math.random() * 1.3 : 0;
       if (this._glowPulse > 0) { base += this._glowPulse * 6; this._glowPulse *= 0.86; }
       this._glow.intensity = base;
+    }
+
+    // launch-pad exhaust: heavy ground smoke while stuck fighting inertia,
+    // then a downward exhaust column once it breaks the pad.
+    if (this._exhaust) {
+      this._exhaust.update(this.flight.playing ? (this._frameDt || 0.016) : 0, {
+        x: (st.position && st.position.x) || 0,
+        y: st.altitude,
+        v: st.velocity,
+        powered: powered,
+        padLocked: !!st.padLocked,
+        buoyant: this.flight.buoyant,
+        exhaustY: this._exhaustY
+      });
     }
 
     this._updateCamera(alt, st);

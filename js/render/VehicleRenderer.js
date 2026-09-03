@@ -140,6 +140,51 @@
       return g;
     }
 
+    // ---- ERA 1.5 · Fireworks ------------------------------------------
+    if (entry.partId === 'fw_mortar_tube') {
+      geo = new THREE.CylinderGeometry(d.w * 0.44, d.w * 0.46, d.h * 0.94, 22);
+      mat = new THREE.MeshStandardMaterial({ color: 0x2b2f3a, roughness: 0.85, metalness: 0.1 });
+      mesh = new THREE.Mesh(geo, mat);
+      var lip = new THREE.Mesh(
+        new THREE.TorusGeometry(d.w * 0.44, d.w * 0.05, 8, 22),
+        new THREE.MeshStandardMaterial({ color: 0x1a1d26, roughness: 0.8 }));
+      lip.rotation.x = Math.PI / 2;
+      lip.position.y = d.h * 0.46;
+      mesh.add(lip);
+      mesh.position.set(entry.world.x, entry.world.y, entry.world.z);
+      mesh.userData.iid = entry.iid;
+      return mesh;
+    }
+
+    if (entry.partId === 'fw_lift_charge') {
+      var lg = new THREE.Group();
+      var wad = new THREE.Mesh(
+        new THREE.CylinderGeometry(d.w * 0.30, d.w * 0.34, d.h * 0.5, 16),
+        new THREE.MeshStandardMaterial({ color: 0x3a2c22, roughness: 0.9,
+          emissive: 0xff5a1c, emissiveIntensity: 0.7 }));
+      var flash = new THREE.Mesh(
+        new THREE.ConeGeometry(d.w * 0.24, d.h * 0.6, 14),
+        new THREE.MeshBasicMaterial({ color: 0xffd66a }));
+      flash.position.y = -d.h * 0.5;
+      flash.rotation.x = Math.PI;
+      lg.add(wad); lg.add(flash);
+      lg.position.set(entry.world.x, entry.world.y, entry.world.z);
+      lg.userData.iid = entry.iid;
+      lg.userData.isMotor = true;
+      lg.userData.exhaustLocalY = -d.h * 0.5;
+      return lg;
+    }
+
+    if (entry.partId === 'fw_shell_peony') {
+      geo = new THREE.SphereGeometry(Math.min(d.w, d.h) * 0.42, 20, 16);
+      mat = new THREE.MeshStandardMaterial({ color: 0x8a3d6b, roughness: 0.5, metalness: 0.15,
+        emissive: 0x2a0f22, emissiveIntensity: 0.6 });
+      mesh = new THREE.Mesh(geo, mat);
+      mesh.position.set(entry.world.x, entry.world.y, entry.world.z);
+      mesh.userData.iid = entry.iid;
+      return mesh;
+    }
+
     if (entry.partId === 'fin_wood') {
       // a set of 3 thin blades around the airframe axis (x≈0), aft-swept
       var fg = new THREE.Group();

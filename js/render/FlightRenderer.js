@@ -121,7 +121,12 @@
         roll: lerp(a.orientation.roll, b.orientation.roll, f)
       },
       altitude: lerp(a.altitude, b.altitude, f),
-      q: lerp(a.q, b.q, f)
+      q: lerp(a.q, b.q, f),
+      // step-like fields: no interpolation, take the sample we're leaving
+      thrust: a.thrust || 0,
+      buoyancy: a.buoyancy || 0,
+      tumbling: !!a.tumbling,
+      padLocked: !!a.padLocked
     };
   };
 

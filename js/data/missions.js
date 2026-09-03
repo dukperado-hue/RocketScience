@@ -98,6 +98,41 @@
       objectives: { targetAltitude: 320, surviveFlight: true },
       constraints: { maxCost: 260, requiredParts: ['motor_blackpowder', 'fin_wood'] },
       reward: { score: 1100 }
+    },
+
+    // ---- ERA 1.5 · Fireworks ----------------------------------------
+    {
+      id: 'e1p5-the-pop',
+      era: '1p5-fireworks',
+      title: 'แรงกระแทกเดียว',
+      description: 'พี่ช่างอยากให้น้องกะปิเห็นความต่าง — บั้งไฟค่อย ๆ ออกตัว แต่ครกดอกไม้ไฟ "ป็อก" ทีเดียวขึ้นเลย',
+      npc: 'pchang',
+      npc_dialogue: [
+        'ดูบั้งไฟเมื่อกี้สิ — มันนั่งพ่นควันอยู่ตั้งวิกว่าจะขยับ',
+        'ทีนี้ลองดินส่งของครกดอกไม้ไฟ: เผาหมดใน 0.1 วิ ไม่มีหน่วง',
+        'ประกอบ ท่อครก + ดินส่ง + ลูกโบตั๋น แล้วยิงให้เกิน 150 เมตร',
+        'มันจะกระชากขึ้นทันทีที่จุด — นั่นแหละ "อิมพัลส์"'
+      ],
+      objectives: { targetAltitude: 150, surviveFlight: true },
+      constraints: { maxCost: 90, requiredParts: ['fw_lift_charge', 'fw_shell_peony'] },
+      reward: { score: 900 }
+    },
+    {
+      id: 'e1p5-festival-burst',
+      era: '1p5-fireworks',
+      title: 'ดอกโบตั๋นเหนือหมู่บ้าน',
+      description: 'งานวัด — ต้องส่งลูกให้สูงพอที่ดอกจะบานเหนือยอดไม้ แต่ห้ามหลุดเขตงาน (NOTAM ชั่วคราว)',
+      npc: 'pchang',
+      npc_dialogue: [
+        'คืนนี้ยิงเหนือลานวัด คนมุงเต็มไปหมด',
+        'สูงเกิน 250 เมตรถึงจะสวย — แต่มีเขตปลอดภัยรัศมี 400 เมตร',
+        'ดินส่งแรงไป ลูกลอยไกลหลุดเขต = อันตราย งานล่ม',
+        'จูนน้ำหนักลูกกับดินส่งให้พอดี'
+      ],
+      objectives: { targetAltitude: 250, surviveFlight: true },
+      constraints: { safeZoneRadius: 400, maxCost: 120,
+        requiredParts: ['fw_mortar_tube', 'fw_shell_peony'] },
+      reward: { score: 1250 }
     }
   ];
 

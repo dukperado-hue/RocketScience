@@ -15,6 +15,10 @@
  *   ROCKET/BALLISTIC : F_net = thrust(t) − m(t)·g(y) − drag(y, v)
  *   HOT-AIR BUOYANCY : rises on a whisper of excess lift, hard-capped rise rate;
  *                      it FLOATS, it does not accelerate like a motor.
+ *   STATIC INERTIA   : nothing leaves the pad (y=0, v=0) until net UPWARD force
+ *                      strictly beats weight. `spoolTime` ramps a motor 0→100%%,
+ *                      so a Bang Fai sits smoking, building thrust, then breaks
+ *                      inertia — a Firework's spoolTime is 0 and it pops at once.
  *   CROSSWIND (X)    : drag on airspeed (vx − wind); a lantern (huge A / tiny m)
  *                      is swept to wind speed almost instantly and just drifts.
  *   drag  = 0.5 · ρ(y) · (Σ Cd·A) · u·|u|
@@ -28,7 +32,7 @@
   var RHO0 = 1.225;        // kg/m^3 at sea level
   var SCALE_H = 8500;      // m, density scale height
 
-  var CONTRACT_VERSION = '1.3.0';
+  var CONTRACT_VERSION = '1.4.0';
 
   // --- dynamic aero-instability ("the tumble") ---------------------------------
   var TUMBLE_SPEED_MIN = 12;      // m/s — below this, too slow to weathercock
@@ -58,11 +62,13 @@
    * @property {number} drag                       N
    * @property {number} propRemaining              kg
    * @property {boolean} tumbling                  true once the stack departs controlled flight
+   * @property {boolean} padLocked                 true while welded to the pad (F ≤ mg, pre-liftoff)
    * @property {number} drift                      == position.x, signed horizontal drift (m)
    *
    * @typedef {Object} FlightEvent
    * @property {number} time
    * @property {'IGNITION'|'LIFTOFF'|'MAX_Q'|'APOGEE'|'BURNOUT'|'LOSS_OF_CONTROL'|'IMPACT'} type
+   *   LIFTOFF is emitted by the integrator at the exact tick y first exceeds 0.
    * @property {string} message
    * @property {number} altitude
    * @property {number} velocity
@@ -151,6 +157,24 @@
     // lift for the same temperature delta, so a lantern naturally levels off.
     buoyancy *= rho / RHO0;
 
+    // ---- STATIC INERTIA · THE PAD LOCK --------------------------------
+    // A vehicle is welded to y=0 with v=0 until its net UPWARD force
+    // (thrust + buoyancy) strictly exceeds its weight m·g. Until it does,
+    // the motor still burns — mass drops, exhaust pours — but the stack
+    // does not move at all, and there is no horizontal drift either.
+    // Once it has ever left the pad this lock never re-engages (a spent
+    // stack must still be free to arc over and fall back down).
+    var weightN = mass * g;
+    if (!state.liftedOff && state.y <= 1e-6 && (thrust + buoyancy) <= weightN) {
+      return {
+        t: state.t + dt, y: 0, v: 0, x: state.x, vx: 0,
+        propRemaining: propRemaining, a: 0, mass: mass,
+        thrust: thrust, buoyancy: buoyancy, drag: 0,
+        q: 0, g: g, rho: rho, onPad: true, padLocked: true,
+        liftedOff: false, tumbling: false
+      };
+    }
+
     var v, y, a, drag;
     var buoyMode = !!model.buoyancyDominant;
 
@@ -206,12 +230,15 @@
       t: state.t + dt, y: y, v: v, x: x, vx: vx, propRemaining: propRemaining,
       a: clampA(a), mass: mass, thrust: thrust, buoyancy: buoyancy, drag: drag,
       q: 0.5 * rho * v * v, g: g, rho: rho, onPad: onPad,
+      padLocked: false, liftedOff: !!state.liftedOff || y > 1e-6,
       tumbling: !!state.tumbling
     };
   }
 
-  // A crash never needs 40-g fidelity; clamp keeps the integrator well-behaved.
-  function clampA(a) { return a < -400 ? -400 : (a > 400 ? 400 : a); }
+  // Clamp keeps the integrator well-behaved without starving a real impulse.
+  // A firework lift charge genuinely pulls ~100–200 g for a tenth of a second,
+  // so the UPWARD cap is generous; the downward cap (drag / crash) stays tight.
+  function clampA(a) { return a < -400 ? -400 : (a > 2500 ? 2500 : a); }
   function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
   // ---------------------------------------------------------------------------
@@ -254,12 +281,14 @@
 
     var state = {
       t: 0, y: 0, v: 0, x: 0, vx: 0,
-      propRemaining: model.propellantMass, tumbling: false
+      propRemaining: model.propellantMass, tumbling: false, liftedOff: false
     };
     var trajectory = [];
     var apogee = 0, apogeeTime = 0, maxV = 0, maxQ = 0;
     var finalX = 0, maxDrift = 0;
     var liftedOff = false, nextSample = 0;
+    var liftoffTime = null, liftoffAlt = 0, liftoffVel = 0;   // exact break-of-inertia
+    var prevForce = 0;                          // to catch sub-sample burn edges
     var tumbleT = Infinity;                    // time the tumble started
     var canTumble = !!model.rocketDominant && isFinite(model.copAxisM);
     var reason = 'สิ้นสุดการบิน';
@@ -271,6 +300,22 @@
 
     while (state.t < maxTime) {
       var d = step(state, model, dt, wind);
+
+      // --- LIFTOFF : the exact integration tick the stack breaks inertia.
+      //     Physics owns this event; it is not left to sample interpolation.
+      var force = d.thrust + d.buoyancy;
+      if (liftoffTime === null && !state.liftedOff && d.y > 1e-6) {
+        state.liftedOff = true;
+        liftoffTime = d.t; liftoffAlt = d.y; liftoffVel = d.v;
+        trajectory.push(toState(d, tumbleT));   // pin the break-of-inertia frame
+      }
+      // a burn shorter than one sample interval (a firework mortar) must still
+      // leave its powered phase in the trajectory — sample on any thrust edge,
+      // and sample EVERY tick while the motor is lit for the first few seconds
+      // so the powered phase, Max-Q and burnout all land on real samples.
+      var forceEdge = (prevForce <= 1e-6) !== (force <= 1e-6);
+      var densePhase = force > 1e-6 && d.t < 3.0;
+      prevForce = force;
 
       if (d.y > 0.02) liftedOff = true;
       if (d.y > apogee) { apogee = d.y; apogeeTime = d.t; }
@@ -296,14 +341,15 @@
         }
       }
 
-      if (d.t >= nextSample || (state.tumbling && !wasTumbling)) {
+      if (d.t >= nextSample || (state.tumbling && !wasTumbling) || forceEdge || densePhase) {
         trajectory.push(toState(d, tumbleT));
         if (d.t >= nextSample) nextSample += sampleEvery;
       }
 
       state = {
         t: d.t, y: d.y, v: d.v, x: d.x, vx: d.vx,
-        propRemaining: d.propRemaining, tumbling: state.tumbling
+        propRemaining: d.propRemaining, tumbling: state.tumbling,
+        liftedOff: state.liftedOff || d.liftedOff
       };
 
       if (liftedOff && d.onPad) {
@@ -332,18 +378,35 @@
       mode: motorMode
     };
 
+    var physicsEvents = [];
+    if (liftoffTime !== null) {
+      physicsEvents.push({
+        time: round(liftoffTime, 3), type: 'LIFTOFF', message: 'ทะยานพ้นพื้น',
+        altitude: round(liftoffAlt, 2), velocity: round(liftoffVel, 2)
+      });
+    }
+
     return finalize({
       ok: true, reason: reason, trajectory: trajectory, events: [],
-      summary: summary, meta: meta, mode: motorMode
+      summary: summary, meta: meta, mode: motorMode, _physicsEvents: physicsEvents
     }, model);
   }
 
   /** Attach events + diagnostics + contract version. */
   function finalize(sim, model) {
     sim.contractVersion = CONTRACT_VERSION;
-    sim.events = global.RS && global.RS.SimulationEvents
+    var derived = global.RS && global.RS.SimulationEvents
       ? global.RS.SimulationEvents.derive(sim.trajectory, model || {})
       : [];
+    // Events the integrator emitted itself (LIFTOFF) are authoritative — drop
+    // any derived event of the same type and splice the precise one back in.
+    var pe = sim._physicsEvents || [];
+    var owned = {};
+    pe.forEach(function (e) { owned[e.type] = true; });
+    sim.events = derived.filter(function (e) { return !owned[e.type]; })
+      .concat(pe)
+      .sort(function (a, b) { return a.time - b.time; });
+    delete sim._physicsEvents;
     sim.diagnostics = global.RS && global.RS.Diagnostics
       ? global.RS.Diagnostics.run(model || {}, sim)
       : [];
@@ -377,7 +440,8 @@
       buoyancy: round(d.buoyancy, 3),
       drag: round(d.drag, 3),
       propRemaining: round(d.propRemaining, 4),
-      tumbling: !!d.tumbling
+      tumbling: !!d.tumbling,
+      padLocked: !!d.padLocked
     };
   }
 

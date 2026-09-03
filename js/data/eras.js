@@ -30,6 +30,15 @@
       // Campaign gating (2 khom missions) returns when the mission flow lands.
       unlock: { type: 'default' },
       envelope: { apogee: 3000, note: 'พุ่งขึ้นตรง หางถ่วงให้นิ่ง' }
+    },
+    {
+      id: '1p5-fireworks',
+      order: 1.5,
+      name: 'ยุค 1.5 · ดอกไม้ไฟ',
+      tagline: 'ดินส่งจุดครั้งเดียว แรงกระแทกมหาศาลใน 0.1 วิ — บทเรียนเรื่องความเฉื่อยกับกราฟแรงขับ',
+      partIds: ['fw_shell_peony', 'fw_lift_charge', 'fw_mortar_tube'],
+      unlock: { type: 'default' },
+      envelope: { apogee: 400, note: 'พุ่งด้วยแรงกระแทกเดียว แล้วลอยตามความเฉื่อย' }
     }
   ];
 

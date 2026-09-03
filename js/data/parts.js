@@ -37,7 +37,9 @@
         burnTime: 55,         // s of usable flame before it cools & descends
         specificImpulse: 0,   // buoyancy: no exhaust
         propellantMass: 0.008,
-        spoolTime: 10         // s to heat the air column to full lift
+        spoolTime: 4.0        // s — the envelope heats gradually before it has
+                             //     any positive buoyancy at all; until then the
+                             //     lantern just sits on the ground, warming up
       },
       // the wax cradle hangs UNDER the bamboo hoop; live node up (frame or a
       // second wax for more heat) and a live node down (a wish-tag / ballast)
@@ -149,7 +151,7 @@
       category: C.PROPULSION,
       icon: '🧨',
       era: '1-bangfai',
-      blurb: 'กระบอกดินปืนอัดแน่น จุดครั้งเดียวเผาหมดใน 3–4 วิ — แรงขับสูง มวลลดเร็ว',
+      blurb: 'กระบอกดินปืนอัดแน่น จุดแล้วต้องสร้างแรงดันในกระบอกก่อน ~1.5 วิ ค่อย ๆ ดันจนพ้นความเฉื่อย แล้วจึงพุ่ง',
       mass: 0.30,
       cost: 40,
       size: { w: 1, h: 2 },
@@ -161,7 +163,9 @@
         burnTime: 4.8,          // s — short, violent
         specificImpulse: 80,    // s — crude compressed black powder
         propellantMass: 0.52,   // kg of grain burned off
-        spoolTime: 0.2          // near-instant
+        spoolTime: 1.5          // s — pressure builds in the bamboo tube; the
+                               //     rocket sits smoking on the pad, thrust
+                               //     ramping, until it finally beats its weight
       },
       attachNodes: [
         { id: 'top',  dx: 0.5, dy: 0, type: NODE.STACK,  accepts: ['Structural'] },
@@ -194,8 +198,83 @@
 
   RS.PartsCatalog.registerAll(ERA1);
 
+  // ---------------------------------------------------------------------------
+  //  ERA 1.5 · Fireworks — the OTHER kind of energy release. Where a Bang Fai
+  //  builds pressure over a second and eases off the pad, a mortar shell is
+  //  pure IMPULSE: a lift charge of coarse black powder deflagrates in ~0.1 s
+  //  and throws the shell out of the tube at ~100 m/s. spoolTime is 0 — there
+  //  is no ramp, the whole thrust curve is a single violent spike. After that
+  //  the shell coasts on nothing but inertia, arcs over, and bursts.
+  //  Same schema. Only the numbers changed.
+  // ---------------------------------------------------------------------------
+  var ERA1_5 = [
+    {
+      id: 'fw_mortar_tube',
+      name: 'ท่อครก (Mortar)',
+      category: C.STRUCTURAL,
+      icon: '🛢️',
+      era: '1p5-fireworks',
+      blurb: 'ท่อกระดาษ/HDPE ผนังหนา ตั้งกับพื้น รับแรงอัดจากดินส่งที่ก้นท่อ — ฐานหนักที่ทุกอย่างวางอยู่บน',
+      mass: 1.2,
+      cost: 30,
+      size: { w: 1, h: 2 },
+      // a fat tube at the very aft of the stack: its large REFERENCE area drags
+      // the Center of Pressure behind the CoM (so the shell flies nose-first),
+      // but its drag COEFFICIENT is tiny — the shell mostly coasts, it isn't
+      // braked to a stop. Same big-A / small-Cd trick the tail fins use.
+      aerodynamics: { dragCoefficient: 0.06, crossSectionArea: 0.045 },
+      structural: { maxDynamicPressure: 250000 },   // Pa — basically indestructible
+      attachNodes: [
+        { id: 'top', dx: 0.5, dy: 0, type: NODE.STACK, accepts: ['Propulsion'] }
+      ]
+    },
+    {
+      id: 'fw_lift_charge',
+      name: 'ดินส่ง (Lift Charge)',
+      category: C.PROPULSION,
+      icon: '💥',
+      era: '1p5-fireworks',
+      blurb: 'ดินดำเม็ดหยาบห่อกระดาษที่ก้นลูก จุดแล้วเปลี่ยนเป็นแก๊สแทบทันที — แรงมหาศาลใน 0.1 วิ ไม่มีการหน่วง',
+      mass: 0.05,
+      cost: 12,
+      size: { w: 1, h: 1 },
+      aerodynamics: { dragCoefficient: 0.6, crossSectionArea: 0.004 },
+      structural: { maxDynamicPressure: 250000 },
+      propulsion: {
+        mode: 'rocket',
+        thrust: 1800,          // N — enormous for its size, but only for a blink
+        burnTime: 0.1,         // s — the entire impulse
+        specificImpulse: 55,   // crude coarse black powder
+        propellantMass: 0.045, // kg gone in one flash
+        spoolTime: 0           // INSTANT — no ramp, the whole curve is a spike
+      },
+      attachNodes: [
+        { id: 'top',    dx: 0.5, dy: 0, type: NODE.STACK, accepts: ['Payload'] },
+        { id: 'bottom', dx: 0.5, dy: 1, type: NODE.STACK, accepts: ['Structural'] }
+      ]
+    },
+    {
+      id: 'fw_shell_peony',
+      name: 'ลูกดอกไม้ไฟ “โบตั๋น”',
+      category: C.PAYLOAD,
+      icon: '🎆',
+      era: '1p5-fireworks',
+      blurb: 'ลูกทรงกลมบรรจุดาวไฟ + ชนวนหน่วงเวลา ผิวเรียบแรงต้านต่ำ พุ่งขึ้นด้วยความเฉื่อยล้วนแล้วแตกเป็นดอกโบตั๋น',
+      mass: 0.30,
+      cost: 25,
+      size: { w: 1, h: 1 },
+      aerodynamics: { dragCoefficient: 0.28, crossSectionArea: 0.004 }, // smooth sphere, minimal drag
+      structural: { maxDynamicPressure: 60000 },
+      attachNodes: [
+        { id: 'bottom', dx: 0.5, dy: 1, type: NODE.STACK, accepts: ['Propulsion'] }
+      ]
+    }
+  ];
+
+  RS.PartsCatalog.registerAll(ERA1_5);
+
   // handy for tools / data browsers
   RS.data = RS.data || {};
-  RS.data.parts = { '0-khomloy': ERA0, '1-bangfai': ERA1 };
+  RS.data.parts = { '0-khomloy': ERA0, '1-bangfai': ERA1, '1p5-fireworks': ERA1_5 };
 
 })(typeof window !== 'undefined' ? window : this);
