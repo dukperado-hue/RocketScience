@@ -76,6 +76,9 @@
    *                                         (a tank). Adds to wet mass + the burn budget; no thrust.
    * @param {string} [def.meshUrl]         - optional .glb/.gltf model; procedural primitive if absent
    * @param {number} [def.meshScale]       - uniform scale applied to the loaded model (default 1)
+   * @param {boolean} [def.decoupler]      - true = a staging separation ring. Everything on the
+   *                                         engine side of it becomes a lower stage that fires
+   *                                         first and is jettisoned when its tanks run dry.
    * @param {AttachNodeDef[]} def.attachNodes
    */
   function Part(def) {
@@ -96,6 +99,7 @@
     this.cost = num(def.cost, 0);          // Baht
     this.meshUrl = def.meshUrl || null;    // optional .glb model
     this.meshScale = num(def.meshScale, 1);
+    this.decoupler = !!def.decoupler;      // staging separation ring
     this.size = {
       w: num(def.size && def.size.w, 1),
       h: num(def.size && def.size.h, 1)

@@ -182,6 +182,11 @@
       rows.push({ icon: '➡️', label: 'ตกไกลจากฐาน ≥ ' + o.downrangeMin + ' ม.',
         sub: 'พิสูจน์ว่าบินแนวราบด้วย Gravity Turn ไม่ใช่พุ่งขึ้นตรง ๆ' });
     }
+    if (o.orbitPeriapsisMin != null) {
+      rows.push({ icon: '🛰️', label: 'เข้าวงโคจร · periapsis ≥ ' +
+        Math.round(o.orbitPeriapsisMin / 1000) + ' กม.',
+        sub: 'จุดต่ำสุดของวงโคจรต้องพ้นชั้นบรรยากาศ วงโคจรจึงจะไม่สลาย' });
+    }
     if (o.surviveFlight) {
       rows.push({ icon: '🛡️', label: 'บินได้โดยไม่เสียการควบคุม',
         sub: 'ห้ามตีลังกา / โครงสร้างห้ามพัง' });

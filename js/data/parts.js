@@ -354,10 +354,121 @@
 
   RS.PartsCatalog.registerAll(ERA3);
 
+  // ---------------------------------------------------------------------------
+  //  ERA 4 · ORBIT — multi-staging. A single stage can't carry enough fuel to
+  //  reach orbital velocity: the tankage it needs to hold that fuel weighs too
+  //  much to accelerate. The answer is to THROW AWAY the empty tanks. A heavy
+  //  first stage claws off the pad and through the thick air, drops away when
+  //  dry, and a light high-Isp vacuum stage finishes the job in near-vacuum.
+  //  A `decoupler` marks where the stack splits.
+  // ---------------------------------------------------------------------------
+  var ERA4 = [
+    {
+      id: 'orb_payload',
+      name: 'ดาวเทียม CubeSat',
+      category: C.PAYLOAD,
+      icon: '🛰️',
+      era: '4-orbit',
+      blurb: 'เพย์โหลดจริง — ดาวเทียมเล็กที่ต้องส่งเข้าวงโคจร ไม่ใช่แค่ยิงขึ้นแล้วตกกลับ',
+      mass: 0.5,
+      cost: 200,
+      size: { w: 1, h: 1 },
+      meshUrl: 'assets/models/cubesat.glb',
+      meshScale: 1.0,
+      aerodynamics: { dragCoefficient: 0.2, crossSectionArea: 0.010 },
+      structural: { maxDynamicPressure: 70000 },
+      attachNodes: [
+        { id: 'bottom', dx: 0.5, dy: 1, type: NODE.STACK, accepts: ['Structural', 'Propulsion'] }
+      ]
+    },
+    {
+      id: 'orb_engine_vacuum',
+      name: 'เครื่องยนต์สุญญากาศ (ท่อนบน)',
+      category: C.PROPULSION,
+      icon: '🌌',
+      era: '4-orbit',
+      blurb: 'หัวฉีดบานกว้าง Isp สูง ออกแบบให้ทำงานในอากาศเบาบาง — ท่อนที่ 2 ที่เร่งเข้าวงโคจร',
+      mass: 4.5,
+      cost: 260,
+      size: { w: 1, h: 2 },
+      aerodynamics: { dragCoefficient: 0.14, crossSectionArea: 0.045 },
+      structural: { maxDynamicPressure: 90000 },
+      propulsion: {
+        mode: 'rocket',
+        thrust: 1500, burnTime: 999, specificImpulse: 355,
+        propellantMass: 0, massFlow: 0.431, spoolTime: 0, guidance: true
+      },
+      attachNodes: [
+        { id: 'top', dx: 0.5, dy: 0, type: NODE.STACK, accepts: ['Structural'] }
+      ]
+    },
+    {
+      id: 'orb_tank_large',
+      name: 'ถังเชื้อเพลิงใหญ่',
+      category: C.STRUCTURAL,
+      icon: '🛢️',
+      era: '4-orbit',
+      blurb: 'ถังใบใหญ่ ต่อซ้อนได้ — ท่อนล่างใส่หลายใบ ท่อนบนใส่ใบเดียวพอ',
+      mass: 2.4,
+      cost: 90,
+      size: { w: 1, h: 3 },
+      propellantMass: 30,
+      aerodynamics: { dragCoefficient: 0.30, crossSectionArea: 0.070 },
+      structural: { maxDynamicPressure: 60000 },
+      attachNodes: [
+        { id: 'top',    dx: 0.5, dy: 0, type: NODE.STACK, accepts: ['Payload', 'Structural'] },
+        { id: 'bottom', dx: 0.5, dy: 3, type: NODE.STACK, accepts: ['Propulsion', 'Structural'] }
+      ]
+    },
+    {
+      id: 'orb_decoupler',
+      name: 'วงแหวนสลัดท่อน (Decoupler)',
+      category: C.STRUCTURAL,
+      icon: '💥',
+      era: '4-orbit',
+      blurb: 'วงแหวนสลักระเบิด คั่นระหว่างท่อน — พอเชื้อเพลิงท่อนล่างหมด มันจะสลัดท่อนล่างทิ้ง',
+      mass: 1.4,
+      cost: 45,
+      size: { w: 1, h: 1 },
+      decoupler: true,
+      aerodynamics: { dragCoefficient: 0.35, crossSectionArea: 0.015 },
+      structural: { maxDynamicPressure: 150000 },
+      attachNodes: [
+        { id: 'top',    dx: 0.5, dy: 0, type: NODE.STACK, accepts: ['Propulsion', 'Structural'] },
+        { id: 'bottom', dx: 0.5, dy: 1, type: NODE.STACK, accepts: ['Propulsion', 'Structural'] }
+      ]
+    },
+    {
+      id: 'orb_engine_heavy',
+      name: 'เครื่องยนต์หนัก (ท่อนล่าง)',
+      category: C.PROPULSION,
+      icon: '🔥',
+      era: '4-orbit',
+      blurb: 'แรงขับมหาศาลสำหรับคว้าตัวพ้นพื้นและฝ่าอากาศหนา — เผาเร็ว สลัดทิ้งเมื่อหมด',
+      mass: 11,
+      cost: 360,
+      size: { w: 1, h: 2 },
+      // wide finned skirt: big reference area at the aft = self-stable, low Cd
+      aerodynamics: { dragCoefficient: 0.10, crossSectionArea: 0.18 },
+      structural: { maxDynamicPressure: 140000 },
+      propulsion: {
+        mode: 'rocket',
+        thrust: 8500, burnTime: 999, specificImpulse: 255,
+        propellantMass: 0, massFlow: 3.40, spoolTime: 0, guidance: true
+      },
+      attachNodes: [
+        { id: 'top', dx: 0.5, dy: 0, type: NODE.STACK, accepts: ['Structural'] }
+      ]
+    }
+  ];
+
+  RS.PartsCatalog.registerAll(ERA4);
+
   // handy for tools / data browsers
   RS.data = RS.data || {};
   RS.data.parts = {
-    '0-khomloy': ERA0, '1-bangfai': ERA1, '1p5-fireworks': ERA1_5, '3-v2': ERA3
+    '0-khomloy': ERA0, '1-bangfai': ERA1, '1p5-fireworks': ERA1_5,
+    '3-v2': ERA3, '4-orbit': ERA4
   };
 
 })(typeof window !== 'undefined' ? window : this);

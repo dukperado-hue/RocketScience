@@ -309,29 +309,77 @@
   //  Hand-off to the physics engine (pure data, no Vehicle methods)
   // ---------------------------------------------------------------------------
 
+  function motorData(p) {
+    return {
+      id: p.id, mode: p.propulsion.mode, thrust: p.propulsion.thrust,
+      burnTime: p.propulsion.burnTime, spoolTime: p.propulsion.spoolTime,
+      specificImpulse: p.propulsion.specificImpulse,
+      propellantMass: p.propulsion.propellantMass, massFlow: p.propulsion.massFlow,
+      guidance: !!p.propulsion.guidance
+    };
+  }
+
   /**
-   * Flatten to the minimal model PhysicsEngine consumes. Motors are kept
-   * individually so the loop can stage / stagger burns later.
+   * Split the stack into flight stages along the flight axis. Every `decoupler`
+   * part is a boundary: it (and everything on its ENGINE side) becomes a lower
+   * stage that fires first and is jettisoned when its tanks run dry.
+   * @returns {Array<{dryMass,propellantMass,dragArea,refArea,structuralLimitPa,
+   *                  cost,motors,partCount}>}  index 0 = bottom = fires first
+   */
+  Vehicle.prototype.computeStages = function () {
+    var mpc = this.metersPerCell;
+    var parts = this.instances.map(function (i) {
+      return { p: i.part, axis: (i.gy + i.part.size.h / 2) * mpc, dec: i.part.decoupler };
+    });
+    if (!parts.length) return [];
+    // decoupler flight-axis positions, most-aft (largest) first
+    var decs = parts.filter(function (w) { return w.dec; })
+      .map(function (w) { return w.axis; })
+      .sort(function (a, b) { return b - a; });
+    var n = decs.length + 1;
+    var stages = [];
+    for (var s = 0; s < n; s++) {
+      stages.push({
+        dryMass: 0, propellantMass: 0, dragArea: 0, refArea: 0,
+        structuralLimitPa: Infinity, cost: 0, motors: [], partCount: 0
+      });
+    }
+    parts.forEach(function (w) {
+      // stage index = # of decouplers AFT of this part (a decoupler counts only
+      // OTHER decouplers aft of it, so it rides with the stage it separates).
+      var si = 0;
+      for (var k = 0; k < decs.length; k++) {
+        if (decs[k] > w.axis + (w.dec ? 1e-6 : 0)) si++;
+      }
+      var st = stages[si], pt = w.p;
+      st.dryMass += pt.mass;
+      st.propellantMass += (pt.propulsion ? pt.propulsion.propellantMass : 0) +
+                           (pt.propellantMass || 0);
+      st.dragArea += pt.aerodynamics.dragCoefficient * pt.aerodynamics.crossSectionArea;
+      st.refArea += pt.aerodynamics.crossSectionArea;
+      st.cost += pt.cost;
+      st.partCount++;
+      if (pt.structural && isFinite(pt.structural.maxDynamicPressure)) {
+        st.structuralLimitPa = Math.min(st.structuralLimitPa, pt.structural.maxDynamicPressure);
+      }
+      if (pt.propulsion && pt.propulsion.thrust > 0) st.motors.push(motorData(pt));
+    });
+    return stages;
+  };
+
+  /**
+   * Flatten to the minimal model PhysicsEngine consumes. `stages` drives the
+   * multi-staging loop; the flat fields describe the whole stack (= stage 0).
    */
   Vehicle.prototype.toPhysicsModel = function () {
     var s = this.computeStats();
+    var stages = this.computeStages();
     var motors = this.instances
       .filter(function (i) { return i.part.propulsion && i.part.propulsion.thrust > 0; })
-      .map(function (i) {
-        var p = i.part.propulsion;
-        return {
-          id: i.part.id,
-          mode: p.mode,
-          thrust: p.thrust,
-          burnTime: p.burnTime,
-          spoolTime: p.spoolTime,
-          specificImpulse: p.specificImpulse,
-          propellantMass: p.propellantMass,
-          massFlow: p.massFlow,
-          guidance: !!p.guidance
-        };
-      });
+      .map(function (i) { return motorData(i.part); });
     return {
+      stages: stages,
+      staged: stages.length > 1,
       dryMass: s.dryMass,
       propellantMass: s.propellantMass,
       totalMass: s.totalMass,

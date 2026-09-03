@@ -15,9 +15,11 @@
     IGNITION: 'IGNITION',
     LIFTOFF:  'LIFTOFF',
     PITCH_OVER: 'PITCH_OVER',
+    SEPARATE_STAGE: 'SEPARATE_STAGE',
     MAX_Q:    'MAX_Q',
     APOGEE:   'APOGEE',
     BURNOUT:  'BURNOUT',
+    ORBIT:    'ORBIT',
     LOSS_OF_CONTROL: 'LOSS_OF_CONTROL',
     IMPACT:   'IMPACT'
   };
@@ -26,9 +28,11 @@
     IGNITION: 'จุดระเบิด / จุดไฟ',
     LIFTOFF:  'ทะยานพ้นพื้น',
     PITCH_OVER: 'เลี้ยวโค้ง (Gravity Turn)',
+    SEPARATE_STAGE: 'สลัดท่อน (Staging)',
     MAX_Q:    'แรงดันอากาศสูงสุด (Max-Q)',
     APOGEE:   'จุดสูงสุด',
     BURNOUT:  'เชื้อเพลิงหมด',
+    ORBIT:    'เข้าสู่วงโคจร',
     LOSS_OF_CONTROL: 'เสียการควบคุม — ตีลังกา',
     IMPACT:   'แตะพื้น'
   };

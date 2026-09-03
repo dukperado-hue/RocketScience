@@ -35,8 +35,8 @@
     BURNOUT: '#ffb63a', APOGEE: '#ffce40', LOSS_OF_CONTROL: '#ff3b3b', IMPACT: '#ff6a5a'
   };
   var RATES = [0.5, 1, 2, 4];
-  var CAM_MODES = ['ground', 'chase', 'free'];
-  var CAM_LABEL = { ground: 'มุมแหงนพื้น', chase: 'ลอยตาม', free: 'อิสระ' };
+  var CAM_MODES = ['ground', 'chase', 'free', 'map'];
+  var CAM_LABEL = { ground: 'มุมแหงนพื้น', chase: 'ลอยตาม', free: 'อิสระ', map: 'แผนที่วงโคจร' };
 
   function $(id) { return document.getElementById(id); }
   function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
@@ -170,7 +170,7 @@
     global.addEventListener('pointerup', function () { self._drag = null; });
     this.canvas.addEventListener('wheel', function (e) {
       e.preventDefault();
-      self._zoom = clamp(self._zoom * (e.deltaY < 0 ? 0.9 : 1.1), 0.3, 5);
+      self._zoom = clamp(self._zoom * (e.deltaY < 0 ? 0.88 : 1.14), 0.04, 60);
     }, { passive: false });
 
     // event feed -> toast + phase label
@@ -178,6 +178,11 @@
       self._phaseText = (LABEL_TH[evt.type] || evt.type);
       self._showToast((LABEL_TH[evt.type] || evt.type) + ' · ' + evt.message);
       if (self._glow && evt.type === 'IGNITION') self._glowPulse = 1;
+      // reaching orbit → swing the camera out to the orbital map
+      if (evt.type === 'ORBIT' && self._camIdx !== 3) {
+        self._camIdx = 3; self._zoom = 1;
+        self.btnCam.textContent = CAM_LABEL.map;
+      }
     });
   };
 
@@ -189,7 +194,7 @@
       var st = this.flight.sampleAt(this.flight.time);
       this._freeTarget.set(
         (st && st.position) ? st.position.x : 0,
-        (st ? st.altitude : 0) + 2, 0);
+        (st && st.position) ? st.position.y + 2 : 2, 0);
     }
   };
 
@@ -206,26 +211,38 @@
   // ---- scene (built lazily, kept alive between opens) -------------------
   FlightScreen.prototype._buildScene = function () {
     if (this._built) return;
-    this.scene = new RS.render.Scene(this.canvas, { ground: false, background: 0x081226, fov: 50 });
+    var RE = (RS.Physics && RS.Physics.RE) || 600000;
+    this._RE = RE;
+    this.scene = new RS.render.Scene(this.canvas, {
+      ground: false, background: 0x05080f, fov: 50,
+      logDepth: true, far: RE * 6
+    });
     if (!this.scene.available) { this._built = true; return; }
     var sc = this.scene.scene;
 
-    sc.add(new THREE.Mesh(
-      new THREE.SphereGeometry(4000, 24, 16),
-      new THREE.MeshBasicMaterial({ color: 0x0c1c3a, side: THREE.BackSide, fog: false })
-    ));
-    sc.add(makeStars(800, 3600));
+    sc.add(makeStars(1400, RE * 4));
 
-    var ground = new THREE.Mesh(
-      new THREE.CircleGeometry(3000, 56),
-      new THREE.MeshStandardMaterial({ color: 0x14301d, roughness: 1, metalness: 0 })
+    // ---- THE PLANET — a real sphere centred at (0, -RE) --------------
+    var planet = new THREE.Mesh(
+      new THREE.SphereGeometry(RE, 96, 64),
+      new THREE.MeshStandardMaterial({ color: 0x1f5133, roughness: 1, metalness: 0 })
     );
-    ground.rotation.x = -Math.PI / 2;
-    ground.position.y = -0.02;
-    sc.add(ground);
+    planet.position.set(0, -RE, 0);
+    sc.add(planet);
+    // a thin translucent atmosphere shell
+    var atmo = new THREE.Mesh(
+      new THREE.SphereGeometry(RE + ((RS.Physics && RS.Physics.ATMOS_TOP) || 70000), 64, 48),
+      new THREE.MeshBasicMaterial({ color: 0x5aa9ff, transparent: true, opacity: 0.10,
+        side: THREE.BackSide, depthWrite: false })
+    );
+    atmo.position.set(0, -RE, 0);
+    sc.add(atmo);
+    this._planet = planet;
 
+    // ---- near-pad detail (only visible when zoomed right in) --------
     var grid = new THREE.GridHelper(2400, 96, 0x356b41, 0x1d3a27);
     grid.material.transparent = true; grid.material.opacity = 0.42;
+    grid.position.y = 0.02;
     sc.add(grid);
 
     var pad = new THREE.Mesh(
@@ -241,7 +258,7 @@
       if (this._exhaust.available) sc.add(this._exhaust.object3d());
     }
 
-    // altitude reference rings + numeric-ish scale marks
+    // altitude reference rings (low-altitude only)
     for (var a = 100; a <= 2000; a += 100) {
       var ring = new THREE.Mesh(
         new THREE.TorusGeometry(7, 0.13, 6, 40),
@@ -252,7 +269,6 @@
       sc.add(ring);
     }
 
-    sc.fog = new THREE.Fog(0x081226, 280, 3200);
     this._built = true;
   };
 
@@ -324,20 +340,31 @@
     this.vehicleGroup.add(this._glow);
     this._glowPulse = 0;
 
-    // progressive breadcrumb trail
-    if (this._trail) {
-      this.scene.remove(this._trail);
-      this._trail.geometry.dispose(); this._trail.material.dispose();
-      this._trail = null;
-    }
+    // trajectory lines: a faint FULL predicted path (the orbital arc) plus a
+    // bright progressive breadcrumb trail drawn up to the current playback time
+    [this._trail, this._orbitLine].forEach(function (ln) {
+      if (ln) { this.scene.remove(ln); ln.geometry.dispose(); ln.material.dispose(); }
+    }, this);
+    this._trail = this._orbitLine = null;
+
     var pts = (simResult.trajectory || []).map(function (s) {
       return new THREE.Vector3(s.position.x, s.position.y, s.position.z);
     });
     if (pts.length > 1) {
+      var isOrbital = !!(simResult.summary && simResult.summary.orbit &&
+        simResult.summary.orbit.achieved);
+
+      var og = new THREE.BufferGeometry().setFromPoints(pts);
+      this._orbitLine = new THREE.Line(og, new THREE.LineBasicMaterial({
+        color: isOrbital ? 0x8fd4ff : 0x3a6f9a,
+        transparent: true, opacity: isOrbital ? 0.32 : 0.16
+      }));
+      this.scene.add(this._orbitLine);
+
       var geo = new THREE.BufferGeometry().setFromPoints(pts);
       geo.setDrawRange(0, 1);
       this._trail = new THREE.Line(geo, new THREE.LineBasicMaterial({
-        color: 0x5bd6ff, transparent: true, opacity: 0.55
+        color: 0x5bd6ff, transparent: true, opacity: 0.7
       }));
       this._trailN = pts.length;
       this.scene.add(this._trail);
@@ -350,6 +377,9 @@
     this._summary = simResult.summary || null;
     this._diagnostics = simResult.diagnostics || [];
     this._poweredUntil = poweredUntil(simResult.trajectory);
+    var oev = (simResult.events || []).filter(function (e) { return e.type === 'ORBIT'; })[0];
+    this._orbitEventTime = oev ? oev.time : Infinity;
+    this._camTX = this._camTY = null;
     this._vmax = 0;
     this._autopsyShown = false;
     this.autopsy.hidden = true;
@@ -466,9 +496,9 @@
     if (this._exhaust) {
       this._exhaust.update(this.flight.playing ? (this._frameDt || 0.016) : 0, {
         x: (st.position && st.position.x) || 0,
-        y: st.altitude,
+        y: (st.position && st.position.y) || 0,
         v: st.velocity,
-        powered: powered,
+        powered: powered && st.altitude < 45000,   // no visible plume up in vacuum
         padLocked: !!st.padLocked,
         buoyant: this.flight.buoyant,
         exhaustY: this._exhaustY
@@ -484,45 +514,58 @@
   FlightScreen.prototype._updateCamera = function (alt, st) {
     var cam = this.scene.camera;
     var mode = CAM_MODES[this._camIdx];
-    var focus = alt + Math.min(this._vehH * 0.5, 2.5);
+    var RE = this._RE || 600000;
 
-    // smoothly follow the vehicle's horizontal drift so a wind-borne lantern
-    // stays centred instead of sliding off-frame
-    var tx = (st && st.position) ? st.position.x : 0;
-    if (this._camX == null) this._camX = 0;
-    // smooth follow during playback; snap when paused / scrubbing
-    this._camX += (tx - this._camX) * (this.flight.playing ? 0.06 : 0.5);
-    var cx = this._camX;
+    // camera target = the vehicle's true FIXED-FRAME position (so it tracks
+    // correctly all the way around the planet, not just near the pad)
+    var vx = (st && st.position) ? st.position.x : 0;
+    var vy = (st && st.position) ? st.position.y : 0;
+    if (this._camTX == null) { this._camTX = vx; this._camTY = vy; }
+    var k = this.flight.playing ? 0.08 : 0.5;
+    this._camTX += (vx - this._camTX) * k;
+    this._camTY += (vy - this._camTY) * k;
+    var tx = this._camTX, ty = this._camTY;
+
+    var sp = Math.sin(this._phi), cp = Math.cos(this._phi);
+    var sth = Math.sin(this._theta), cth = Math.cos(this._theta);
+
+    if (mode === 'map') {
+      // ORBITAL MAP — the whole planet centred, orbit shell + vehicle around it
+      var pcy = -RE;
+      var dist = RE * 2.6 * clamp(this._zoom, 0.3, 6);
+      cam.position.set(dist * sp * sth, pcy + dist * cp, dist * sp * cth);
+      cam.lookAt(0, pcy, 0);
+      return;
+    }
+
+    var focus = alt + Math.min(this._vehH * 0.5, 2.5);
 
     if (mode === 'ground') {
       // pinned near the pad, tilts up + pans to track the vehicle
-      var gd = clamp(10 + alt * 0.02, 10, 70) * clamp(this._zoom, 0.6, 2);
-      cam.position.set(
-        gd * Math.sin(this._theta), 1.3, gd * Math.cos(this._theta)
-      );
-      cam.lookAt(cx, focus, 0);
+      var gd = clamp(10 + alt * 0.02, 10, 400) * clamp(this._zoom, 0.5, 3);
+      cam.position.set(gd * sth, 1.3, gd * cth);
+      cam.lookAt(tx, Math.max(vy, focus), 0);
 
     } else if (mode === 'free') {
-      var r = clamp(40 * this._zoom, 4, 1800);
-      var sp = Math.sin(this._phi), cp = Math.cos(this._phi);
+      var fr = clamp(40 * this._zoom, 4, RE * 3);
       var tg = this._freeTarget;
       cam.position.set(
-        tg.x + r * sp * Math.sin(this._theta),
-        Math.max(tg.y + r * cp, 1),
-        tg.z + r * sp * Math.cos(this._theta)
+        tg.x + fr * sp * sth,
+        tg.y + fr * cp,
+        tg.z + fr * sp * cth
       );
       cam.lookAt(tg);
 
     } else {
-      // chase: orbit the vehicle CoM, following it up + across
-      var cr = clamp((14 + alt * 0.015) * this._zoom, 6, 140);
-      var csp = Math.sin(this._phi), ccp = Math.cos(this._phi);
+      // chase: orbit the vehicle, distance grows with altitude so an orbital
+      // flight naturally pulls back to show the curving trajectory
+      var cr = clamp((14 + alt * 0.06) * this._zoom, 6, RE * 2);
       cam.position.set(
-        cx + cr * csp * Math.sin(this._theta),
-        Math.max(focus + cr * ccp, 1.5),
-        cr * csp * Math.cos(this._theta)
+        tx + cr * sp * sth,
+        vy + cr * cp,
+        cr * sp * cth
       );
-      cam.lookAt(cx, focus, 0);
+      cam.lookAt(tx, vy, 0);
     }
   };
 
@@ -536,9 +579,14 @@
     this.elMass.textContent = fmtMass(st.mass);
     this.elQ.textContent = Math.round(st.q) + ' Pa';
     if (this.elDrift) {
-      var dx = (st.position && st.position.x) || 0;
-      this.elDrift.textContent = (Math.abs(dx) < 1 ? '0' : Math.round(dx)) + ' m' +
-        (dx > 1 ? ' →' : (dx < -1 ? ' ←' : ''));
+      var orb = this._summary && this._summary.orbit;
+      if (orb && orb.achieved && this.flight.time > (this._orbitEventTime || 1e9) - 1) {
+        this.elDrift.textContent = fmtAlt(orb.periapsis) + ' × ' + fmtAlt(orb.apoapsis);
+      } else {
+        var dx = (st.position && st.position.x) || 0;
+        this.elDrift.textContent = fmtAlt(Math.abs(dx)) +
+          (dx > 1 ? ' →' : (dx < -1 ? ' ←' : ''));
+      }
     }
     this.elPhase.textContent = this._phaseText || '—';
   };
@@ -558,11 +606,19 @@
     this._revealChrome();          // flight's over — bring the controls back
     this._renderVerdict();
     var s = this._summary || {};
-    var cells = [
+    var orb = s.orbit || {};
+    var cells = orb.achieved ? [
+      ['วงโคจร (Peri × Apo)', fmtAlt(orb.periapsis) + ' × ' + fmtAlt(orb.apoapsis)],
+      ['ความเยื้องศูนย์กลาง e', (orb.eccentricity || 0).toFixed(3)],
+      ['คาบการโคจร', Math.round(orb.period || 0) + ' s'],
+      ['ความเร็วสูงสุด', (s.maxVelocity || 0).toFixed(0) + ' m/s'],
+      ['ท่อนที่สลัดทิ้ง', Math.max(0, (s.stagesFlown || 1) - 1) + ' ท่อน'],
+      ['มวลเข้าวงโคจร', fmtMass(s.burnoutMass || 0)]
+    ] : [
       ['ยอดสูง (Apogee)', fmtAlt(s.apogee || 0)],
       ['ความเร็วสูงสุด', (s.maxVelocity || 0).toFixed(1) + ' m/s'],
-      ['ระยะลอยเบี่ยง', Math.round(Math.abs(s.impactX || 0)) + ' m'],
-      ['ลอยไกลสุด', Math.round(s.maxDrift || 0) + ' m'],
+      ['ตกไกลจากฐาน', fmtAlt(Math.abs(s.downrange || s.impactX || 0))],
+      ['ท่อนที่บิน', (s.stagesFlown || 1) + ' ท่อน'],
       ['เวลาบินรวม', (s.flightTime || 0).toFixed(1) + ' s'],
       ['มวลเมื่อเชื้อเพลิงหมด', fmtMass(s.burnoutMass || 0)]
     ];

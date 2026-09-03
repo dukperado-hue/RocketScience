@@ -35,13 +35,18 @@
       return;
     }
 
-    this.renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: true });
+    this.renderer = new THREE.WebGLRenderer({
+      canvas: canvas, antialias: true, alpha: true,
+      // a scaled planet is ~600 km across but the vehicle is ~1 m — only a
+      // logarithmic depth buffer keeps both crisp in one view (orbital map)
+      logarithmicDepthBuffer: !!opts.logDepth
+    });
     this.renderer.setPixelRatio(Math.min(global.devicePixelRatio || 1, 2));
     this.renderer.setClearColor(opts.background != null ? opts.background : 0x0a1830, 1);
 
     this.scene = new THREE.Scene();
 
-    this.camera = new THREE.PerspectiveCamera(opts.fov || 45, 1, 0.05, 5000);
+    this.camera = new THREE.PerspectiveCamera(opts.fov || 45, 1, 0.02, opts.far || 5000);
     this.camera.position.set(2.4, 1.8, 3.4);
     this.camera.lookAt(0, 0.6, 0);
 

@@ -200,6 +200,30 @@
   function buildSample(eraId) {
     builder.reset();
     var C = RS.PartsCatalog;
+    if (eraId === '4-orbit') {
+      // two-stage orbital stack, built top → down:
+      //   payload · [upper: 2 tanks + vacuum engine] · decoupler ·
+      //   [booster: 4 tanks + heavy engine]. Booster is jettisoned when dry.
+      var pay = vehicle.addInstance(C.get('orb_payload'), 0, 0, []);
+      var t2a = vehicle.addInstance(C.get('orb_tank_large'), 0, 1,
+        [{ node: 'top', toIid: pay.iid, toNode: 'bottom' }]);
+      var t2b = vehicle.addInstance(C.get('orb_tank_large'), 0, 4,
+        [{ node: 'top', toIid: t2a.iid, toNode: 'bottom' }]);
+      var vac = vehicle.addInstance(C.get('orb_engine_vacuum'), 0, 7,
+        [{ node: 'top', toIid: t2b.iid, toNode: 'bottom' }]);
+      var dec = vehicle.addInstance(C.get('orb_decoupler'), 0, 9,
+        [{ node: 'top', toIid: vac.iid, toNode: 'bottom' }]);
+      var prevT = dec, prevNode = 'bottom', gy = 10;
+      for (var ti = 0; ti < 4; ti++) {
+        var tk = vehicle.addInstance(C.get('orb_tank_large'), 0, gy,
+          [{ node: 'top', toIid: prevT.iid, toNode: prevNode }]);
+        prevT = tk; prevNode = 'bottom'; gy += 3;
+      }
+      vehicle.addInstance(C.get('orb_engine_heavy'), 0, gy,
+        [{ node: 'top', toIid: prevT.iid, toNode: prevNode }]);
+      builder._afterEdit('จรวดวงโคจร 2 ท่อน — กด ▶ ดูมันสลัดท่อนล่าง แล้วเลี้ยวโค้งเข้าวงโคจร (Newton’s Cannonball)');
+      return;
+    }
     if (eraId === '3-v2') {
       // nose · tank · engine — the classic liquid stack. It flies straight up,
       // then the gyro tilts it downrange (the gravity turn).
@@ -435,7 +459,10 @@
   // ---- sync the era UI to the persisted era ----------------------
   var runBtn = document.getElementById('bp-run');
   function syncEraLabels(eraId) {
-    if (eraId === '3-v2') {
+    if (eraId === '4-orbit') {
+      sampleBtn.textContent = 'จรวดวงโคจรตัวอย่าง';
+      runBtn.textContent = '🛰️ ส่งเข้าวงโคจร';
+    } else if (eraId === '3-v2') {
       sampleBtn.textContent = 'V-2 ตัวอย่าง';
       runBtn.textContent = '🚀 ปล่อย V-2';
     } else if (eraId === '1p5-fireworks') {
@@ -471,7 +498,7 @@
     openPreview: openPreview,
     simulate: function () { return RS.Physics.simulate(vehicle.toPhysicsModel()); }
   };
-  console.log('%cFROM FIRE TO ORBIT — Reboot Phase 8 ready', 'color:#5fe0a8;font-weight:bold');
+  console.log('%cFROM FIRE TO ORBIT — Reboot Phase 9 ready', 'color:#5fe0a8;font-weight:bold');
   console.log('contract v' + RS.Physics.CONTRACT_VERSION +
     ' · try FIRE_TO_ORBIT.simulate()');
 })();

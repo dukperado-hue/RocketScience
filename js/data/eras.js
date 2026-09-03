@@ -48,6 +48,15 @@
       partIds: ['v2_nose', 'v2_tank', 'v2_engine'],
       unlock: { type: 'default' },
       envelope: { apogee: 60000, note: 'บินขึ้นตรงแล้วเอียงหัวทำความเร็วแนวราบ — ยิงไกลข้ามขอบฟ้า' }
+    },
+    {
+      id: '4-orbit',
+      order: 4,
+      name: 'ยุค 4 · วงโคจร',
+      tagline: 'จรวดหลายท่อน — สลัดถังเปล่าทิ้งเพื่อไปให้ถึงความเร็ววงโคจร คือลูกกระสุนของนิวตันที่ยิงแรงพอจนไม่มีวันตก',
+      partIds: ['orb_payload', 'orb_engine_vacuum', 'orb_tank_large', 'orb_decoupler', 'orb_engine_heavy'],
+      unlock: { type: 'default' },
+      envelope: { apogee: 400000, note: 'สองท่อน + เลี้ยวโค้ง → เข้าวงโคจรรอบดาว' }
     }
   ];
 

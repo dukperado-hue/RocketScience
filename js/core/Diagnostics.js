@@ -112,14 +112,24 @@
         ' m/s — CoM เลื่อนไปหน้า CoP ตอนเชื้อเพลิงเผาไหม้');
     }
 
-    // --- 4c · gravity turn (guided vehicles) -----------------------
+    // --- 4c · gravity turn + orbit (guided vehicles) --------------
     if (model && model.gravityTurn) {
       var pv = events.filter(function (e) { return e.type === 'PITCH_OVER'; })[0];
-      var dr = Math.abs(sum.impactX || 0);
-      if (pv) {
-        add('guidance', OK, 'ไจโรเลี้ยวโค้งสำเร็จ (Gravity Turn)',
-          'เริ่มเอียงที่ ' + fmtAlt(pv.altitude) + ' · ตกไกลจากฐาน ' + fmtAlt(dr) +
-          ' · ความเร็วสูงสุด ' + Math.round(sum.maxVelocity || 0) + ' m/s');
+      var orb = sum.orbit || {};
+      var staged = (sum.stagesFlown || 1) > 1;
+      if (orb.achieved) {
+        add('orbit', OK, 'เข้าสู่วงโคจรสำเร็จ! 🛰️',
+          'วงโคจร ' + fmtAlt(orb.periapsis) + ' × ' + fmtAlt(orb.apoapsis) +
+          ' · ความเยื้อง e=' + (orb.eccentricity || 0).toFixed(3) +
+          ' · คาบ ' + Math.round(orb.period) + ' วิ' +
+          (staged ? ' · สลัด ' + (sum.stagesFlown - 1) + ' ท่อน' : ''));
+      } else if (pv) {
+        var dr = Math.abs(sum.downrange || sum.impactX || 0);
+        add('guidance', model && model.staged ? WARN : OK,
+          'เลี้ยวโค้งแล้ว แต่ยังไม่ถึงวงโคจร',
+          'ตกไกลจากฐาน ' + fmtAlt(dr) + ' · ความเร็วสูงสุด ' +
+          Math.round(sum.maxVelocity || 0) + ' m/s' +
+          (model && model.staged ? ' — Δv ไม่พอ เพิ่มถังหรือท่อน' : ''));
       } else {
         add('guidance', WARN, 'ยังไม่เข้าโปรแกรมเลี้ยวโค้ง',
           'ต้องพ้น 500 ม. และเร็วเกิน 50 m/s ก่อนไจโรจะเริ่มเอียงหัว');

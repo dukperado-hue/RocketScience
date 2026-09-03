@@ -9,9 +9,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/blueprint.css?v=12">
-<link rel="stylesheet" href="css/flight.css?v=12">
-<link rel="stylesheet" href="css/mission.css?v=12">
+<link rel="stylesheet" href="css/blueprint.css?v=13">
+<link rel="stylesheet" href="css/flight.css?v=13">
+<link rel="stylesheet" href="css/mission.css?v=13">
 </head>
 <body class="bp-body">
 
@@ -23,9 +23,10 @@
     <button type="button" class="bp-era-btn" data-era="1-bangfai">ยุค 1 · บั้งไฟ</button>
     <button type="button" class="bp-era-btn" data-era="1p5-fireworks">ยุค 1.5 · ดอกไม้ไฟ</button>
     <button type="button" class="bp-era-btn" data-era="3-v2">ยุค 3 · V-2</button>
+    <button type="button" class="bp-era-btn" data-era="4-orbit">ยุค 4 · วงโคจร</button>
   </span>
   <button type="button" class="bp-mission-btn" id="bp-mission">📋 ภารกิจ</button>
-  <span class="bp-tagline">Reboot Phase 8 — GLTF Models · Era 3 (V-2) · The Gravity Turn</span>
+  <span class="bp-tagline">Reboot Phase 9 — Radial Gravity · Staging · Orbit</span>
 </header>
 
 <div class="bp-stage">
@@ -212,35 +213,35 @@
 </div>
 
 <!-- ═══ core/ — ZERO dependency on render/ or Three.js ═══ -->
-<script src="js/core/PartsCatalog.js?v=12"></script>
-<script src="js/core/Vehicle.js?v=12"></script>
-<script src="js/core/SimulationEvents.js?v=12"></script>
-<script src="js/core/Diagnostics.js?v=12"></script>
-<script src="js/core/Physics.js?v=12"></script>
-<script src="js/core/Blueprint2D.js?v=12"></script>
+<script src="js/core/PartsCatalog.js?v=13"></script>
+<script src="js/core/Vehicle.js?v=13"></script>
+<script src="js/core/SimulationEvents.js?v=13"></script>
+<script src="js/core/Diagnostics.js?v=13"></script>
+<script src="js/core/Physics.js?v=13"></script>
+<script src="js/core/Blueprint2D.js?v=13"></script>
 
 <!-- ═══ data/ — pure content ═══ -->
-<script src="js/data/parts.js?v=12"></script>
-<script src="js/data/eras.js?v=12"></script>
-<script src="js/data/missions.js?v=12"></script>
+<script src="js/data/parts.js?v=13"></script>
+<script src="js/data/eras.js?v=13"></script>
+<script src="js/data/missions.js?v=13"></script>
 
 <!-- ═══ game/ — rules, consumes the contract ═══ -->
-<script src="js/game/EraManager.js?v=12"></script>
-<script src="js/game/MissionEngine.js?v=12"></script>
-<script src="js/game/MissionBriefing.js?v=12"></script>
+<script src="js/game/EraManager.js?v=13"></script>
+<script src="js/game/MissionEngine.js?v=13"></script>
+<script src="js/game/MissionBriefing.js?v=13"></script>
 
 <!-- ═══ vendor ═══ -->
-<script src="vendor/three/three.min.js?v=12"></script>
-<script src="vendor/three/loaders/GLTFLoader.js?v=12"></script>
+<script src="vendor/three/three.min.js?v=13"></script>
+<script src="vendor/three/loaders/GLTFLoader.js?v=13"></script>
 
 <!-- ═══ render/ — consumes data, needs Three.js ═══ -->
-<script src="js/render/Scene.js?v=12"></script>
-<script src="js/render/CameraController.js?v=12"></script>
-<script src="js/render/VehicleRenderer.js?v=12"></script>
-<script src="js/render/ExhaustFX.js?v=12"></script>
-<script src="js/render/FlightRenderer.js?v=12"></script>
-<script src="js/render/FlightScreen.js?v=12"></script>
+<script src="js/render/Scene.js?v=13"></script>
+<script src="js/render/CameraController.js?v=13"></script>
+<script src="js/render/VehicleRenderer.js?v=13"></script>
+<script src="js/render/ExhaustFX.js?v=13"></script>
+<script src="js/render/FlightRenderer.js?v=13"></script>
+<script src="js/render/FlightScreen.js?v=13"></script>
 
-<script src="js/app.js?v=12"></script>
+<script src="js/app.js?v=13"></script>
 </body>
 </html>

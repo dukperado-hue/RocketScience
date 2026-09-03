@@ -110,6 +110,22 @@
           ' m/s — ต้องการ ' + o.maxVelocityMin);
       }
 
+      if (o.orbitPeriapsisMin != null) {
+        var orb = sum.orbit || {};
+        var peri = orb.achieved ? orb.periapsis : -Infinity;
+        var metOrb = !!orb.achieved && peri >= o.orbitPeriapsisMin;
+        res.objectives.push({
+          label: 'เข้าวงโคจร · periapsis ≥ ' + Math.round(o.orbitPeriapsisMin / 1000) + ' กม.',
+          met: metOrb,
+          actual: orb.achieved
+            ? ('วงโคจร ' + fmtM(orb.periapsis) + ' × ' + fmtM(orb.apoapsis))
+            : 'ยังไม่เข้าวงโคจร'
+        });
+        if (!metOrb) res.failReasons.push(orb.achieved
+          ? ('วงโคจรต่ำไป (periapsis ' + fmtM(peri) + ') — เร่งความเร็วแนวราบให้มากขึ้น')
+          : 'ยังไม่เข้าวงโคจร — Δv ไม่พอ หรือเลี้ยวโค้งไม่ทัน');
+      }
+
       if (o.downrangeMin != null) {
         var dr = Math.abs(sum.impactX || 0);
         var metDr = dr >= o.downrangeMin;
