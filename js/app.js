@@ -42,6 +42,7 @@
     onChange: function (stats) {
       document.getElementById('bp-run').disabled = !stats.valid;
       watchBtn.disabled = true;      // any edit invalidates the last replay
+      renderMissionBar(stats);        // live-update budget / mass / parts chips
       schedulePreview();
     }
   });
@@ -54,8 +55,60 @@
 
   watchBtn.addEventListener('click', function () {
     if (lastSim && lastSim.ok && flightScreen && flightScreen.available) {
-      flightScreen.open(lastSim, vehicle);
+      flightScreen.open(lastSim, vehicle, activeMission);
     }
+  });
+
+  // ---- mission state ------------------------------------------------
+  var activeMission = null;
+  var missionBtn = document.getElementById('bp-mission');
+  var missionBar = document.getElementById('bp-mission-bar');
+  var missionResultEl = document.getElementById('bp-mission-result');
+
+  function setActiveMission(m) {
+    activeMission = m || null;
+    missionBtn.textContent = m ? '📋 ' + m.title : '📋 ภารกิจ';
+    missionResultEl.hidden = true;
+    renderMissionBar(vehicle.computeStats());
+  }
+
+  function renderMissionBar(stats) {
+    if (!missionBar) return;                 // called once during builder init
+    var m = activeMission;
+    if (!m) { missionBar.hidden = true; return; }
+    var o = m.objectives || {}, c = m.constraints || {};
+    var partIds = vehicle.instances.map(function (i) { return i.part.id; });
+    var chips = [];
+    var chip = function (met, txt) {
+      return '<span class="bp-mbar-chip' + (met ? ' met' : '') + '">' + txt + '</span>';
+    };
+    if (o.targetAltitude != null) chips.push(chip(false, '🎯 ≥ ' + o.targetAltitude + ' ม.'));
+    if (o.surviveFlight) chips.push(chip(false, '🛡️ ไม่เสียการควบคุม'));
+    if (c.maxCost != null) chips.push(chip(stats.cost <= c.maxCost, '💰 ' + stats.cost + ' / ' + c.maxCost + ' ฿'));
+    if (c.maxMass != null) {
+      var okM = stats.totalMass <= c.maxMass + 1e-9;
+      chips.push(chip(okM, '⚖️ ' + fmtMass(stats.totalMass) + ' / ' + fmtMass(c.maxMass)));
+    }
+    (c.requiredParts || []).forEach(function (pid) {
+      var got = partIds.indexOf(pid) !== -1;
+      var p = RS.PartsCatalog.get(pid);
+      chips.push(chip(got, '🔧 ' + ((p && p.name) || pid)));
+    });
+    missionBar.innerHTML = '<b>ภารกิจ: ' + esc(m.title) + '</b>' + chips.join('');
+    missionBar.hidden = false;
+  }
+
+  function openBriefing(m) {
+    if (!m || !RS.MissionBriefing) return;
+    RS.MissionBriefing.show(m, { onAccept: function () { setActiveMission(m); } });
+  }
+
+  function fmtMass(kg) {
+    return kg < 1 ? Math.round(kg * 1000) + ' g' : kg.toFixed(2) + ' kg';
+  }
+
+  missionBtn.addEventListener('click', function () {
+    openBriefing(activeMission || RS.MissionEngine.firstUnfinished(currentEra));
   });
 
   if (preview.available) {
@@ -131,6 +184,9 @@
       c.classList.toggle('is-on', c === btn);
     });
     document.getElementById('bp-watch').disabled = true;
+    var m = RS.MissionEngine.firstUnfinished(eraId);
+    setActiveMission(m);
+    openBriefing(m);
   });
 
   // ---- run the simulation contract ---------------------------------
@@ -148,14 +204,34 @@
     watchBtn.disabled = !(result.ok && result.summary && result.summary.liftedOff &&
       flightScreen && flightScreen.available);
 
-    // optional mission check against the first era mission
-    var missions = RS.MissionEngine.forEra(RS.EraManager.currentId());
-    if (missions[0]) {
-      var ev = RS.MissionEngine.evaluate(missions[0], result);
-      console.log('[FIRE→ORBIT] mission "' + missions[0].name + '"', ev);
+    // ---- mission evaluation --------------------------------------
+    if (activeMission) {
+      var mres = RS.MissionEngine.evaluate(activeMission, result, vehicle);
+      renderMissionResult(mres);
+      if (mres.passed && !RS.MissionEngine.isDone(activeMission.id)) {
+        RS.MissionEngine.markComplete(activeMission.id);
+        RS.EraManager.refreshUnlocks(RS.MissionEngine.completedCountByEra());
+      }
+      console.log('[FIRE→ORBIT] mission "' + activeMission.title + '"', mres);
     }
     console.log('[FIRE→ORBIT] SimulationResult v' + result.contractVersion, result);
   });
+
+  function renderMissionResult(r) {
+    if (!r || !r.mission) { missionResultEl.hidden = true; return; }
+    var why = '';
+    if (r.passed) {
+      why = '<span class="bp-mres-why">ปลดล็อกแล้ว · <b>+' + r.score + ' คะแนน</b></span>';
+    } else {
+      why = '<span class="bp-mres-why">' +
+        r.failReasons.map(esc).join(' &nbsp;·&nbsp; ') + '</span>';
+    }
+    missionResultEl.className = 'bp-mres ' + (r.passed ? 'pass' : 'fail');
+    missionResultEl.innerHTML =
+      '<span class="bp-mres-tag">' + (r.passed ? 'MISSION ACCOMPLISHED' : 'MISSION FAILED') +
+      '</span><span class="bp-mres-why"><b>' + esc(r.mission.title) + '</b></span>' + why;
+    missionResultEl.hidden = false;
+  }
 
   // ---- render helpers ------------------------------------------------
   function renderSummary(r) {
@@ -254,13 +330,28 @@
     });
   }
 
+  // ---- sync the era UI to the persisted era ----------------------
+  Array.prototype.forEach.call(document.querySelectorAll('.bp-era-btn'), function (b) {
+    b.classList.toggle('is-on', b.dataset.era === currentEra);
+  });
+  sampleBtn.textContent = currentEra === '1-bangfai' ? 'บั้งไฟตัวอย่าง' : 'โคมตัวอย่าง';
+
+  // ---- open the game on a mission briefing -------------------------
+  (function bootMission() {
+    var m = RS.MissionEngine.firstUnfinished(currentEra);
+    setActiveMission(m);
+    missionBar.hidden = true;          // stays hidden behind the briefing
+    openBriefing(m);
+  })();
+
   // console handle
   window.FIRE_TO_ORBIT = {
     vehicle: vehicle, builder: builder, preview: preview, flight: flight,
     flightScreen: flightScreen, RS: RS,
+    get mission() { return activeMission; },
     simulate: function () { return RS.Physics.simulate(vehicle.toPhysicsModel()); }
   };
-  console.log('%cFROM FIRE TO ORBIT — Reboot Phase 3 ready', 'color:#5fe0a8;font-weight:bold');
+  console.log('%cFROM FIRE TO ORBIT — Reboot Phase 4 ready', 'color:#5fe0a8;font-weight:bold');
   console.log('contract v' + RS.Physics.CONTRACT_VERSION +
     ' · try FIRE_TO_ORBIT.simulate()');
 })();

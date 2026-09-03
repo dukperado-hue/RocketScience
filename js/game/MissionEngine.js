@@ -2,9 +2,10 @@
  * FROM FIRE TO ORBIT
  * js/game/MissionEngine.js
  *
- * Scores a SimulationResult against a mission's objectives and tracks which
- * missions are complete. Depends on RS.data.missions (content) and consumes the
- * Physics contract — never touches render or Three.js.
+ * Scores a finished flight + the built vehicle against a mission's objectives
+ * and constraints, and tracks which missions are complete. Depends on
+ * RS.data.missions (content) and consumes the Physics contract — never touches
+ * render or Three.js.
  * ===========================================================================*/
 (function (global) {
   'use strict';
@@ -19,46 +20,26 @@
     try { global.localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) {}
   }
 
-  var RANK = { OK: 0, WARN: 1, FAIL: 2 };
-
-  /** Evaluate ONE objective against a SimulationResult. */
-  function checkObjective(obj, sim) {
-    var sum = sim.summary || {};
-    var events = sim.events || [];
-    var diags = sim.diagnostics || [];
-    var impact = events.filter(function (e) { return e.type === 'IMPACT'; })[0];
-
-    switch (obj.type) {
-      case 'apogeeMin':
-        return { met: sum.apogee >= obj.value, actual: fmtM(sum.apogee) };
-      case 'apogeeMax':
-        return { met: sum.apogee <= obj.value, actual: fmtM(sum.apogee) };
-      case 'flightTimeMin':
-        return { met: sum.flightTime >= obj.value, actual: (sum.flightTime || 0).toFixed(0) + ' s' };
-      case 'maxVelocityMax':
-        return { met: (sum.maxVelocity || 0) <= obj.value, actual: (sum.maxVelocity || 0).toFixed(1) + ' m/s' };
-      case 'softLanding':
-        return impact
-          ? { met: Math.abs(impact.velocity) <= obj.value, actual: Math.abs(impact.velocity).toFixed(1) + ' m/s' }
-          : { met: false, actual: 'ยังไม่แตะพื้น' };
-      case 'diagnosticsClear': {
-        var worstAllowed = RANK[obj.value] != null ? RANK[obj.value] : RANK.WARN;
-        var worst = diags_worst(diags);
-        return { met: worst <= worstAllowed, actual: rankName(worst) };
-      }
-      default:
-        return { met: false, actual: 'ไม่รู้จักเงื่อนไข "' + obj.type + '"' };
-    }
-  }
-
-  function diags_worst(diags) {
-    return diags.reduce(function (w, d) { return Math.max(w, RANK[d.status] || 0); }, 0);
-  }
-  function rankName(r) { return r === 2 ? 'FAIL' : r === 1 ? 'WARN' : 'OK'; }
   function fmtM(m) {
     m = m || 0;
     return m >= 1000 ? (m / 1000).toFixed(2) + ' km' : Math.round(m) + ' m';
   }
+  function fmtKg(kg) {
+    kg = kg || 0;
+    return kg < 1 ? Math.round(kg * 1000) + ' g' : kg.toFixed(2) + ' kg';
+  }
+  function partName(pid) {
+    var cat = global.RS && global.RS.PartsCatalog;
+    var p = cat && cat.get(pid);
+    return (p && p.name) || pid;
+  }
+
+  /** who briefs a mission — label + avatar glyph + accent */
+  var NPCS = {
+    kapi:   { name: 'น้องกะปิ',  glyph: '🦫', accent: '#7fc27e', role: 'ผู้ช่วยวิศวกร' },
+    pchang: { name: 'พี่ช่าง',   glyph: '🦆', accent: '#5bd6ff', role: 'หัวหน้าช่าง' },
+    narr:   { name: 'ศูนย์ควบคุม', glyph: '🛰️', accent: '#9db4d8', role: '' }
+  };
 
   var MissionEngine = {
     _state: null,
@@ -73,21 +54,102 @@
     get: function (id) { return this._missions().get(id); },
     forEra: function (eraId) { return this._missions().forEra(eraId); },
     isDone: function (id) { return !!(this._state.done && this._state.done[id]); },
+    npc: function (key) { return NPCS[key] || NPCS.narr; },
+
+    /** First not-yet-passed mission in an era (falls back to its first). */
+    firstUnfinished: function (eraId) {
+      var list = this.forEra(eraId);
+      for (var i = 0; i < list.length; i++) {
+        if (!this.isDone(list[i].id)) return list[i];
+      }
+      return list[0] || null;
+    },
 
     /**
-     * @param {Object} mission  from RS.data.missions
-     * @param {Object} sim       SimulationResult
-     * @returns {{passed:boolean, results:{label:string,met:boolean,actual:string}[], score:number}}
+     * @param {Object} mission   from RS.data.missions
+     * @param {Object} sim        SimulationResult
+     * @param {Object} vehicle    RS.Vehicle (for cost / mass / required-parts)
+     * @returns {{
+     *   mission:Object, passed:boolean, score:number,
+     *   objectives:{label:string,met:boolean,actual:string}[],
+     *   constraints:{label:string,met:boolean,actual:string}[],
+     *   failReasons:string[]
+     * }}
      */
-    evaluate: function (mission, sim) {
-      if (!mission || !sim) return { passed: false, results: [], score: 0 };
-      var results = (mission.objectives || []).map(function (obj) {
-        var r = checkObjective(obj, sim);
-        return { label: obj.label, met: !!r.met, actual: r.actual };
-      });
-      var passed = sim.ok && results.every(function (r) { return r.met; });
-      var score = passed ? ((mission.reward && mission.reward.score) || 0) : 0;
-      return { passed: passed, results: results, score: score };
+    evaluate: function (mission, sim, vehicle) {
+      var res = { mission: mission || null, passed: false, score: 0,
+        objectives: [], constraints: [], failReasons: [] };
+      if (!mission || !sim) return res;
+
+      var sum = sim.summary || {};
+      var events = sim.events || [];
+      var has = function (t) { return events.some(function (e) { return e.type === t; }); };
+
+      var stats = (vehicle && vehicle.computeStats) ? vehicle.computeStats() : (vehicle || {});
+      var partIds = (vehicle && vehicle.instances)
+        ? vehicle.instances.map(function (i) { return i.part.id; }) : [];
+
+      // ---- objectives ------------------------------------------------
+      var o = mission.objectives || {};
+
+      if (o.targetAltitude != null) {
+        var hi = sum.apogee || 0;
+        var metAlt = hi >= o.targetAltitude;
+        res.objectives.push({ label: 'ขึ้นสูงเกิน ' + o.targetAltitude + ' ม.',
+          met: metAlt, actual: fmtM(hi) });
+        if (!metAlt) res.failReasons.push('ขึ้นได้แค่ ' + fmtM(hi) +
+          ' — ต้องการ ' + o.targetAltitude + ' ม.');
+      }
+
+      if (o.surviveFlight) {
+        var lost = has('LOSS_OF_CONTROL');
+        var flew = !!sum.liftedOff && !!sim.ok;
+        var structFail = (sim.diagnostics || []).some(function (d) {
+          return d.id === 'structure' && d.status === 'FAIL';
+        });
+        var survived = flew && !lost && !structFail;
+        res.objectives.push({ label: 'บินได้โดยไม่เสียการควบคุม', met: survived,
+          actual: lost ? 'เสียการควบคุม' : structFail ? 'โครงสร้างพัง'
+            : flew ? 'ควบคุมได้ตลอด' : 'ไม่ขึ้นจากพื้น' });
+        if (lost) res.failReasons.push('จรวดเสียการควบคุม (ตีลังกากลางอากาศ)');
+        else if (structFail) res.failReasons.push('โครงสร้างพังจากแรงดันอากาศ (Max-Q)');
+        else if (!flew) res.failReasons.push('ยานไม่ขึ้นจากพื้น');
+      }
+
+      // ---- constraints ---------------------------------------------
+      var c = mission.constraints || {};
+
+      if (c.maxCost != null) {
+        var cost = stats.cost || 0;
+        var metCost = cost <= c.maxCost;
+        res.constraints.push({ label: 'งบไม่เกิน ' + c.maxCost + ' ฿',
+          met: metCost, actual: cost + ' ฿' });
+        if (!metCost) res.failReasons.push('เกินงบ ' + (cost - c.maxCost) + ' ฿');
+      }
+
+      if (c.maxMass != null) {
+        var m = stats.totalMass || 0;
+        var metMass = m <= c.maxMass + 1e-9;
+        res.constraints.push({ label: 'มวลไม่เกิน ' + fmtKg(c.maxMass),
+          met: metMass, actual: fmtKg(m) });
+        if (!metMass) res.failReasons.push('ยานหนักเกินมา ' + fmtKg(m - c.maxMass));
+      }
+
+      if (c.requiredParts && c.requiredParts.length) {
+        c.requiredParts.forEach(function (pid) {
+          var got = partIds.indexOf(pid) !== -1;
+          var nm = partName(pid);
+          res.constraints.push({ label: 'ใช้ “' + nm + '”', met: got,
+            actual: got ? '✓ มี' : 'ยังไม่มี' });
+          if (!got) res.failReasons.push('ต้องใช้ชิ้นส่วน “' + nm + '”');
+        });
+      }
+
+      var allObj = res.objectives.every(function (r) { return r.met; });
+      var allCon = res.constraints.every(function (r) { return r.met; });
+      res.passed = !!sim.ok && allObj && allCon;
+      res.score = res.passed ? ((mission.reward && mission.reward.score) || 0) : 0;
+      return res;
     },
 
     /** Record a completion (call only when evaluate().passed). */

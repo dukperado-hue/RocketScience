@@ -4,13 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>FROM FIRE TO ORBIT — Blueprint Builder</title>
-<meta name="description" content="เกมจำลองวิศวกรรมจรวด: ระบบเดียว ประกอบได้ทุกอย่างตั้งแต่โคมลอยถึงจรวดวงโคจร — Reboot Phase 3: Era 2 (Bang Fai) & Aerodynamic Stability">
+<meta name="description" content="เกมจำลองวิศวกรรมจรวด: ระบบเดียว ประกอบได้ทุกอย่างตั้งแต่โคมลอยถึงจรวดวงโคจร — Reboot Phase 4: The Mission & Story Engine">
 <meta name="theme-color" content="#0a1830">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/blueprint.css?v=6">
-<link rel="stylesheet" href="css/flight.css?v=6">
+<link rel="stylesheet" href="css/blueprint.css?v=7">
+<link rel="stylesheet" href="css/flight.css?v=7">
+<link rel="stylesheet" href="css/mission.css?v=7">
 </head>
 <body class="bp-body">
 
@@ -21,7 +22,8 @@
     <button type="button" class="bp-era-btn is-on" data-era="0-khomloy">ยุค 0 · โคมลอย</button>
     <button type="button" class="bp-era-btn" data-era="1-bangfai">ยุค 1 · บั้งไฟ</button>
   </span>
-  <span class="bp-tagline">Reboot Phase 3 — Era 2 (Bang Fai) · Aerodynamic Stability</span>
+  <button type="button" class="bp-mission-btn" id="bp-mission">📋 ภารกิจ</button>
+  <span class="bp-tagline">Reboot Phase 4 — The Mission &amp; Story Engine</span>
 </header>
 
 <div class="bp-stage">
@@ -67,6 +69,8 @@
 
 </div>
 
+<div class="bp-mbar" id="bp-mission-bar" hidden></div>
+
 <p class="bp-status" id="bp-status">ลากชิ้นส่วนจากด้านซ้ายมาวางบนกริด</p>
 
 <!-- Physics runs in core/ and returns a locked SimulationResult; render just plays it back -->
@@ -77,6 +81,8 @@
     <button type="button" class="bp-btn bp-btn-alt" id="bp-watch" disabled>🎬 ดูการบิน 3D</button>
     <span class="bp-sim-note">core/ คำนวณ trajectory + events + diagnostics — render/ ไม่แตะฟิสิกส์</span>
   </div>
+
+  <div class="bp-mres" id="bp-mission-result" hidden></div>
 
   <div class="bp-sim-out" id="bp-sim-out"></div>
 
@@ -126,6 +132,7 @@
       <h2>รายงานการบิน · Physics Autopsy</h2>
       <button type="button" class="fs-ap-x" id="fs-autopsy-close" aria-label="ปิดรายงาน">✕</button>
     </div>
+    <div class="fs-ap-verdict" id="fs-autopsy-verdict" hidden></div>
     <div class="fs-ap-stats" id="fs-autopsy-stats"></div>
     <ul class="fs-ap-diaglist" id="fs-autopsy-diag"></ul>
     <div class="fs-ap-actions">
@@ -147,33 +154,71 @@
   </div>
 </div>
 
+<!-- ═══ Mission briefing — the pre-assembly engineering brief (Phase 4) ═══ -->
+<div class="mb-overlay" id="mission-briefing" hidden>
+  <div class="mb-panel">
+    <div class="mb-stage" id="mb-stage">
+      <p class="mb-kicker" id="mb-kicker">MISSION BRIEF</p>
+      <h1 class="mb-title" id="mb-title">—</h1>
+      <p class="mb-desc" id="mb-desc"></p>
+
+      <div class="mb-transcript">
+        <div class="mb-npc">
+          <span class="mb-avatar" id="mb-avatar">🛰️</span>
+          <span class="mb-npc-tx">
+            <b id="mb-speaker">—</b><i id="mb-role"></i>
+          </span>
+        </div>
+        <div class="mb-log" id="mb-log"></div>
+        <span class="mb-tap">แตะเพื่อข้ามบทพูด</span>
+      </div>
+    </div>
+
+    <div class="mb-spec">
+      <section>
+        <h2>เป้าหมาย · OBJECTIVES</h2>
+        <ul class="mb-spec-list" id="mb-objectives"></ul>
+      </section>
+      <section>
+        <h2>ข้อจำกัด · CONSTRAINTS</h2>
+        <ul class="mb-spec-list" id="mb-constraints"></ul>
+      </section>
+      <div class="mb-actions">
+        <button type="button" class="mb-skip" id="mb-skip">ข้ามบทพูด »</button>
+        <button type="button" class="mb-accept" id="mb-accept" disabled>[ รับภารกิจ ]</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ═══ core/ — ZERO dependency on render/ or Three.js ═══ -->
-<script src="js/core/PartsCatalog.js?v=6"></script>
-<script src="js/core/Vehicle.js?v=6"></script>
-<script src="js/core/SimulationEvents.js?v=6"></script>
-<script src="js/core/Diagnostics.js?v=6"></script>
-<script src="js/core/Physics.js?v=6"></script>
-<script src="js/core/Blueprint2D.js?v=6"></script>
+<script src="js/core/PartsCatalog.js?v=7"></script>
+<script src="js/core/Vehicle.js?v=7"></script>
+<script src="js/core/SimulationEvents.js?v=7"></script>
+<script src="js/core/Diagnostics.js?v=7"></script>
+<script src="js/core/Physics.js?v=7"></script>
+<script src="js/core/Blueprint2D.js?v=7"></script>
 
 <!-- ═══ data/ — pure content ═══ -->
-<script src="js/data/parts.js?v=6"></script>
-<script src="js/data/eras.js?v=6"></script>
-<script src="js/data/missions.js?v=6"></script>
+<script src="js/data/parts.js?v=7"></script>
+<script src="js/data/eras.js?v=7"></script>
+<script src="js/data/missions.js?v=7"></script>
 
 <!-- ═══ game/ — rules, consumes the contract ═══ -->
-<script src="js/game/EraManager.js?v=6"></script>
-<script src="js/game/MissionEngine.js?v=6"></script>
+<script src="js/game/EraManager.js?v=7"></script>
+<script src="js/game/MissionEngine.js?v=7"></script>
+<script src="js/game/MissionBriefing.js?v=7"></script>
 
 <!-- ═══ vendor ═══ -->
-<script src="vendor/three/three.min.js?v=6"></script>
+<script src="vendor/three/three.min.js?v=7"></script>
 
 <!-- ═══ render/ — consumes data, needs Three.js ═══ -->
-<script src="js/render/Scene.js?v=6"></script>
-<script src="js/render/CameraController.js?v=6"></script>
-<script src="js/render/VehicleRenderer.js?v=6"></script>
-<script src="js/render/FlightRenderer.js?v=6"></script>
-<script src="js/render/FlightScreen.js?v=6"></script>
+<script src="js/render/Scene.js?v=7"></script>
+<script src="js/render/CameraController.js?v=7"></script>
+<script src="js/render/VehicleRenderer.js?v=7"></script>
+<script src="js/render/FlightRenderer.js?v=7"></script>
+<script src="js/render/FlightScreen.js?v=7"></script>
 
-<script src="js/app.js?v=6"></script>
+<script src="js/app.js?v=7"></script>
 </body>
 </html>

@@ -65,6 +65,7 @@
     this.elQ     = $('fs-q');
     this.elAcc   = $('fs-acc');
     this.elToast = $('fs-toast');
+    this.elVerdict = $('fs-autopsy-verdict');
     this.btnPlay = $('fs-play');
     this.btnRate = $('fs-rate');
     this.btnCam  = $('fs-cam');
@@ -255,8 +256,10 @@
   }
 
   // ---- per-open setup --------------------------------------------------
-  FlightScreen.prototype.open = function (simResult, vehicle) {
+  FlightScreen.prototype.open = function (simResult, vehicle, mission) {
     if (!this.available) return;
+    this._mission = mission || null;
+    this._vehicle = vehicle || null;
     this.root.hidden = false;
     this._buildScene();
     if (!this.scene.available) { this.root.hidden = true; return; }
@@ -299,12 +302,14 @@
     this.flight.load(simResult);
     this.flight.attach(this.vehicleGroup);
     this.flight.seek(0);
+    this._sim = simResult;
     this._summary = simResult.summary || null;
     this._diagnostics = simResult.diagnostics || [];
     this._poweredUntil = poweredUntil(simResult.trajectory);
     this._vmax = 0;
     this._autopsyShown = false;
     this.autopsy.hidden = true;
+    if (this.elVerdict) this.elVerdict.hidden = true;
     this._rateIdx = 1; this.flight.setRate(1); this.btnRate.textContent = '1×';
     this._camIdx = 1; this.btnCam.textContent = CAM_LABEL.chase;
     this._theta = 0.7; this._phi = 1.12; this._zoom = 1;
@@ -476,6 +481,7 @@
   // ---- Physics Autopsy report ------------------------------------
   FlightScreen.prototype._showAutopsy = function () {
     this._autopsyShown = true;
+    this._renderVerdict();
     var s = this._summary || {};
     var cells = [
       ['ยอดสูง (Apogee)', fmtAlt(s.apogee || 0)],
@@ -500,6 +506,32 @@
     }).join('');
 
     this.autopsy.hidden = false;
+  };
+
+  // ---- mission verdict banner ------------------------------------
+  FlightScreen.prototype._renderVerdict = function () {
+    var el = this.elVerdict; if (!el) return;
+    var ME = RS.MissionEngine;
+    if (!this._mission || !ME || !this._sim) { el.hidden = true; return; }
+
+    var r = ME.evaluate(this._mission, this._sim, this._vehicle);
+    var rows = [];
+    r.objectives.concat(r.constraints).forEach(function (o) {
+      rows.push('<li>' + (o.met ? '✓ ' : '✗ ') + esc(o.label) +
+        ' <span style="color:#9db4d8">— ' + esc(o.actual) + '</span></li>');
+    });
+    if (r.passed) {
+      rows.push('<li class="fs-ap-vscore">+' + r.score + ' คะแนน</li>');
+    } else {
+      r.failReasons.forEach(function (f) { rows.push('<li>' + esc(f) + '</li>'); });
+    }
+
+    el.className = 'fs-ap-verdict ' + (r.passed ? 'pass' : 'fail');
+    el.innerHTML =
+      '<h3>' + (r.passed ? 'MISSION ACCOMPLISHED' : 'MISSION FAILED') + '</h3>' +
+      '<div class="fs-ap-vmission">' + esc(this._mission.title || this._mission.id) + '</div>' +
+      '<ul>' + rows.join('') + '</ul>';
+    el.hidden = false;
   };
 
   // ---- toast --------------------------------------------------------
