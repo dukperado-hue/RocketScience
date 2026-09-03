@@ -28,6 +28,29 @@
     return (global.RS && global.RS.Vehicle && global.RS.Vehicle.METERS_PER_CELL) || 0.5;
   }
 
+  // Vertical heat gradient baked once and shared by every khom-loy envelope:
+  // hot orange at the mouth (bottom), fading to dark amber at the crown (top).
+  var _paperTex = null;
+  function paperGradientTex() {
+    if (_paperTex !== null) return _paperTex || undefined;
+    if (!THREE || typeof document === 'undefined') { _paperTex = false; return undefined; }
+    var c = document.createElement('canvas');
+    c.width = 4; c.height = 128;
+    var g = c.getContext('2d');
+    // maps so the lantern MOUTH glows hot and the CROWN goes dark amber
+    var grd = g.createLinearGradient(0, 0, 0, 128);
+    grd.addColorStop(0.00, '#25120a');   // crown — dark amber
+    grd.addColorStop(0.40, '#7a2c08');
+    grd.addColorStop(0.72, '#ff7118');
+    grd.addColorStop(1.00, '#ff9a3c');   // mouth — hot
+    g.fillStyle = grd; g.fillRect(0, 0, 4, 128);
+    _paperTex = new THREE.CanvasTexture(c);
+    if ('colorSpace' in _paperTex && THREE.SRGBColorSpace) {
+      _paperTex.colorSpace = THREE.SRGBColorSpace;
+    }
+    return _paperTex;
+  }
+
   // ---------------------------------------------------------------------------
   //  GLTF / GLB model loader — cache + graceful fallback
   //
@@ -364,42 +387,160 @@
       return fg;
     }
 
-    // ---- ERA 0 · Khom Loy + generic ------------------------------------
-    if (entry.partId === 'cover_paper' || entry.category === 'Aerodynamics') {
-      // translucent hot-air envelope: dome + short open skirt
-      var r = Math.max(d.w, d.d) * 0.5;
-      mat = new THREE.MeshStandardMaterial({
-        color: 0xe9dcbf, roughness: 0.85, metalness: 0.0,
-        transparent: true, opacity: 0.55, side: THREE.DoubleSide,
-        emissive: 0x552a00, emissiveIntensity: 0.35
+    // ---- ERA 0 · Khom Loy — the renderer's showpiece -----------------
+    //  A real khom loy: an octagonal mulberry-paper envelope on a thin
+    //  bamboo skeleton with a wax core burning at its mouth. We build it
+    //  to look exactly like that — MeshPhysicalMaterial paper that lets the
+    //  interior flame bleed through (bright at the base, dark amber at the
+    //  crown), an EdgesGeometry bamboo skeleton, and a flickering PointLight
+    //  + glowing flame at the core (driven by RS.render.VehicleRenderer.flicker).
+    if (entry.partId === 'cover_paper') {
+      // The envelope IS the lantern — it drapes DOWN over the bamboo frame and
+      // the wax core so the skeleton + flame silhouette through the glowing
+      // translucent paper, exactly like the real thing.
+      var pr = Math.max(d.w, d.d) * 1.0;      // ~1 m across — a real big khom loy
+      var ph = d.h * 1.85;
+      var paperMat = new THREE.MeshPhysicalMaterial({
+        color: 0xffe9cf,               // warm off-white mulberry paper
+        roughness: 0.5,
+        metalness: 0.0,
+        transmission: 0.7,             // the flame + skeleton read through it
+        thickness: 0.4,
+        ior: 1.35,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.7,
+        emissive: 0xffffff,
+        emissiveIntensity: 0.85,       // the paper itself glows…
+        emissiveMap: paperGradientTex() // …hot at the mouth, dark amber at the crown
       });
-      var g = new THREE.Group();
-      var dome = new THREE.Mesh(
-        new THREE.SphereGeometry(r, 22, 16, 0, TAU, 0, Math.PI * 0.55), mat);
-      dome.scale.y = (d.h * 0.75) / r;
-      dome.position.y = d.h * 0.12;
-      var skirt = new THREE.Mesh(
-        new THREE.CylinderGeometry(r * 0.82, r * 0.62, d.h * 0.34, 22, 1, true), mat);
-      skirt.position.y = -d.h * 0.32;
-      g.add(dome); g.add(skirt);
-      g.position.set(entry.world.x, entry.world.y, entry.world.z);
-      g.userData.iid = entry.iid;
-      return g;
+      var pg = new THREE.Group();
+      // octagonal envelope — flared skirt · barrel body · domed crown
+      var pskirt = new THREE.Mesh(
+        new THREE.CylinderGeometry(pr * 1.0, pr * 0.74, ph * 0.26, 8, 1, true), paperMat);
+      pskirt.position.y = -ph * 0.34;
+      var pbody = new THREE.Mesh(
+        new THREE.CylinderGeometry(pr * 0.8, pr * 1.0, ph * 0.5, 8, 1, true), paperMat);
+      pbody.position.y = -ph * 0.05;
+      // the crown catches little of the flame — its own dimmer amber material
+      var crownMat = new THREE.MeshPhysicalMaterial({
+        color: 0xe9caa6, roughness: 0.55, metalness: 0.0,
+        transmission: 0.3, thickness: 0.4, ior: 1.35,
+        side: THREE.DoubleSide, transparent: true, opacity: 0.9,
+        emissive: 0x2c1506, emissiveIntensity: 0.4
+      });
+      var pcrown = new THREE.Mesh(
+        new THREE.ConeGeometry(pr * 0.8, ph * 0.3, 8, 1, true), crownMat);
+      pcrown.position.y = ph * 0.34;
+      [pskirt, pbody, pcrown].forEach(function (m) {
+        m.castShadow = true; m.receiveShadow = true; pg.add(m);
+      });
+      // drop the whole envelope so its mouth wraps the frame + wax below it
+      pg.position.set(entry.world.x, entry.world.y - d.h * 0.9, entry.world.z);
+      pg.userData.iid = entry.iid;
+      return pg;
     }
 
-    if (entry.partId === 'fuel_wax' || entry.category === 'Propulsion') {
+    if (entry.partId === 'frame_bamboo') {
+      var fr = d.w * 0.44;
+      var fbh = d.h * 0.86;
+      var fg = new THREE.Group();
+      // crisp bamboo skeleton — EdgesGeometry of an 8-gon prism, as line segments
+      var cage = new THREE.CylinderGeometry(fr, fr, fbh, 8, 1, true);
+      fg.add(new THREE.LineSegments(
+        new THREE.EdgesGeometry(cage),
+        new THREE.LineBasicMaterial({ color: 0x9c6b3a })));
+      cage.dispose();
+      // thin real struts co-located with the lines: lines never cast shadows,
+      // so these are what silhouette the frame against the glowing paper
+      var strutMat = new THREE.MeshStandardMaterial({ color: 0x7c4f28, roughness: 0.85 });
+      var ribGeo = new THREE.CylinderGeometry(fbh * 0.012, fbh * 0.012, fbh, 5);
+      for (var fi = 0; fi < 8; fi++) {
+        var rib = new THREE.Mesh(ribGeo, strutMat);
+        var fa = fi / 8 * TAU + Math.PI / 8;
+        rib.position.set(Math.cos(fa) * fr, 0, Math.sin(fa) * fr);
+        rib.castShadow = true;
+        fg.add(rib);
+      }
+      var ringGeo = new THREE.TorusGeometry(fr, fbh * 0.016, 5, 8);
+      [fbh * 0.5, -fbh * 0.5].forEach(function (yy) {
+        var ring = new THREE.Mesh(ringGeo, strutMat);
+        ring.rotation.x = Math.PI / 2;
+        ring.rotation.z = Math.PI / 8;
+        ring.position.y = yy;
+        ring.castShadow = true;
+        fg.add(ring);
+      });
+      // two cross struts spanning the mouth — this is what the wax hangs from
+      var barGeo = new THREE.CylinderGeometry(fbh * 0.01, fbh * 0.01, fr * 2, 5);
+      for (var bi = 0; bi < 2; bi++) {
+        var bar = new THREE.Mesh(barGeo, strutMat);
+        bar.rotation.z = Math.PI / 2;
+        bar.rotation.y = bi * Math.PI / 2;
+        bar.position.y = -fbh * 0.5;
+        bar.castShadow = true;
+        fg.add(bar);
+      }
+      fg.position.set(entry.world.x, entry.world.y, entry.world.z);
+      fg.userData.iid = entry.iid;
+      return fg;
+    }
+
+    if (entry.partId === 'fuel_wax') {
+      var wg = new THREE.Group();
+      // the paraffin-soaked cloth core — a dark, barely-lit lump
+      var wax = new THREE.Mesh(
+        new THREE.SphereGeometry(d.w * 0.17, 14, 12),
+        new THREE.MeshStandardMaterial({
+          color: 0x241812, roughness: 0.95, metalness: 0.0,
+          emissive: 0xff3c00, emissiveIntensity: 0.55
+        }));
+      wax.scale.y = 0.68;
+      wg.add(wax);
+      // flame — two additive cones: a teardrop amber body and a white heart
+      var flame = new THREE.Mesh(
+        new THREE.ConeGeometry(d.w * 0.19, d.h * 0.74, 14),
+        new THREE.MeshBasicMaterial({
+          color: 0xffb347, transparent: true, opacity: 0.85,
+          blending: THREE.AdditiveBlending, depthWrite: false
+        }));
+      flame.position.y = d.h * 0.3;
+      var flameCore = new THREE.Mesh(
+        new THREE.ConeGeometry(d.w * 0.09, d.h * 0.44, 12),
+        new THREE.MeshBasicMaterial({
+          color: 0xfff2d0, transparent: true, opacity: 0.95,
+          blending: THREE.AdditiveBlending, depthWrite: false
+        }));
+      flameCore.position.y = d.h * 0.2;
+      wg.add(flame); wg.add(flameCore);
+      // THE LIGHT — at the core, low inside the envelope. Its r² falloff is
+      // what paints the paper: bright glowing orange at the base, fading to
+      // dark warm amber at the crown.
+      var flameLight = new THREE.PointLight(0xff6600, 2.5, 10, 2);
+      flameLight.position.y = d.h * 0.12;
+      wg.add(flameLight);
+      wg.userData.flicker = {
+        light: flameLight, base: 2.5, flame: flame, flameCore: flameCore
+      };
+      wg.position.set(entry.world.x, entry.world.y, entry.world.z);
+      wg.userData.iid = entry.iid;
+      return wg;
+    }
+
+    // generic Propulsion fallback (any motor without its own model/branch)
+    if (entry.category === 'Propulsion') {
       geo = new THREE.CylinderGeometry(d.w * 0.30, d.w * 0.34, d.h * 0.60, 16);
       mat = new THREE.MeshStandardMaterial({
         color: 0xd8c9a0, roughness: 0.5, metalness: 0.05,
         emissive: 0xff6a1c, emissiveIntensity: 0.9
       });
       mesh = new THREE.Mesh(geo, mat);
-      var flame = new THREE.Mesh(
+      var gflame = new THREE.Mesh(
         new THREE.ConeGeometry(d.w * 0.16, d.h * 0.5, 12),
         new THREE.MeshBasicMaterial({ color: 0xffb63a })
       );
-      flame.position.y = d.h * 0.5;
-      mesh.add(flame);
+      gflame.position.y = d.h * 0.5;
+      mesh.add(gflame);
       mesh.position.set(entry.world.x, entry.world.y, entry.world.z);
       mesh.userData.iid = entry.iid;
       return mesh;
@@ -460,7 +601,14 @@
       }
     });
 
+    var flickers = [];
+    Object.keys(meshes).forEach(function (k) {
+      var m = meshes[k];
+      if (m && m.userData && m.userData.flicker) flickers.push(m.userData.flicker);
+    });
+
     group.userData.partMeshes = meshes;
+    group.userData.flicker = flickers;   // khom-loy flames — see flicker()
     group.userData.bounds = lo.bounds;
     group.userData.isVehicle = true;
     recomputeExhaustY(group, meshes);
@@ -479,6 +627,42 @@
     });
     var b = group.userData && group.userData.bounds;
     group.userData.exhaustY = exhaustY != null ? exhaustY : (b ? -b.height * 0.1 : -0.3);
+  }
+
+  /**
+   * Drive every khom-loy flame in a built vehicle group: flickers the interior
+   * PointLight and jitters the flame meshes. Call once per rendered frame.
+   * `active === false` snuffs them all (the flame has died). A pure per-frame
+   * side effect — no allocation, safe to call on any group (no-op without flames).
+   */
+  function flicker(group, active) {
+    var fl = group && group.userData && group.userData.flicker;
+    if (!fl || !fl.length) return;
+    var now = Date.now();
+    for (var i = 0; i < fl.length; i++) {
+      var f = fl[i];
+      if (active === false) {
+        if (f.light) f.light.intensity = 0;
+        if (f.flame) f.flame.visible = false;
+        if (f.flameCore) f.flameCore.visible = false;
+        continue;
+      }
+      // the brief's flicker signal: sin(t·0.015) + random·0.2, folded so the
+      // PointLight stays lively but always positive
+      var jitter = Math.sin(now * 0.015) + Math.random() * 0.2;
+      if (f.light) {
+        f.light.intensity = Math.max(0.15, (f.base || 2.5) * (0.78 + 0.16 * jitter));
+      }
+      if (f.flame) {
+        f.flame.visible = true;
+        f.flame.scale.set(1,
+          0.86 + 0.26 * (0.5 + 0.5 * Math.sin(now * 0.023)) + Math.random() * 0.12, 1);
+      }
+      if (f.flameCore) {
+        f.flameCore.visible = true;
+        f.flameCore.scale.setScalar(0.85 + Math.random() * 0.22);
+      }
+    }
   }
 
   function disposeGroup(group) {
@@ -500,6 +684,7 @@
     layout: layout,          // pure
     build: build,            // THREE (sync; models swap in + userData.modelsReady)
     disposeGroup: disposeGroup,
+    flicker: flicker,        // per-frame khom-loy flame driver
     loadModel: loadModel,    // Promise<Object3D|null>, cached
     preload: preload,        // Promise.all over every catalog meshUrl
     ensureFor: ensureFor     // Promise.all over one vehicle's meshUrls

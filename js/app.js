@@ -76,11 +76,20 @@
   function ensurePreview() {
     if (preview) return preview;
     preview = new RS.render.Scene(document.getElementById('preview-canvas'),
-      { ground: true, background: 0x0a1830 });
+      { ground: true, background: 0x0a1830, shadows: true });
     if (preview.available) {
       previewOrbit = new RS.render.CameraController(preview.camera, preview.canvas, {
         target: [0, 0.4, 0], radius: 3, autoRotate: true
       });
+      // a faint disc under the vehicle to catch the bamboo skeleton's shadow
+      var THREE = window.THREE;
+      var floor = new THREE.Mesh(
+        new THREE.CircleGeometry(3.4, 48),
+        new THREE.MeshStandardMaterial({ color: 0x0c1c34, roughness: 1, metalness: 0 }));
+      floor.rotation.x = -Math.PI / 2;
+      floor.position.y = -0.03;
+      floor.receiveShadow = true;
+      preview.add(floor);
     }
     return preview;
   }
@@ -109,7 +118,10 @@
     }
     refreshPreview();
     preview.resize();
-    preview.startLoop(function (dt) { previewOrbit.update(dt); });
+    preview.startLoop(function (dt) {
+      previewOrbit.update(dt);
+      if (previewGroup) RS.render.VehicleRenderer.flicker(previewGroup, true);
+    });
   }
   function closePreview() {
     previewModal.hidden = true;

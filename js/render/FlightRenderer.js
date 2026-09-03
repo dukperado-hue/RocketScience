@@ -153,6 +153,15 @@
         (90 - pitch) * deg, yaw * deg, roll * deg
       );
     }
+
+    // khom-loy flame: flicker the interior PointLight + flame meshes while the
+    // wax is still doing work (spoolTime ramp + burnTime), snuff it once dead.
+    var ud = this.group.userData;
+    if (ud && ud.flicker && ud.flicker.length &&
+        global.RS && global.RS.render && global.RS.render.VehicleRenderer) {
+      var burning = (state.buoyancy || 0) > 0.01 || (state.thrust || 0) > 0.01;
+      global.RS.render.VehicleRenderer.flicker(this.group, burning);
+    }
   };
 
   // --- event hooks --------------------------------------------------------

@@ -444,7 +444,163 @@
     }
   };
 
+  // ---------------------------------------------------------------------------
+  //  ERA 0 · high-end architectural draft rendering
+  //
+  //  A crisp engineering blueprint: translucent white skins, cyan borders,
+  //  dashed hidden structural lines, and crosshair-dimensioned attach nodes.
+  //  Returns true when it fully drew the part (so _drawPart bails out).
+  // ---------------------------------------------------------------------------
+  var MPC = 0.5;   // metres per grid cell — mirrors RS.Vehicle.METERS_PER_CELL
+
+  Blueprint2D.prototype._drawPartDraft = function (inst, selected) {
+    var p = inst.part;
+    if (!p || p.era !== '0-khomloy') return false;
+
+    var ctx = this.ctx;
+    var a = this._cellToPx(inst.gx, inst.gy);
+    var w = p.size.w * this.view.cell;
+    var h = p.size.h * this.view.cell;
+    var CYAN = '#38f2ff';
+
+    ctx.save();
+    ctx.translate(a.x, a.y);
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+
+    if (p.id === 'cover_paper') {
+      // translucent octagonal envelope — the crisp outer skin
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(255,255,255,0.10)';
+      ctx.strokeStyle = CYAN;
+      ctx.lineWidth = 1.6;
+      octPath(ctx, w * 0.5, h * 0.5, w * 0.5 - w * 0.06, h * 0.5 - h * 0.03);
+      ctx.fill();
+      ctx.stroke();
+      // dashed internal bamboo hoops (hidden structure)
+      ctx.setLineDash([5, 5]);
+      ctx.strokeStyle = 'rgba(56,242,255,0.45)';
+      ctx.lineWidth = 1;
+      [0.18, 0.5, 0.82].forEach(function (fy) {
+        var half = (w * 0.5 - w * 0.06) * (1 - Math.abs(fy - 0.5) * 0.7);
+        ctx.beginPath();
+        ctx.moveTo(w * 0.5 - half, h * fy);
+        ctx.lineTo(w * 0.5 + half, h * fy);
+        ctx.stroke();
+      });
+      // centreline
+      ctx.beginPath();
+      ctx.moveTo(w * 0.5, -7);
+      ctx.lineTo(w * 0.5, h + 7);
+      ctx.stroke();
+      // vertical dimension line on the left
+      dimV(ctx, -11, h * 0.03, h * 0.97, (p.size.h * MPC).toFixed(1) + ' m');
+
+    } else if (p.id === 'frame_bamboo') {
+      // octagon ring, drawn as thin structural members
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(255,255,255,0.05)';
+      ctx.strokeStyle = CYAN;
+      ctx.lineWidth = 1.6;
+      octPath(ctx, w * 0.5, h * 0.5, w * 0.44, h * 0.3);
+      ctx.fill();
+      ctx.stroke();
+      // dashed radial ribs / cross struts (hidden — seen edge-on)
+      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = 'rgba(56,242,255,0.5)';
+      ctx.lineWidth = 1;
+      for (var i = 0; i < 8; i++) {
+        var ang = i / 8 * Math.PI * 2 + Math.PI / 8;
+        ctx.beginPath();
+        ctx.moveTo(w * 0.5, h * 0.5);
+        ctx.lineTo(w * 0.5 + Math.cos(ang) * w * 0.44, h * 0.5 + Math.sin(ang) * h * 0.3);
+        ctx.stroke();
+      }
+      dimH(ctx, w * 0.06, w * 0.94, h + 10, (p.size.w * MPC).toFixed(1) + ' m');
+
+    } else if (p.id === 'fuel_wax') {
+      // the wax core — a solid detail
+      ctx.setLineDash([]);
+      ctx.strokeStyle = CYAN;
+      ctx.lineWidth = 1.6;
+      ctx.fillStyle = 'rgba(255,255,255,0.12)';
+      ctx.beginPath();
+      ctx.ellipse(w * 0.5, h * 0.68, w * 0.17, h * 0.13, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      // flame envelope — dashed (a zone, not a solid)
+      ctx.setLineDash([5, 4]);
+      ctx.strokeStyle = 'rgba(56,242,255,0.55)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(w * 0.5, h * 0.05);
+      ctx.quadraticCurveTo(w * 0.74, h * 0.42, w * 0.5, h * 0.56);
+      ctx.quadraticCurveTo(w * 0.26, h * 0.42, w * 0.5, h * 0.05);
+      ctx.stroke();
+      // heat rays
+      [-0.12, 0, 0.12].forEach(function (dx) {
+        ctx.beginPath();
+        ctx.moveTo(w * (0.5 + dx), h * 0.14);
+        ctx.lineTo(w * (0.5 + dx * 2.4), h * -0.06);
+        ctx.stroke();
+      });
+
+    } else if (p.id === 'payload_tag') {
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(255,255,255,0.08)';
+      ctx.strokeStyle = CYAN;
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(w * 0.5, h * 0.12);
+      ctx.lineTo(w * 0.78, h * 0.36);
+      ctx.lineTo(w * 0.78, h * 0.9);
+      ctx.lineTo(w * 0.22, h * 0.9);
+      ctx.lineTo(w * 0.22, h * 0.36);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = 'rgba(56,242,255,0.5)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(w * 0.5, h * 0.26, 2.6, 0, Math.PI * 2);
+      ctx.stroke();
+
+    } else {
+      ctx.restore();
+      return false;
+    }
+
+    // part label — monospace, technical
+    ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(190,246,255,0.92)';
+    ctx.font = '9px "JetBrains Mono", ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText(p.name, w * 0.5, h - 4);
+
+    ctx.restore();
+
+    // attach-node crosshairs (drawn in canvas space, not the translated frame)
+    p.attachNodes.forEach(function (node) {
+      var used = inst.links.some(function (lk) { return lk.node === node.id; });
+      var px = this._cellToPx(inst.gx + node.dx, inst.gy + node.dy);
+      nodeCrosshair(ctx, px.x, px.y, used);
+    }, this);
+
+    if (selected) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+      ctx.setLineDash([2, 3]);
+      ctx.lineWidth = 1.3;
+      ctx.strokeRect(a.x + 1.5, a.y + 1.5, w - 3, h - 3);
+      ctx.restore();
+    }
+    return true;
+  };
+
   Blueprint2D.prototype._drawPart = function (inst, selected) {
+    if (this._drawPartDraft(inst, selected)) return;
     var ctx = this.ctx;
     var p = inst.part;
     var a = this._cellToPx(inst.gx, inst.gy);
@@ -620,6 +776,70 @@
   function hexA(hex, a) {
     var n = parseInt(hex.slice(1), 16);
     return 'rgba(' + (n >> 16 & 255) + ',' + (n >> 8 & 255) + ',' + (n & 255) + ',' + a + ')';
+  }
+
+  // --- architectural-draft primitives (ERA 0) -------------------------------
+  function octPath(ctx, cx, cy, rx, ry) {
+    ctx.beginPath();
+    for (var i = 0; i < 8; i++) {
+      var ang = -Math.PI / 2 + i * Math.PI / 4 + Math.PI / 8;
+      var x = cx + Math.cos(ang) * rx, y = cy + Math.sin(ang) * ry;
+      i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+    }
+    ctx.closePath();
+  }
+
+  function nodeCrosshair(ctx, x, y, used) {
+    ctx.save();
+    ctx.setLineDash([]);
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = used ? 'rgba(255,255,255,0.32)' : 'rgba(120,255,180,0.95)';
+    ctx.beginPath();
+    ctx.moveTo(x - 5, y); ctx.lineTo(x + 5, y);
+    ctx.moveTo(x, y - 5); ctx.lineTo(x, y + 5);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(x, y, 3, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function dimV(ctx, x, y0, y1, label) {
+    ctx.save();
+    ctx.setLineDash([]);
+    ctx.strokeStyle = 'rgba(56,242,255,0.6)';
+    ctx.fillStyle = 'rgba(190,246,255,0.9)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x, y0); ctx.lineTo(x, y1);
+    ctx.moveTo(x - 3, y0); ctx.lineTo(x + 3, y0);
+    ctx.moveTo(x - 3, y1); ctx.lineTo(x + 3, y1);
+    ctx.stroke();
+    ctx.translate(x - 3, (y0 + y1) / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.font = '8px "JetBrains Mono", ui-monospace, monospace';
+    ctx.fillText(label, 0, 0);
+    ctx.restore();
+  }
+
+  function dimH(ctx, x0, x1, y, label) {
+    ctx.save();
+    ctx.setLineDash([]);
+    ctx.strokeStyle = 'rgba(56,242,255,0.6)';
+    ctx.fillStyle = 'rgba(190,246,255,0.9)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x0, y); ctx.lineTo(x1, y);
+    ctx.moveTo(x0, y - 3); ctx.lineTo(x0, y + 3);
+    ctx.moveTo(x1, y - 3); ctx.lineTo(x1, y + 3);
+    ctx.stroke();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.font = '8px "JetBrains Mono", ui-monospace, monospace';
+    ctx.fillText(label, (x0 + x1) / 2, y + 2);
+    ctx.restore();
   }
 
   global.RS = global.RS || {};

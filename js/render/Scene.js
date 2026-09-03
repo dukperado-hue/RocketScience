@@ -44,6 +44,12 @@
     this.renderer.setPixelRatio(Math.min(global.devicePixelRatio || 1, 2));
     this.renderer.setClearColor(opts.background != null ? opts.background : 0x0a1830, 1);
 
+    // opt-in soft shadows — lets a bamboo skeleton silhouette against its paper
+    if (opts.shadows) {
+      this.renderer.shadowMap.enabled = true;
+      this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    }
+
     this.scene = new THREE.Scene();
 
     this.camera = new THREE.PerspectiveCamera(opts.fov || 45, 1, 0.02, opts.far || 5000);
@@ -54,10 +60,21 @@
     this.scene.add(hemi);
     var key = new THREE.DirectionalLight(0xfff2dd, 1.05);
     key.position.set(3, 5, 2);
+    if (opts.shadows) {
+      key.castShadow = true;
+      key.shadow.mapSize.set(2048, 2048);
+      key.shadow.camera.near = 0.5;
+      key.shadow.camera.far = 24;
+      key.shadow.camera.left = key.shadow.camera.bottom = -4;
+      key.shadow.camera.right = key.shadow.camera.top = 4;
+      key.shadow.bias = -0.0006;
+      key.shadow.radius = 3;
+    }
     this.scene.add(key);
     var rim = new THREE.DirectionalLight(0x88aaff, 0.35);
     rim.position.set(-3, 2, -3);
     this.scene.add(rim);
+    this.lights = { hemi: hemi, key: key, rim: rim };   // callers may re-tune (e.g. night)
 
     if (opts.ground !== false) {
       var grid = new THREE.GridHelper(20, 20, 0x3a6ea5, 0x22354f);

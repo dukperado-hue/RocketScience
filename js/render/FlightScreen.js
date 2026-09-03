@@ -244,6 +244,7 @@
     grid.material.transparent = true; grid.material.opacity = 0.42;
     grid.position.y = 0.02;
     sc.add(grid);
+    this._padGrid = grid;
 
     var pad = new THREE.Mesh(
       new THREE.CylinderGeometry(0.9, 1.15, 0.18, 20),
@@ -270,6 +271,24 @@
     }
 
     this._built = true;
+  };
+
+  FlightScreen.prototype._applyNightMode = function (on) {
+    if (this._night === on) return;
+    this._night = on;
+    var L = this.scene && this.scene.lights;
+    if (L) {
+      L.hemi.intensity = on ? 0.28 : 0.95;
+      L.key.intensity  = on ? 0.35 : 1.05;
+      L.rim.intensity  = on ? 0.5  : 0.35;
+      if (L.rim.color && L.rim.color.setHex) L.rim.color.setHex(on ? 0x3355aa : 0x88aaff);
+    }
+    if (this._planet && this._planet.material) {
+      this._planet.material.color.setHex(on ? 0x0a1a10 : 0x1f5133);
+    }
+    if (this._padGrid && this._padGrid.material) {
+      this._padGrid.material.opacity = on ? 0.14 : 0.42;
+    }
   };
 
   function makeStars(n, r) {
@@ -317,6 +336,10 @@
     }
     this._buildScene();
     if (!this.scene.available) { this.root.hidden = true; return; }
+
+    // NIGHT MODE — a khom loy is released after dark. Dim the world so the
+    // lantern's own glow carries the frame, then restore it for rockets.
+    this._applyNightMode((simResult && simResult.mode) === 'buoyancy');
 
     // fresh vehicle mesh (can't share an Object3D with the builder preview)
     if (this.vehicleGroup) RS.render.VehicleRenderer.disposeGroup(this.vehicleGroup);
