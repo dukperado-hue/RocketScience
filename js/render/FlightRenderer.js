@@ -97,6 +97,25 @@
     this._apply(this.sampleAt(next));
   };
 
+  /**
+   * Drive playback to an ABSOLUTE local time `t` (seconds), firing every event
+   * crossed on the way. Used by the multi-vehicle FlightScreen, which owns one
+   * master clock and pulls each vehicle's renderer forward to `masterT - t0`.
+   * Seeking backwards just repositions (no event refire), like seek().
+   */
+  FlightRenderer.prototype.advanceTo = function (t) {
+    if (!this.trajectory.length) return this;
+    t = clamp(t, 0, this.duration);
+    if (t <= this.time) return this.seek(t);
+    while (this._firedIdx < this.events.length && this.events[this._firedIdx].time <= t) {
+      this._emit(this.events[this._firedIdx]);
+      this._firedIdx++;
+    }
+    this.time = t;
+    this._apply(this.sampleAt(t));
+    return this;
+  };
+
   /** Linear-interpolated TrajectoryState at time t. */
   FlightRenderer.prototype.sampleAt = function (t) {
     var tr = this.trajectory;

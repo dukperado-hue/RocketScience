@@ -39,6 +39,7 @@
   // ---- 2D blueprint builder ------------------------------------------
   var vehicle = new RS.Vehicle();
   var lastSim = null;
+  var lastSimOpts = null;   // wind / NOTAM opts — reused for FlightScreen "launch next"
 
   var watchBtn = document.getElementById('bp-watch');
 
@@ -64,7 +65,7 @@
   watchBtn.addEventListener('click', function () {
     if (lastSim && lastSim.ok && flightScreen && flightScreen.available) {
       ensureModels(vehicle).then(function () {
-        flightScreen.open(lastSim, vehicle, activeMission);   // re-watch: no cinematic
+        flightScreen.open(lastSim, vehicle, activeMission, { simOpts: lastSimOpts });  // re-watch: no cinematic
       });
     }
   });
@@ -322,6 +323,7 @@
         }
         var result = RS.Physics.simulate(model, simOpts);
         lastSim = result;
+        lastSimOpts = simOpts;
 
         renderSummary(result);
         renderEvents(result.events);
@@ -344,7 +346,7 @@
         console.log('[FIRE→ORBIT] SimulationResult v' + result.contractVersion, result);
 
         if (cinematic) {
-          flightScreen.open(lastSim, vehicle, activeMission, { cinematic: true });
+          flightScreen.open(lastSim, vehicle, activeMission, { cinematic: true, simOpts: simOpts });
         } else {
           document.querySelector('.bp-sim').scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
@@ -512,7 +514,7 @@
     openPreview: openPreview,
     simulate: function () { return RS.Physics.simulate(vehicle.toPhysicsModel()); }
   };
-  console.log('%cFROM FIRE TO ORBIT — Reboot Phase 9 ready', 'color:#5fe0a8;font-weight:bold');
+  console.log('%cFROM FIRE TO ORBIT — Reboot Phase 11.5 ready', 'color:#5fe0a8;font-weight:bold');
   console.log('contract v' + RS.Physics.CONTRACT_VERSION +
     ' · try FIRE_TO_ORBIT.simulate()');
 })();

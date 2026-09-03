@@ -9,9 +9,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/blueprint.css?v=35">
-<link rel="stylesheet" href="css/flight.css?v=35">
-<link rel="stylesheet" href="css/mission.css?v=35">
+<link rel="stylesheet" href="css/blueprint.css?v=38">
+<link rel="stylesheet" href="css/flight.css?v=38">
+<link rel="stylesheet" href="css/mission.css?v=38">
 </head>
 <body class="bp-body">
 
@@ -26,7 +26,7 @@
     <button type="button" class="bp-era-btn" data-era="4-orbit">ยุค 4 · วงโคจร</button>
   </span>
   <button type="button" class="bp-mission-btn" id="bp-mission">📋 ภารกิจ</button>
-  <span class="bp-tagline">Reboot Phase 9 — Radial Gravity · Staging · Orbit</span>
+  <span class="bp-tagline">Reboot Phase 11.5 — Daytime Bang Fai Festival · Sequential Launches</span>
 </header>
 
 <div class="bp-stage">
@@ -123,6 +123,9 @@
   <!-- Era 0 · two-step manual release: 🔥 จุดไฟ → ปล่อยโคม -->
   <button type="button" class="fs-ignite" id="fs-ignite" hidden>🔥 จุดไฟ</button>
 
+  <!-- Era 1 · rapid-fire festival: light the next บั้งไฟ while this one flies -->
+  <button type="button" class="fs-launch-next" id="fs-launch-next" hidden>🚀 จุดบั้งต่อไป</button>
+
   <!-- the poetry — philosophical haiku on ความไม่เที่ยง -->
   <div class="fs-haiku" id="fs-haiku" hidden></div>
 
@@ -151,6 +154,7 @@
       <input type="range" class="fs-scrub" id="fs-scrub" min="0" max="1000" value="0" aria-label="เลื่อนเวลาการบิน">
     </div>
     <button type="button" class="fs-ic fs-txt" id="fs-rate">1×</button>
+    <button type="button" class="fs-ic fs-txt" id="fs-focus" hidden>🎯 1/1</button>
     <button type="button" class="fs-ic fs-txt" id="fs-cam">ลอยตาม</button>
     <button type="button" class="fs-ic" id="fs-close-x" aria-label="ปิด">✕</button>
   </div>
@@ -219,36 +223,37 @@
 </div>
 
 <!-- ═══ core/ — ZERO dependency on render/ or Three.js ═══ -->
-<script src="js/core/PartsCatalog.js?v=35"></script>
-<script src="js/core/Vehicle.js?v=35"></script>
-<script src="js/core/SimulationEvents.js?v=35"></script>
-<script src="js/core/Diagnostics.js?v=35"></script>
-<script src="js/core/Physics.js?v=35"></script>
-<script src="js/core/Blueprint2D.js?v=35"></script>
+<script src="js/core/PartsCatalog.js?v=38"></script>
+<script src="js/core/Vehicle.js?v=38"></script>
+<script src="js/core/SimulationEvents.js?v=38"></script>
+<script src="js/core/Diagnostics.js?v=38"></script>
+<script src="js/core/Physics.js?v=38"></script>
+<script src="js/core/Blueprint2D.js?v=38"></script>
 
 <!-- ═══ data/ — pure content ═══ -->
-<script src="js/data/parts.js?v=35"></script>
-<script src="js/data/eras.js?v=35"></script>
-<script src="js/data/missions.js?v=35"></script>
+<script src="js/data/parts.js?v=38"></script>
+<script src="js/data/eras.js?v=38"></script>
+<script src="js/data/missions.js?v=38"></script>
 
 <!-- ═══ game/ — rules, consumes the contract ═══ -->
-<script src="js/game/EraManager.js?v=35"></script>
-<script src="js/game/MissionEngine.js?v=35"></script>
-<script src="js/game/MissionBriefing.js?v=35"></script>
+<script src="js/game/EraManager.js?v=38"></script>
+<script src="js/game/MissionEngine.js?v=38"></script>
+<script src="js/game/MissionBriefing.js?v=38"></script>
 
 <!-- ═══ vendor ═══ -->
-<script src="vendor/three/three.min.js?v=35"></script>
-<script src="vendor/three/loaders/GLTFLoader.js?v=35"></script>
+<script src="vendor/three/three.min.js?v=38"></script>
+<script src="vendor/three/loaders/GLTFLoader.js?v=38"></script>
 
 <!-- ═══ render/ — consumes data, needs Three.js ═══ -->
-<script src="js/render/Scene.js?v=35"></script>
-<script src="js/render/CameraController.js?v=35"></script>
-<script src="js/render/VehicleRenderer.js?v=35"></script>
-<script src="js/render/ExhaustFX.js?v=35"></script>
-<script src="js/render/FlightRenderer.js?v=35"></script>
-<script src="js/render/FestivalEnv.js?v=35"></script>
-<script src="js/render/FlightScreen.js?v=35"></script>
+<script src="js/render/Scene.js?v=38"></script>
+<script src="js/render/CameraController.js?v=38"></script>
+<script src="js/render/VehicleRenderer.js?v=38"></script>
+<script src="js/render/ExhaustFX.js?v=38"></script>
+<script src="js/render/SoundFX.js?v=38"></script>
+<script src="js/render/FlightRenderer.js?v=38"></script>
+<script src="js/render/FestivalEnv.js?v=38"></script>
+<script src="js/render/FlightScreen.js?v=38"></script>
 
-<script src="js/app.js?v=35"></script>
+<script src="js/app.js?v=38"></script>
 </body>
 </html>

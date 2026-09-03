@@ -236,6 +236,26 @@
   50%      { transform: translateX(-50%) scale(1.045); }
 }
 
+/* ---- Era 1 · "launch next" — rapid-fire festival (lower-right) -------- */
+.fs-launch-next {
+  position: absolute; right: 20px; bottom: 88px; z-index: 5;
+  font-family: var(--bp-font, "Sarabun", system-ui, sans-serif);
+  font-size: 15px; font-weight: 700; letter-spacing: 0.02em;
+  color: #1a0e04;
+  padding: 12px 22px; border-radius: 12px;
+  border: 1px solid rgba(255,205,130,0.6);
+  background: linear-gradient(180deg, #ffab5a, #e8631f);
+  box-shadow: 0 8px 30px rgba(232,99,31,0.4);
+  cursor: pointer;
+  transition: transform .12s ease, box-shadow .12s ease, filter .12s ease;
+}
+.fs-launch-next[hidden] { display: none; }
+.fs-launch-next:hover { transform: translateY(-2px); box-shadow: 0 12px 42px rgba(232,99,31,0.55); }
+.fs-launch-next:active { transform: translateY(0); filter: brightness(0.94); }
+
+#fs-focus { color: #ffce40; border-color: rgba(255,206,64,0.4); }
+#fs-focus:hover { border-color: #ffce40; color: #ffe08a; }
+
 /* ---- the poetry — philosophical haiku, lower third, very slow fade ---- */
 .fs-haiku {
   position: absolute; left: 50%; bottom: 20%; transform: translate(-50%, 12px);
@@ -261,6 +281,7 @@
   .fs-hint { display: none; }
   .fs-bar { gap: 7px; padding: 8px 10px; }
   .fs-ignite { font-size: 15px; padding: 13px 26px; bottom: 17%; }
+  .fs-launch-next { font-size: 13px; padding: 10px 16px; bottom: 74px; right: 12px; }
   .fs-haiku { font-size: 16px; bottom: 24%; }
 }
 

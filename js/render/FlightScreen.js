@@ -1,14 +1,21 @@
 /* =============================================================================
  * FROM FIRE TO ORBIT — Render layer
- * js/render/FlightScreen.js  ·  the flight / replay screen  (Phase 2B + 2C)
+ * js/render/FlightScreen.js  ·  the flight / replay screen
  *
  * Wires RS.render.FlightRenderer to a full-screen telemetry-review playback:
  *   · owns its own RS.render.Scene (sky, stars, ground, altitude rings)
- *   · builds the vehicle with RS.render.VehicleRenderer
- *   · 3 playback camera modes — Ground Track / Chase / Free
+ *   · builds the vehicle(s) with RS.render.VehicleRenderer
+ *   · 5 playback camera modes — Observer / Chase / Free / Ground / Map
  *   · transport bar: play / pause / restart / rate / scrub + event tick markers
  *   · a live HUD driven purely off the SimulationResult contract
  *   · a Physics-Autopsy report card when playback ends
+ *
+ * Phase 11.5 — MULTI-VEHICLE. The screen now owns a fleet `this._vehicles[]`,
+ * each a {FlightRenderer, group, trail, glow, sim, t0}. ONE master clock drives
+ * them all; each renderer is pulled to `masterT - t0`. "จุดบั้งต่อไป" (Launch
+ * Next) instantiates a fresh Bang Fai on the rail mid-flight while the earlier
+ * rockets keep climbing / arcing / smoking. Camera + HUD follow the FOCUSED
+ * vehicle (newest by default; cycle with the 🎯 button or the V key).
  *
  * ZERO physics. It only interpolates + plays back what core/ already computed.
  * If THREE is missing, `available` is false and open() is a safe no-op.
@@ -48,8 +55,6 @@
   var AUTO_CAM = { observer: 1, chase: 1, ground: 1 };   // rigs a drag breaks out of
 
   // ---- THE POETRY — philosophical Thai haiku on อนิจจัง (impermanence) -------
-  //  Three lines each, fired on specific flight events. Slow fade in, linger,
-  //  slow fade out — see _showHaiku / css .fs-haiku.
   var HAIKU = {
     release: ['ปล่อยมือจากเชือก', 'ลมกลางคืนพากลืนหาย', 'เหลือแสงกับฟากฟ้า'],
     encounter: ['พบพานกลางนภา', 'ดั่งดาราเพียงชั่วครู่', 'ลอยล่องแล้วจากไป'],
@@ -92,14 +97,30 @@
     this.scrub   = $('fs-scrub');
     this.marks   = $('fs-marks');
     this.autopsy = $('fs-autopsy');
-    this.btnIgnite = $('fs-ignite');   // Era-0: two-step 🔥 จุดไฟ → ปล่อยโคม
-    this.elHaiku = $('fs-haiku');      // the poetry overlay
+    this.btnIgnite = $('fs-ignite');        // Era-0: two-step 🔥 จุดไฟ → ปล่อยโคม
+    this.btnLaunchNext = $('fs-launch-next'); // Era-1: จุดบั้งต่อไป (multi-vehicle)
+    this.btnFocus = $('fs-focus');          // Era-1: cycle camera focus between rockets
+    this.elHaiku = $('fs-haiku');           // the poetry overlay
+
+    // ---- sound (pooled sfx — ignite bed + liftoff whoosh) ---------------
+    this._sound = RS.render.SoundFX ? new RS.render.SoundFX() : null;
+
+    // ---- the fleet + one master clock ----------------------------------
+    this._vehicles = [];        // [{id, flight, group, sim, t0, trail, glow, …}]
+    this._focusIdx = 0;         // which vehicle the camera + HUD follow
+    this._masterT = 0;          // seconds since the FIRST vehicle was released
+    this._masterDur = 0;        // max( t0 + duration ) across the fleet
+    this._playing = false;
+    this._bangfai = false;      // is this an angled-rail Era-1 flight?
+    this._canLaunchNext = false;
+    this._simOpts = null;       // wind / NOTAM opts, reused for "launch next"
+    this._sky = null;           // 'day' | 'night' | 'dusk'
 
     // ---- manual ignition / release gate (khom loy only) ------------------
     this._gate = null;                 // null | 'prelaunch' | 'igniting' | 'held'
-    this._ignT = 0;                    // trajectory time reached during the spool
-    this._liftoffTime = 0;             // the tick physics says it breaks the pad
-    this._igniteDur = 6;               // wall-clock seconds the spool is stretched over
+    this._ignT = 0;
+    this._liftoffTime = 0;
+    this._igniteDur = 6;
     // ---- haiku queue ----------------------------------------------------
     this._haikuQueue = [];
     this._haikuActive = false;
@@ -107,11 +128,12 @@
     this._haikuTimer = 0;
     this._lastHaikuT = -1e9;
 
+    // primary FlightRenderer handle — reassigned to the focused vehicle each
+    // open(); kept here so the console handle / legacy readers never see null
     this.flight = new RS.render.FlightRenderer({ playbackRate: 1 });
 
     this.scene = null;
     this.vehicleGroup = null;
-    this._trail = null;
     this._built = false;
     this._raf = 0;
     this._last = 0;
@@ -123,12 +145,10 @@
     this._zoom = 1;
     this._drag = null;
     this._freeTarget = new (THREE ? THREE.Vector3 : Object)();
-    // observer / launcher's-POV cam: a fixed eye-level stance near the pad,
-    // plus scratch vectors + transient drag-to-look-around offsets
     this._obsEye  = new (THREE ? THREE.Vector3 : Object)();
     this._obsTmp  = new (THREE ? THREE.Vector3 : Object)();
     this._obsTmp2 = new (THREE ? THREE.Vector3 : Object)();
-    if (THREE) this._obsEye.set(-8, 1.7, 33);   // a spectator ~34 m back from the pad
+    if (THREE) this._obsEye.set(-8, 1.7, 33);
     this._obsYaw = 0;
     this._obsPitch = 0;
     this._scrubbing = false;
@@ -139,6 +159,8 @@
     this._phaseText = '';
     this._toastTimer = 0;
     this._autopsyShown = false;
+    this._glow = null;
+    this._glowPulse = 0;
 
     if (this.available) this._bindControls();
   }
@@ -158,9 +180,13 @@
     if (this.btnIgnite) {
       this.btnIgnite.addEventListener('click', function () { self._onIgnite(); });
     }
+    if (this.btnLaunchNext) {
+      this.btnLaunchNext.addEventListener('click', function () { self._launchNext(); });
+    }
+    if (this.btnFocus) {
+      this.btnFocus.addEventListener('click', function () { self._cycleFocus(); });
+    }
 
-    // cinematic reveal: after a launch the HUD/transport start hidden and
-    // fade in on the first real interaction (or a short auto-timeout).
     var reveal = function () { self._revealChrome(); };
     ['pointerdown', 'pointermove', 'wheel', 'keydown'].forEach(function (ev) {
       self.root.addEventListener(ev, reveal, { passive: true });
@@ -174,15 +200,18 @@
     });
 
     this.scrub.addEventListener('input', function () {
-      if (self._gate) { self._syncScrub(); return; }   // locked during the ignition ceremony
+      if (self._gate) { self._syncScrub(); return; }
       self._scrubbing = true;
-      self.flight.pause();
-      var t = (self.scrub.value / 1000) * self.flight.duration;
-      self.flight.seek(t);
-      self._recomputePhase(t);
-      if (t < self.flight.duration - 1e-3) { self._autopsyShown = false; self.autopsy.hidden = true; }
+      self._playing = false;
+      var t = (self.scrub.value / 1000) * self._masterDur;
+      self._masterT = t;
+      self._stepVehicles();
+      self._syncAliases();
+      var st = self.flight.sampleAt(self.flight.time);
+      self._recomputePhase(self.flight.time);
+      if (t < self._masterDur - 1e-3) { self._autopsyShown = false; self.autopsy.hidden = true; }
       self.scrub.style.setProperty('--fs-pos', (self.scrub.value / 10).toFixed(1) + '%');
-      self._renderFrame(self.flight.sampleAt(t));
+      self._renderFrame(st);
       self._reflectPlay();
     });
     this.scrub.addEventListener('change', function () { self._scrubbing = false; });
@@ -196,6 +225,8 @@
       else if (e.key === ' ') { e.preventDefault(); self.togglePlay(); }
       else if (e.key === 'c' || e.key === 'C') self._cycleCam();
       else if (e.key === 'r' || e.key === 'R') self._restart();
+      else if (e.key === 'v' || e.key === 'V') self._cycleFocus();
+      else if (e.key === 'n' || e.key === 'N') self._launchNext();
     });
 
     // camera drag + wheel on the canvas
@@ -212,8 +243,6 @@
       self._drag.x = e.clientX; self._drag.y = e.clientY;
       self._dragDist += Math.abs(dx) + Math.abs(dy);
 
-      // a real drag while a cinematic auto-cam is tracking → hand control to the
-      // FREE rig, anchored where the vehicle is now, so the view isn't wrested back
       if (self._dragDist > 6 && AUTO_CAM[CAM_MODES[self._camIdx]]) {
         var st = self.flight.sampleAt(self.flight.time);
         self._freeTarget.set(
@@ -232,29 +261,44 @@
       e.preventDefault();
       self._zoom = clamp(self._zoom * (e.deltaY < 0 ? 0.88 : 1.14), 0.04, 60);
     }, { passive: false });
+  };
 
-    // event feed -> toast + phase label
-    this.flight.on('*', function (evt) {
-      self._phaseText = (LABEL_TH[evt.type] || evt.type);
-      self._showToast((LABEL_TH[evt.type] || evt.type) + ' · ' + evt.message);
-      if (self._glow && evt.type === 'IGNITION') self._glowPulse = 1;
-      // the poetry of impermanence, keyed to what just happened
-      if (evt.type === 'MIDAIR_BURN') self._maybeHaiku('burn', 5400);
-      else if (evt.type === 'BURNOUT' && self.flight.buoyant) self._maybeHaiku('burnout', 5400);
-      // reaching orbit → swing the camera out to the orbital map
-      var mapIdx = CAM_MODES.indexOf('map');
-      if (evt.type === 'ORBIT' && self._camIdx !== mapIdx) {
-        self._camIdx = mapIdx; self._zoom = 1;
-        self.btnCam.textContent = CAM_LABEL.map;
-      }
-    });
+  // ---- flight-event handler — registered on EVERY vehicle's renderer -----
+  FlightScreen.prototype._onFlightEvent = function (evt, rec) {
+    var focused = (rec === this._focusedRec());
+
+    // sound plays for ANY vehicle (a festival is loud) — quieter if not focused
+    if (evt.type === 'LIFTOFF' && this._sound) {
+      this._sound.play('liftoff', { volume: focused ? 0.72 : 0.48, rate: 0.97 });
+      // duck the ignition rumble under the whoosh but let it ride out — the
+      // หมื่อ is still burning for a few seconds after it clears the rail
+      if (rec && rec._igniteVoice) this._sound.fade(rec._igniteVoice, focused ? 0.22 : 0.12, 700);
+    }
+    if (evt.type === 'BURNOUT' && rec && rec._igniteVoice && this._sound) {
+      this._sound.fade(rec._igniteVoice, 0, 1400);   // fuel's gone — kill the bed
+      rec._igniteVoice = null;
+    }
+
+    if (!focused) return;   // HUD chrome only ever follows the focused rocket
+
+    this._phaseText = (LABEL_TH[evt.type] || evt.type);
+    this._showToast((LABEL_TH[evt.type] || evt.type) + ' · ' + evt.message);
+    if (rec && rec.glow && evt.type === 'IGNITION') this._glowPulse = 1;
+    if (evt.type === 'MIDAIR_BURN') this._maybeHaiku('burn', 5400);
+    else if (evt.type === 'BURNOUT' && this.flight.buoyant) this._maybeHaiku('burnout', 5400);
+
+    var mapIdx = CAM_MODES.indexOf('map');
+    if (evt.type === 'ORBIT' && this._camIdx !== mapIdx) {
+      this._camIdx = mapIdx; this._zoom = 1;
+      this.btnCam.textContent = CAM_LABEL.map;
+    }
   };
 
   FlightScreen.prototype._cycleCam = function () {
     this._camIdx = (this._camIdx + 1) % CAM_MODES.length;
     var mode = CAM_MODES[this._camIdx];
     this.btnCam.textContent = CAM_LABEL[mode];
-    this._zoom = 1;                 // every rig starts at a neutral zoom / FOV
+    this._zoom = 1;
     if (mode === 'free') {
       var st = this.flight.sampleAt(this.flight.time);
       this._freeTarget.set(
@@ -263,14 +307,138 @@
     }
   };
 
-  FlightScreen.prototype._restart = function () {
-    this.flight.seek(0);
-    this._vmax = 0;
-    this._autopsyShown = false;
-    this.autopsy.hidden = true;
-    this._phaseText = 'อยู่บนแท่น';
-    this._syncScrub();
-    this.play();
+  // ---- fleet helpers ---------------------------------------------------
+  FlightScreen.prototype._focusedRec = function () {
+    return this._vehicles[this._focusIdx] || this._vehicles[0] || null;
+  };
+  FlightScreen.prototype._syncAliases = function () {
+    var rec = this._focusedRec();
+    if (!rec) return;
+    this.flight = rec.flight;
+    this.vehicleGroup = rec.group;
+    this._exhaustY = rec.exhaustY;
+    this._dirtyExhaust = rec.dirtyExhaust;
+    this._poweredUntil = rec._poweredUntil;
+    this._glow = rec.glow;
+  };
+  FlightScreen.prototype._cycleFocus = function () {
+    if (this._vehicles.length < 2) return;
+    this._focusIdx = (this._focusIdx + 1) % this._vehicles.length;
+    this._camTX = this._camTY = null;   // snap the camera to the new subject
+    this._syncAliases();
+    this._refreshFocusBtn();
+    this._showToast('กล้องจับบั้งไฟลูกที่ ' + (this._focusIdx + 1));
+  };
+  FlightScreen.prototype._refreshFocusBtn = function () {
+    if (!this.btnFocus) return;
+    var multi = this._bangfai && this._vehicles.length > 1;
+    this.btnFocus.hidden = !multi;
+    if (multi) this.btnFocus.textContent = '🎯 ' + (this._focusIdx + 1) + '/' + this._vehicles.length;
+  };
+  FlightScreen.prototype._collectEvents = function () {
+    var all = [];
+    this._vehicles.forEach(function (rec) {
+      (rec.sim.events || []).forEach(function (e) {
+        all.push({ type: e.type, time: e.time + rec.t0, message: e.message });
+      });
+    });
+    return all.sort(function (a, b) { return a.time - b.time; });
+  };
+
+  FlightScreen.prototype._disposeFleet = function () {
+    var self = this;
+    (this._vehicles || []).forEach(function (rec) {
+      if (rec.group) RS.render.VehicleRenderer.disposeGroup(rec.group);
+      [rec.pathLine, rec.trail].forEach(function (ln) {
+        if (ln && self.scene) {
+          self.scene.remove(ln);
+          if (ln.geometry) ln.geometry.dispose();
+          if (ln.material) ln.material.dispose();
+        }
+      });
+    });
+    this._vehicles = [];
+  };
+
+  /**
+   * Add one vehicle to the fleet: build its mesh, load its sim into a fresh
+   * FlightRenderer, cut its trail + path line, hang an exhaust glow on it.
+   * @param {Object} sim  a SimulationResult
+   * @param {{t0:number, primary?:boolean}} o
+   */
+  FlightScreen.prototype._addVehicle = function (sim, o) {
+    o = o || {};
+    var self = this;
+    var fr = new RS.render.FlightRenderer({ playbackRate: 1 });
+    var group = RS.render.VehicleRenderer.build(this._vehicle);
+    group.traverse(function (m) { if (m.isMesh) m.castShadow = true; });
+    this.scene.add(group);
+
+    var rawEY = (group.userData && group.userData.exhaustY != null)
+      ? group.userData.exhaustY : -0.3;
+    var exhaustY = Math.min(0, rawEY) - 0.1;
+
+    fr.load(sim);
+    fr.attach(group);
+    fr.seek(0);
+
+    // faint full predicted path + bright progressive trail
+    var pathLine = null, trail = null, trailN = 0;
+    var pts = (sim.trajectory || []).map(function (s) {
+      return new THREE.Vector3(s.position.x, s.position.y, s.position.z);
+    });
+    if (pts.length > 1) {
+      var isOrbital = !!(sim.summary && sim.summary.orbit && sim.summary.orbit.achieved);
+      var pg = new THREE.BufferGeometry().setFromPoints(pts);
+      pathLine = new THREE.Line(pg, new THREE.LineBasicMaterial({
+        color: isOrbital ? 0x8fd4ff : 0x9a6b3a,
+        transparent: true, opacity: isOrbital ? 0.32 : 0.14
+      }));
+      this.scene.add(pathLine);
+
+      var tg = new THREE.BufferGeometry().setFromPoints(pts);
+      tg.setDrawRange(0, 1);
+      trail = new THREE.Line(tg, new THREE.LineBasicMaterial({
+        color: 0xffd7a6, transparent: true, opacity: 0.72
+      }));
+      trailN = pts.length;
+      this.scene.add(trail);
+    }
+
+    var glow = new THREE.PointLight(0xff8a3a, 0, 140, 2);
+    glow.position.set(0, rawEY, 0);
+    group.add(glow);
+
+    var rec = {
+      id: o.primary ? 'bf1' : ('bf' + (this._vehicles.length + 1)),
+      flight: fr, group: group, sim: sim,
+      t0: o.t0 || 0,
+      exhaustY: exhaustY,
+      dirtyExhaust: !!(sim.meta && sim.meta.dirtyExhaust),
+      pathLine: pathLine, trail: trail, trailN: trailN, glow: glow,
+      _poweredUntil: poweredUntil(sim.trajectory),
+      _igniteSfx: false, _igniteVoice: null
+    };
+    fr.on('*', function (evt) { self._onFlightEvent(evt, rec); });
+    this._vehicles.push(rec);
+
+    if (o.primary) {
+      this.flight = fr;
+      this.vehicleGroup = group;
+      this._glow = glow;
+      this._exhaustY = exhaustY;
+      this._dirtyExhaust = rec.dirtyExhaust;
+      this._sim = sim;
+      this._summary = sim.summary || null;
+      this._diagnostics = sim.diagnostics || [];
+      this._poweredUntil = rec._poweredUntil;
+      var b = group.userData.bounds;
+      this._vehH = (b && b.height) || 1.4;
+      var oev = (sim.events || []).filter(function (e) { return e.type === 'ORBIT'; })[0];
+      this._orbitEventTime = oev ? oev.time : Infinity;
+      if (this._exhaust) this._exhaust.reset();
+    }
+    return rec;
   };
 
   // ---- scene (built lazily, kept alive between opens) -------------------
@@ -281,12 +449,13 @@
     this.scene = new RS.render.Scene(this.canvas, {
       ground: false, background: 0x05080f, fov: 50,
       logDepth: true, far: RE * 6,
-      fog: { color: 0x060912, density: 0.0011 }   // dissolves the hard horizon
+      fog: { color: 0x060912, density: 0.0011 }
     });
     if (!this.scene.available) { this._built = true; return; }
     var sc = this.scene.scene;
 
-    sc.add(makeStars(1400, RE * 4));
+    this._stars = makeStars(1400, RE * 4);
+    sc.add(this._stars);
 
     // ---- THE PLANET — a real sphere centred at (0, -RE) --------------
     var planet = new THREE.Mesh(
@@ -294,8 +463,8 @@
       new THREE.MeshStandardMaterial({ color: 0x1f5133, roughness: 1, metalness: 0 })
     );
     planet.position.set(0, -RE, 0);
+    planet.receiveShadow = true;
     sc.add(planet);
-    // a thin translucent atmosphere shell
     var atmo = new THREE.Mesh(
       new THREE.SphereGeometry(RE + ((RS.Physics && RS.Physics.ATMOS_TOP) || 70000), 64, 48),
       new THREE.MeshBasicMaterial({ color: 0x5aa9ff, transparent: true, opacity: 0.10,
@@ -306,14 +475,29 @@
     this._planet = planet;
     this._atmo = atmo;
 
-    // ---- near-pad ground : a soft radial-gradient disc that fades out into
-    //  the haze so there is no hard terrain edge, just a pool of ground that
-    //  dissolves into the night. Sits a hair under the grid + planet surface.
+    // ---- the DAYTIME SUN — a bright disc far along the key-light vector,
+    //  shown only for Era-1 (Bang Fai) daylight, off for night / space
+    var sun = new THREE.Mesh(
+      new THREE.SphereGeometry(1, 24, 16),
+      new THREE.MeshBasicMaterial({ color: 0xfff4d6, fog: false, toneMapped: false })
+    );
+    sun.scale.setScalar(3200);
+    sun.position.set(16000, 22000, 9000);
+    sun.visible = false;
+    var sunHalo = new THREE.Mesh(
+      new THREE.SphereGeometry(1, 24, 16),
+      new THREE.MeshBasicMaterial({ color: 0xffe6a8, transparent: true, opacity: 0.28,
+        fog: false, depthWrite: false })
+    );
+    sunHalo.scale.setScalar(2.2);
+    sun.add(sunHalo);
+    sc.add(sun);
+    this._sun = sun;
+
+    // ---- near-pad ground : soft radial-gradient disc (night only) ----
     var gtc = document.createElement('canvas');
     gtc.width = gtc.height = 256;
     var gg = gtc.getContext('2d');
-    // white RGB, alpha fades out — a soft mask so the disc dissolves into haze;
-    // colour + warm oil-lamp light come from the (lit) material, not the texture
     var grd = gg.createRadialGradient(128, 128, 8, 128, 128, 128);
     grd.addColorStop(0.00, 'rgba(255,255,255,0.95)');
     grd.addColorStop(0.5, 'rgba(255,255,255,0.7)');
@@ -322,7 +506,7 @@
     var groundTex = new THREE.CanvasTexture(gtc);
     var nearGround = new THREE.Mesh(
       new THREE.CircleGeometry(3200, 64),
-      new THREE.MeshLambertMaterial({          // Lambert → reacts to the oil lamps
+      new THREE.MeshLambertMaterial({
         map: groundTex, color: 0x141a24,
         transparent: true, depthWrite: false, fog: true
       }));
@@ -330,6 +514,18 @@
     nearGround.position.y = 0.005;
     sc.add(nearGround);
     this._nearGround = nearGround;
+
+    // ---- near-pad ground that RECEIVES the sharp daytime shadow ------
+    var dayGround = new THREE.Mesh(
+      new THREE.CircleGeometry(900, 48),
+      new THREE.MeshStandardMaterial({ color: 0x5f7245, roughness: 1, metalness: 0 })
+    );
+    dayGround.rotation.x = -Math.PI / 2;
+    dayGround.position.y = 0.012;
+    dayGround.receiveShadow = true;
+    dayGround.visible = false;
+    sc.add(dayGround);
+    this._dayGround = dayGround;
 
     // ---- near-pad detail (only visible when zoomed right in) --------
     var grid = new THREE.GridHelper(2400, 96, 0x356b41, 0x1d3a27);
@@ -345,18 +541,14 @@
     pad.position.y = 0.09;
     sc.add(pad);
     this._pad = pad;
-    // a traditional Bang Fai fires off an ANGLED wooden scaffold, not this pad —
-    // built lazily in open() when meta.launchAngleDeg says so, and swapped in.
     this._launchRig = null;
     this._rigAngle = 0;
 
-    // launch-pad exhaust / smoke field — fed the contract state every frame
     if (RS.render.ExhaustFX) {
       this._exhaust = new RS.render.ExhaustFX();
       if (this._exhaust.available) sc.add(this._exhaust.object3d());
     }
 
-    // altitude reference rings (low-altitude only)
     for (var a = 100; a <= 2000; a += 100) {
       var ring = new THREE.Mesh(
         new THREE.TorusGeometry(7, 0.13, 6, 40),
@@ -367,8 +559,6 @@
       sc.add(ring);
     }
 
-    // ---- the Lantern Festival environment (stylized ground + Rapunzel sky) --
-    //  built once, kept hidden until a buoyancy-mode (khom loy) flight opens
     if (RS.render.FestivalEnv) {
       this._festival = new RS.render.FestivalEnv(this.scene);
       this._festival.build();
@@ -377,36 +567,65 @@
     this._built = true;
   };
 
-  FlightScreen.prototype._applyNightMode = function (on) {
-    if (this._night === on) return;
-    this._night = on;
-    var L = this.scene && this.scene.lights;
+  // ---- sky mode — 'day' (Bang Fai) | 'night' (khom loy) | 'dusk' (rocket) ---
+  FlightScreen.prototype._applySky = function (kind) {
+    if (this._sky === kind) return;
+    this._sky = kind;
+    var night = kind === 'night', day = kind === 'day';
+    var S = this.scene; if (!S || !S.available) return;
+    var L = S.lights, R = S.renderer;
+
+    if (R) R.setClearColor(day ? 0x8fc4e8 : 0x05080f, 1);
+    if (this._stars) this._stars.visible = !day;
+
     if (L) {
-      L.hemi.intensity = on ? 0.38 : 0.95;
-      L.key.intensity  = on ? 0.35 : 1.05;
-      L.rim.intensity  = on ? 0.5  : 0.35;
-      if (L.rim.color && L.rim.color.setHex) L.rim.color.setHex(on ? 0x3355aa : 0x88aaff);
+      L.hemi.intensity = day ? 0.95 : night ? 0.38 : 0.95;
+      if (L.hemi.color && L.hemi.color.setHex) L.hemi.color.setHex(day ? 0xbfdcff : 0xbfd4ff);
+      if (L.hemi.groundColor && L.hemi.groundColor.setHex)
+        L.hemi.groundColor.setHex(day ? 0x7a8a63 : 0x25324a);
+      L.key.intensity = day ? 1.95 : night ? 0.35 : 1.05;
+      if (L.key.color && L.key.color.setHex) L.key.color.setHex(day ? 0xfff4e0 : 0xfff2dd);
+      L.rim.intensity = day ? 0.55 : night ? 0.5 : 0.35;
+      if (L.rim.color && L.rim.color.setHex)
+        L.rim.color.setHex(night ? 0x3355aa : (day ? 0x9ec9ff : 0x88aaff));
     }
-    if (this._planet && this._planet.material) {
-      // night ground: dark, desaturated blue-grey terrain — not fluorescent grass
-      this._planet.material.color.setHex(on ? 0x0d1119 : 0x1f5133);
-    }
-    if (this._padGrid && this._padGrid.material) {
-      this._padGrid.material.opacity = on ? 0.10 : 0.42;
-    }
+    if (this._planet && this._planet.material)
+      this._planet.material.color.setHex(day ? 0x4c7a3c : night ? 0x0d1119 : 0x1f5133);
     if (this._atmo && this._atmo.material) {
-      this._atmo.material.opacity = on ? 0.05 : 0.10;
-      this._atmo.material.color.setHex(on ? 0x2a4a80 : 0x5aa9ff);
+      this._atmo.material.opacity = day ? 0.42 : night ? 0.05 : 0.10;
+      this._atmo.material.color.setHex(day ? 0x8fc4e8 : night ? 0x2a4a80 : 0x5aa9ff);
     }
-    // the soft ground pool is a night-scene device — the daytime planet is green
-    if (this._nearGround) this._nearGround.visible = on;
-    // the whole lantern-festival environment is night-only
-    if (this._festival) this._festival.setVisible(on);
-    if (this.scene && this.scene.fog) {
-      // thicker, cooler haze at night so the horizon truly melts away
-      this.scene.fog.density = on ? 0.0016 : 0.0011;
-      this.scene.fog.color.setHex(on ? 0x080a12 : 0x060912);
+    if (this._padGrid && this._padGrid.material)
+      this._padGrid.material.opacity = night ? 0.10 : day ? 0.18 : 0.42;
+    if (this._nearGround) this._nearGround.visible = night;
+    if (this._dayGround) this._dayGround.visible = day;
+    if (this._sun) this._sun.visible = day;
+    if (this._festival) this._festival.setVisible(night);
+    if (S.fog) {
+      S.fog.density = day ? 0.00019 : night ? 0.0016 : 0.0011;
+      S.fog.color.setHex(day ? 0xa9cfe6 : night ? 0x080a12 : 0x060912);
     }
+
+    // crisp daytime shadows — the plume + rocket cast onto the day ground
+    if (R) { R.shadowMap.enabled = day; if (day) R.shadowMap.type = THREE.PCFSoftShadowMap; }
+    if (L && L.key) {
+      L.key.castShadow = day;
+      if (day && !this._shadowInit && L.key.shadow) {
+        L.key.shadow.mapSize.set(2048, 2048);
+        L.key.shadow.camera.near = 1; L.key.shadow.camera.far = 700;
+        L.key.shadow.camera.left = L.key.shadow.camera.bottom = -80;
+        L.key.shadow.camera.right = L.key.shadow.camera.top = 80;
+        L.key.shadow.bias = -0.0005; L.key.shadow.radius = 2;
+        if (L.key.shadow.camera.updateProjectionMatrix) L.key.shadow.camera.updateProjectionMatrix();
+        this._shadowInit = true;
+      }
+    }
+    this._night = night;
+  };
+
+  // legacy shim — some call paths still ask for night on/off
+  FlightScreen.prototype._applyNightMode = function (on) {
+    this._applySky(on ? 'night' : (this._bangfai ? 'day' : 'dusk'));
   };
 
   function makeStars(n, r) {
@@ -427,7 +646,7 @@
 
   // ---- cinematic chrome reveal --------------------------------------
   FlightScreen.prototype._revealChrome = function () {
-    if (this._gate) return;             // keep the frame clean during the ceremony
+    if (this._gate) return;
     if (!this._chromeHidden) return;
     this._chromeHidden = false;
     if (this._chromeTimer) { global.clearTimeout(this._chromeTimer); this._chromeTimer = 0; }
@@ -439,8 +658,6 @@
   // ======================================================================
   FlightScreen.prototype._onIgnite = function () {
     if (this._gate === 'prelaunch') {
-      // STEP 1 — light the wick. The lantern stays welded to the pad while the
-      // wax spools; the flame + inner glow + a thread of smoke build.
       this._gate = 'igniting';
       this._ignT = 0;
       this.btnIgnite.disabled = true;
@@ -449,16 +666,15 @@
       this._phaseText = 'จุดไฟ — ประคองโคมไว้';
       this._showToast('จุดไฟ · ประคองโคมไว้จนอิ่มไอร้อน');
     } else if (this._gate === 'held') {
-      // STEP 3 — let go. Playback resumes exactly at the tick physics says the
-      // lantern breaks the pad, so it lifts off from a standstill, gracefully.
       this._gate = null;
       this.btnIgnite.hidden = true;
       this.btnIgnite.classList.remove('ready');
       this.btnIgnite.disabled = false;
       this.flight.seek(this._liftoffTime || 0);
-      this._camTX = this._camTY = null;       // re-lock the camera onto the rising lantern
+      this._masterT = this._liftoffTime || 0;
+      this._camTX = this._camTY = null;
       this._phaseText = 'ปล่อยโคม';
-      this._lastHaikuT = this.flight.time;    // let the launch breathe before the next poem
+      this._lastHaikuT = this.flight.time;
       this._showToast('ปล่อยโคม · โคมลอยขึ้นสู่ราตรี');
       this._showHaiku(HAIKU.release, 5200);
       this._revealChrome();
@@ -468,7 +684,6 @@
   };
 
   FlightScreen.prototype._enterHeld = function () {
-    // STEP 2 — the wax is hot, buoyancy is positive: offer the string.
     this._gate = 'held';
     this.btnIgnite.disabled = false;
     this.btnIgnite.classList.add('ready');
@@ -488,7 +703,6 @@
     }
     var st = this.flight.sampleAt(this.flight.time) || this.flight.sampleAt(0);
 
-    // flame BUILD factor: 0 before ignite → ramps over the spool → full when held
     var s = (this._gate === 'prelaunch') ? 0
       : (this._gate === 'igniting') ? clamp(this._ignT / Math.max(lt, 1e-6), 0, 1)
       : 1;
@@ -497,7 +711,6 @@
     }
     if (this._glow) this._glow.intensity = s * (1.6 + Math.random() * 0.8);
 
-    // a held lantern only breathes a thin heat-haze, never a roaring exhaust
     if (this._exhaust) {
       this._exhaust.update(this._gate === 'prelaunch' ? 0 : dt, {
         x: 0, y: 0, v: 0,
@@ -513,6 +726,7 @@
       });
     }
 
+    this._masterT = this.flight.time;
     this._updateCamera(st.altitude || 0, st);
     this._updateHud(st);
     this._drainHaiku(dt);
@@ -524,7 +738,7 @@
   FlightScreen.prototype._maybeHaiku = function (key, linger) {
     if (!HAIKU[key]) return;
     var now = this.flight ? this.flight.time : 0;
-    if (now - this._lastHaikuT < 13) return;    // never stack poems on each other
+    if (now - this._lastHaikuT < 13) return;
     this._lastHaikuT = now;
     this._showHaiku(HAIKU[key], linger);
   };
@@ -544,7 +758,7 @@
       return '<span>' + esc(l) + '</span>';
     }).join('');
     this.elHaiku.hidden = false;
-    void this.elHaiku.offsetWidth;               // flush so the fade-in plays from 0
+    void this.elHaiku.offsetWidth;
     this.elHaiku.classList.add('show');
     this._haikuTimer = Math.max(2.5, h.linger);
   };
@@ -555,7 +769,7 @@
     if (this._haikuTimer > 0) return;
     if (!this._haikuFading) {
       this._haikuFading = true;
-      this.elHaiku.classList.remove('show');     // slow CSS fade-out
+      this.elHaiku.classList.remove('show');
       this._haikuTimer = 2.8;
     } else {
       this.elHaiku.hidden = true;
@@ -569,11 +783,12 @@
   FlightScreen.prototype.open = function (simResult, vehicle, mission, opts) {
     if (!this.available) return;
     opts = opts || {};
+    var meta = (simResult && simResult.meta) || {};
     this._mission = mission || null;
     this._vehicle = vehicle || null;
+    this._simOpts = opts.simOpts || null;
     this.root.hidden = false;
 
-    // cinematic entry: hide HUD + transport until the viewer interacts
     if (this._chromeTimer) { global.clearTimeout(this._chromeTimer); this._chromeTimer = 0; }
     if (opts.cinematic) {
       this._chromeHidden = true;
@@ -587,26 +802,25 @@
     this._buildScene();
     if (!this.scene.available) { this.root.hidden = true; return; }
 
-    // NIGHT MODE — a khom loy is released after dark. Dim the world so the
-    // lantern's own glow carries the frame, then restore it for rockets.
-    this._applyNightMode((simResult && simResult.mode) === 'buoyancy');
+    // ---- SKY — a Bang Fai is launched in broad DAYLIGHT (you must see the
+    //  plume); a khom loy is released after dark; every other rocket = dusk.
+    var buoy = (simResult && simResult.mode) === 'buoyancy';
+    this._bangfai = !!(meta.launchAngleDeg && +meta.launchAngleDeg > 0);
+    var wantDay = (!!opts.daylight || this._bangfai) && !buoy;
+    this._applySky(buoy ? 'night' : (wantDay ? 'day' : 'dusk'));
 
-    // fresh vehicle mesh (can't share an Object3D with the builder preview)
-    if (this.vehicleGroup) RS.render.VehicleRenderer.disposeGroup(this.vehicleGroup);
-    this.vehicleGroup = RS.render.VehicleRenderer.build(vehicle);
-    this.scene.add(this.vehicleGroup);
-    var b = this.vehicleGroup.userData.bounds;
-    this._vehH = (b && b.height) || 1.4;
-    // exhaust leaves from the base of the stack — never from above the origin
-    var rawEY = (this.vehicleGroup.userData &&
-      this.vehicleGroup.userData.exhaustY != null)
-      ? this.vehicleGroup.userData.exhaustY : -0.3;
-    this._exhaustY = Math.min(0, rawEY) - 0.1;
+    // ---- rebuild the fleet from scratch -------------------------------
     if (this._exhaust) this._exhaust.reset();
+    this._disposeFleet();
+    this._focusIdx = 0;
+    this._addVehicle(simResult, { t0: 0, primary: true });
+    this._masterT = 0;
+    this._masterDur = this._vehicles[0].flight.duration;
+    this._canLaunchNext = this._bangfai;
+    this._playing = false;
+    if (this._sound) this._sound.stopAll();
 
     // ---- launch structure — angled scaffold for a Bang Fai, else the pad ----
-    var meta = simResult.meta || {};
-    this._dirtyExhaust = !!meta.dirtyExhaust;         // a หมื่อ → the big plume
     var la = +meta.launchAngleDeg || 0;
     var angled = la > 0 && la < 89;
     if (angled && RS.render.makeLaunchRig) {
@@ -614,7 +828,10 @@
         if (this._launchRig) RS.render.VehicleRenderer.disposeGroup(this._launchRig);
         this._launchRig = RS.render.makeLaunchRig(la);
         this._rigAngle = la;
-        if (this._launchRig) this.scene.add(this._launchRig);
+        if (this._launchRig) {
+          this._launchRig.traverse(function (m) { if (m.isMesh) m.receiveShadow = true; });
+          this.scene.add(this._launchRig);
+        }
       }
       if (this._launchRig) this._launchRig.visible = true;
       if (this._pad) this._pad.visible = false;
@@ -623,75 +840,27 @@
       if (this._pad) this._pad.visible = true;
     }
 
-    if (!this._glow) {
-      this._glow = new THREE.PointLight(0xff8a3a, 0, 140, 2);
-    }
-    this._glow.position.set(0, (this.vehicleGroup.userData &&
-      this.vehicleGroup.userData.exhaustY != null)
-      ? this.vehicleGroup.userData.exhaustY : -0.3, 0);
-    this.vehicleGroup.add(this._glow);
-    this._glowPulse = 0;
-
-    // trajectory lines: a faint FULL predicted path (the orbital arc) plus a
-    // bright progressive breadcrumb trail drawn up to the current playback time
-    [this._trail, this._orbitLine].forEach(function (ln) {
-      if (ln) { this.scene.remove(ln); ln.geometry.dispose(); ln.material.dispose(); }
-    }, this);
-    this._trail = this._orbitLine = null;
-
-    var pts = (simResult.trajectory || []).map(function (s) {
-      return new THREE.Vector3(s.position.x, s.position.y, s.position.z);
-    });
-    if (pts.length > 1) {
-      var isOrbital = !!(simResult.summary && simResult.summary.orbit &&
-        simResult.summary.orbit.achieved);
-
-      var og = new THREE.BufferGeometry().setFromPoints(pts);
-      this._orbitLine = new THREE.Line(og, new THREE.LineBasicMaterial({
-        color: isOrbital ? 0x8fd4ff : 0x3a6f9a,
-        transparent: true, opacity: isOrbital ? 0.32 : 0.16
-      }));
-      this.scene.add(this._orbitLine);
-
-      var geo = new THREE.BufferGeometry().setFromPoints(pts);
-      geo.setDrawRange(0, 1);
-      this._trail = new THREE.Line(geo, new THREE.LineBasicMaterial({
-        color: 0x5bd6ff, transparent: true, opacity: 0.7
-      }));
-      this._trailN = pts.length;
-      this.scene.add(this._trail);
-    }
-
-    this.flight.load(simResult);
-    this.flight.attach(this.vehicleGroup);
     this.flight.seek(0);
     this._sim = simResult;
-    this._summary = simResult.summary || null;
-    this._diagnostics = simResult.diagnostics || [];
-    this._poweredUntil = poweredUntil(simResult.trajectory);
-    var oev = (simResult.events || []).filter(function (e) { return e.type === 'ORBIT'; })[0];
-    this._orbitEventTime = oev ? oev.time : Infinity;
     this._camTX = this._camTY = null;
     this._vmax = 0;
     this._autopsyShown = false;
     this.autopsy.hidden = true;
     if (this.elVerdict) this.elVerdict.hidden = true;
     this._rateIdx = 1; this.flight.setRate(1); this.btnRate.textContent = '1×';
-    // a khom loy is watched from the ground — default to the launcher's POV;
-    // anything with real thrust defaults to the chase cam.
-    this._camIdx = ((simResult && simResult.mode) === 'buoyancy')
-      ? CAM_MODES.indexOf('observer') : CAM_MODES.indexOf('chase');
+    this._camIdx = buoy ? CAM_MODES.indexOf('observer') : CAM_MODES.indexOf('chase');
     this.btnCam.textContent = CAM_LABEL[CAM_MODES[this._camIdx]];
     this._theta = 0.7; this._phi = 1.12; this._zoom = 1; this._camX = 0;
-    this._obsYaw = 0; this._obsPitch = 0;   // transient look-around offsets (observer cam)
+    this._obsYaw = 0; this._obsPitch = 0;
     this._phaseText = 'อยู่บนแท่น';
     this._hideToast();
-    this._buildMarkers(simResult.events || [], this.flight.duration);
+    this._buildMarkers(this._collectEvents(), this._masterDur);
+
+    // Era-1 fleet controls
+    if (this.btnLaunchNext) this.btnLaunchNext.hidden = !this._bangfai;
+    this._refreshFocusBtn();
 
     // ---- THE RELEASE — manual two-step ignition for a khom loy -----------
-    //  Physics has already pad-locked + spooled the lantern; we simply hold
-    //  playback on the pad, let the player light the wick and feel the heat
-    //  build, then hand them the string to let go.
     this._haikuQueue.length = 0;
     this._haikuActive = this._haikuFading = false;
     this._lastHaikuT = -1e9;
@@ -700,13 +869,12 @@
     var holdT = (simResult.summary && simResult.summary.holdTime != null)
       ? simResult.summary.holdTime
       : ((simResult.events || []).filter(function (e) { return e.type === 'LIFTOFF'; })[0] || {}).time;
-    var canGate = !!(opts.cinematic && this.btnIgnite &&
-      (simResult && simResult.mode) === 'buoyancy' && holdT != null && holdT > 0.05);
+    var canGate = !!(opts.cinematic && this.btnIgnite && buoy && holdT != null && holdT > 0.05);
 
     if (canGate) {
       this._gate = 'prelaunch';
       this._liftoffTime = holdT;
-      this._igniteDur = clamp(holdT * 1.7, 5, 11);   // stretch the spool — slow, contemplative
+      this._igniteDur = clamp(holdT * 1.7, 5, 11);
       this._ignT = 0;
       this.flight.seek(0);
       this.btnIgnite.hidden = false;
@@ -725,10 +893,11 @@
 
     if (this._festival) {
       this._festival.resetCompanions();
-      var self = this;
-      this._festival.onEncounter = function () { self._maybeHaiku('encounter', 4800); };
+      var self2 = this;
+      this._festival.onEncounter = function () { self2._maybeHaiku('encounter', 4800); };
     }
 
+    this._syncAliases();
     this.scene.resize();
     this._renderFrame(this.flight.sampleAt(0));
     this._last = perfNow();
@@ -737,13 +906,16 @@
   };
 
   FlightScreen.prototype.close = function () {
-    this.flight.pause();
+    this._playing = false;
     if (this._raf) { global.cancelAnimationFrame(this._raf); this._raf = 0; }
     if (this._chromeTimer) { global.clearTimeout(this._chromeTimer); this._chromeTimer = 0; }
     this.root.classList.remove('fs-cinematic');
     this._chromeHidden = false;
     this._gate = null;
+    if (this._sound) this._sound.stopAll();
     if (this.btnIgnite) { this.btnIgnite.hidden = true; this.btnIgnite.classList.remove('ready'); }
+    if (this.btnLaunchNext) this.btnLaunchNext.hidden = true;
+    if (this.btnFocus) this.btnFocus.hidden = true;
     if (this.elHaiku) { this.elHaiku.hidden = true; this.elHaiku.classList.remove('show'); }
     this._haikuActive = this._haikuFading = false;
     this._haikuQueue.length = 0;
@@ -775,20 +947,90 @@
     return t;
   }
 
+  // ---- LAUNCH NEXT — a fresh Bang Fai on the rail, mid-flight ----------
+  FlightScreen.prototype._launchNext = function () {
+    if (!this._canLaunchNext || !this.scene || !this.scene.available || this._gate) return;
+    if (this._vehicles.length >= 8) {
+      this._showToast('บั้งไฟบนฟ้าเยอะพอแล้ว! (สูงสุด 8 ลูก)');
+      return;
+    }
+    if (!this._vehicle) return;
+    var model = this._vehicle.toPhysicsModel();
+    if (!model || !model.valid) return;
+    var sim = RS.Physics.simulate(model, this._simOpts || {});
+    var rec = this._addVehicle(sim, { t0: this._masterT });
+    this._masterDur = Math.max(this._masterDur, rec.t0 + rec.flight.duration);
+    this._focusIdx = this._vehicles.length - 1;
+    this._camTX = this._camTY = null;
+    this._syncAliases();
+    this._refreshFocusBtn();
+    this._buildMarkers(this._collectEvents(), this._masterDur);
+    this._autopsyShown = false;
+    this.autopsy.hidden = true;
+    this._revealChrome();
+    if (!this._playing) this.play();
+    this._phaseText = 'จุดบั้งต่อไป';
+    this._showToast('🚀 จุดบั้งไฟลูกที่ ' + this._vehicles.length + ' — ยิงจากราง!');
+  };
+
   // ---- transport -------------------------------------------------------
   FlightScreen.prototype.play = function () {
-    if (this.flight.time >= this.flight.duration - 1e-3) {
-      this.flight.seek(0); this._vmax = 0; this._autopsyShown = false; this.autopsy.hidden = true;
+    if (this._masterDur > 0 && this._masterT >= this._masterDur - 1e-3) {
+      this._masterT = 0; this._vmax = 0;
+      this._autopsyShown = false; this.autopsy.hidden = true;
+      this._vehicles.forEach(function (r) {
+        r.flight.seek(0); r._igniteSfx = false; r._igniteVoice = null;
+      });
     }
-    this.flight.play(); this._reflectPlay();
+    this._playing = true;
+    this._reflectPlay();
   };
-  FlightScreen.prototype.pauseIt = function () { this.flight.pause(); this._reflectPlay(); };
+  FlightScreen.prototype.pauseIt = function () { this._playing = false; this._reflectPlay(); };
   FlightScreen.prototype.togglePlay = function () {
-    if (this._gate) return;             // no scrubbing past the ignition ceremony
-    this.flight.playing ? this.pauseIt() : this.play();
+    if (this._gate) return;
+    this._playing ? this.pauseIt() : this.play();
   };
   FlightScreen.prototype._reflectPlay = function () {
-    this.btnPlay.textContent = this.flight.playing ? '⏸' : '▶';
+    this.btnPlay.textContent = this._playing ? '⏸' : '▶';
+  };
+
+  FlightScreen.prototype._restart = function () {
+    this._masterT = 0;
+    this._vmax = 0;
+    this._autopsyShown = false;
+    this.autopsy.hidden = true;
+    this._phaseText = 'อยู่บนแท่น';
+    this._vehicles.forEach(function (r) {
+      r.flight.seek(0); r._igniteSfx = false;
+      if (r._igniteVoice) { try { r._igniteVoice.pause(); } catch (e) {} r._igniteVoice = null; }
+    });
+    if (this._sound) this._sound.stopAll();
+    this._syncScrub();
+    this.play();
+  };
+
+  // ---- step every vehicle forward to (masterT - t0) -------------------
+  FlightScreen.prototype._stepVehicles = function () {
+    for (var i = 0; i < this._vehicles.length; i++) {
+      var rec = this._vehicles[i];
+      var lt = this._masterT - rec.t0;
+      rec.flight.playing = this._playing;
+      if (lt <= 0) { rec.flight.seek(0); rec._igniteSfx = false; continue; }
+      if (this._scrubbing) rec.flight.seek(clamp(lt, 0, rec.flight.duration));
+      else rec.flight.advanceTo(lt);
+
+      // the หมื่อ catching on the rail — a rising bed of sound just before the
+      // liftoff whoosh. Only the dirty hand-rammed motor gets it (the Bang Fai).
+      if (rec.dirtyExhaust && !rec._igniteSfx && !this._scrubbing) {
+        var s = rec.flight.sampleAt(rec.flight.time);
+        if (s && s.thrust > 0.01 && rec.flight.time < 4) {
+          rec._igniteSfx = true;
+          rec._igniteVoice = this._sound
+            ? this._sound.play('ignite', { volume: (i === this._focusIdx) ? 0.5 : 0.32 })
+            : null;
+        }
+      }
+    }
   };
 
   // ---- main loop ------------------------------------------------------
@@ -801,61 +1043,75 @@
 
     if (this._gate) { this._gateFrame(dt); return; }
 
-    if (this.flight.playing && !this._scrubbing) this.flight.update(dt);
+    var rate = RATES[this._rateIdx] || 1;
+    if (this._playing && !this._scrubbing) {
+      this._masterT = Math.min(this._masterT + dt * rate, this._masterDur);
+      if (this._masterT >= this._masterDur - 1e-3) this._playing = false;
+    }
+
+    this._stepVehicles();
+    this._syncAliases();
+
     var st = this.flight.sampleAt(this.flight.time);
     this._renderFrame(st);
     this._drainHaiku(dt);
     if (!this._scrubbing) this._syncScrub();
-    if (!this.flight.playing) this._reflectPlay();
+    this._reflectPlay();
 
-    if (!this._scrubbing && !this._autopsyShown && this.flight.duration > 0 &&
-        this.flight.time >= this.flight.duration - 1e-3) {
+    if (!this._scrubbing && !this._autopsyShown && this._masterDur > 0 &&
+        this._masterT >= this._masterDur - 1e-3) {
       this._showAutopsy();
     }
   };
 
   FlightScreen.prototype._syncScrub = function () {
-    var f = this.flight.duration > 0 ? this.flight.time / this.flight.duration : 0;
+    var f = this._masterDur > 0 ? this._masterT / this._masterDur : 0;
     this.scrub.value = String(Math.round(f * 1000));
     this.scrub.style.setProperty('--fs-pos', (f * 100).toFixed(1) + '%');
   };
 
-  // ---- render one frame (camera + trail + glow + HUD) ---------------
+  // ---- render one frame (trails + glows + camera + exhaust + HUD) -----
   FlightScreen.prototype._renderFrame = function (st) {
     if (!st) return;
     var alt = st.altitude;
 
-    if (this._trail && this._trailN) {
-      var idx = Math.round((this.flight.time / (this.flight.duration || 1)) * (this._trailN - 1));
-      this._trail.geometry.setDrawRange(0, clamp(idx + 1, 1, this._trailN));
+    // every vehicle: progressive trail + its own exhaust glow
+    for (var i = 0; i < this._vehicles.length; i++) {
+      var rec = this._vehicles[i];
+      if (rec.trail && rec.trailN) {
+        var dur = rec.flight.duration || 1;
+        var idx = Math.round((rec.flight.time / dur) * (rec.trailN - 1));
+        rec.trail.geometry.setDrawRange(0, clamp(idx + 1, 1, rec.trailN));
+      }
+      if (rec.glow) {
+        var active = this._masterT >= rec.t0 &&
+          rec.flight.time <= rec._poweredUntil + 0.01 && rec.flight.time > 1e-4;
+        var gb = active ? 2.2 + Math.random() * 1.2 : 0;
+        if (i === this._focusIdx && this._glowPulse > 0) {
+          gb += this._glowPulse * 6; this._glowPulse *= 0.86;
+        }
+        rec.glow.intensity = gb;
+      }
     }
 
-    var powered = this.flight.time <= this._poweredUntil + 0.01;
+    var fRec = this._focusedRec();
+    var powered = !!fRec && fRec.flight.time <= fRec._poweredUntil + 0.01 &&
+      this._masterT >= fRec.t0;
 
-    if (this._glow) {
-      var base = powered ? 2.4 + Math.random() * 1.3 : 0;
-      if (this._glowPulse > 0) { base += this._glowPulse * 6; this._glowPulse *= 0.86; }
-      this._glow.intensity = base;
-    }
-
-    // launch-pad exhaust: heavy ground smoke while stuck fighting inertia,
-    // then a downward exhaust column once it breaks the pad.
     if (this._exhaust) {
-      this._exhaust.update(this.flight.playing ? (this._frameDt || 0.016) : 0, {
+      this._exhaust.update(this._playing ? (this._frameDt || 0.016) : 0, {
         x: (st.position && st.position.x) || 0,
         y: (st.position && st.position.y) || 0,
         v: st.velocity,
-        powered: powered && st.altitude < 45000,   // no visible plume up in vacuum
+        powered: powered && st.altitude < 45000,
         padLocked: !!st.padLocked,
         buoyant: this.flight.buoyant,
-        bigPlume: this._dirtyExhaust,               // a หมื่อ burns filthy
+        bigPlume: this._dirtyExhaust,
         exhaustY: this._exhaustY
       });
     }
 
     if (this._festival) {
-      // feed the festival the player's position so it can spawn intimate
-      // companion lanterns near the flight path and fire the encounter haiku
       this._festival.update(this._frameDt || 0.016, {
         x: (st.position && st.position.x) || 0,
         y: st.altitude || 0,
@@ -874,24 +1130,16 @@
     var mode = CAM_MODES[this._camIdx];
     var RE = this._RE || 600000;
 
-    // ground haze is for the near-pad views only — the orbital map needs to see
-    // the whole planet, and by high altitude there's no atmosphere to haze
     var wantFog = this.scene.fog && mode !== 'map' && alt < 60000;
     this.scene.scene.fog = wantFog ? this.scene.fog : null;
 
-    // FOV: the observer is PLANTED (it can't dolly), so the wheel drives its
-    // field of view — scroll in for a telephoto close-up of the glowing paper
-    // against the stars, scroll out for the whole festival sky. `_zoom` starts
-    // at 1; the canvas wheel handler nudges it 0.88/1.14 per notch.
     var wantFov = (mode === 'observer') ? clamp(55 * this._zoom, 15, 75) : 50;
     if (Math.abs(cam.fov - wantFov) > 1e-3) { cam.fov = wantFov; cam.updateProjectionMatrix(); }
 
-    // camera target = the vehicle's true FIXED-FRAME position (so it tracks
-    // correctly all the way around the planet, not just near the pad)
     var vx = (st && st.position) ? st.position.x : 0;
     var vy = (st && st.position) ? st.position.y : 0;
     if (this._camTX == null) { this._camTX = vx; this._camTY = vy; }
-    var k = this.flight.playing ? 0.08 : 0.5;
+    var k = this._playing ? 0.08 : 0.5;
     this._camTX += (vx - this._camTX) * k;
     this._camTY += (vy - this._camTY) * k;
     var tx = this._camTX, ty = this._camTY;
@@ -900,7 +1148,6 @@
     var sth = Math.sin(this._theta), cth = Math.cos(this._theta);
 
     if (mode === 'map') {
-      // ORBITAL MAP — the whole planet centred, orbit shell + vehicle around it
       var pcy = -RE;
       var dist = RE * 2.6 * clamp(this._zoom, 0.3, 6);
       cam.position.set(dist * sp * sth, pcy + dist * cp, dist * sp * cth);
@@ -911,11 +1158,6 @@
     var focus = alt + Math.min(this._vehH * 0.5, 2.5);
 
     if (mode === 'observer') {
-      // LAUNCHER'S POV — planted on the ground at eye level near the pad,
-      // auto-tracking the vehicle as it climbs. Wide angle so the foreground
-      // (grass, lamps, tree) is in frame while it is low; the gaze then tilts
-      // up to follow it into the lantern-filled sky. The vehicle stays the
-      // subject — a real drag hands you the FREE rig instead (pointermove).
       var eye = this._obsEye;
       var horiz = Math.hypot(tx - eye.x, 0 - eye.z) || 0.001;
       var aimY = eye.y + clamp((this._camTY - eye.y) * 0.55, -2, horiz * 1.6);
@@ -926,7 +1168,6 @@
     }
 
     if (mode === 'ground') {
-      // pinned near the pad, tilts up + pans to track the vehicle
       var gd = clamp(10 + alt * 0.02, 10, 400) * clamp(this._zoom, 0.5, 3);
       cam.position.set(gd * sth, 1.3, gd * cth);
       cam.lookAt(tx, Math.max(vy, focus), 0);
@@ -934,29 +1175,19 @@
     } else if (mode === 'free') {
       var fr = clamp(40 * this._zoom, 2.5, RE * 3);
       var tg = this._freeTarget;
-      cam.position.set(
-        tg.x + fr * sp * sth,
-        tg.y + fr * cp,
-        tg.z + fr * sp * cth
-      );
+      cam.position.set(tg.x + fr * sp * sth, tg.y + fr * cp, tg.z + fr * sp * cth);
       cam.lookAt(tg);
 
     } else {
-      // chase: orbit the vehicle, distance grows with altitude so an orbital
-      // flight naturally pulls back to show the curving trajectory
       var cr = clamp((14 + alt * 0.06) * this._zoom, 6, RE * 2);
-      cam.position.set(
-        tx + cr * sp * sth,
-        vy + cr * cp,
-        cr * sp * cth
-      );
+      cam.position.set(tx + cr * sp * sth, vy + cr * cp, cr * sp * cth);
       cam.lookAt(tx, vy, 0);
     }
   };
 
   FlightScreen.prototype._updateHud = function (st) {
     if (st.speed > this._vmax) this._vmax = st.speed;
-    this.elTime.textContent = this.flight.time.toFixed(1) + ' s';
+    this.elTime.textContent = this._masterT.toFixed(1) + ' s';
     this.elAlt.textContent = fmtAlt(st.altitude);
     var arrow = st.velocity > 0.2 ? ' ▲' : (st.velocity < -0.2 ? ' ▼' : '');
     this.elVel.textContent = Math.abs(st.velocity).toFixed(1) + ' m/s' + arrow;
@@ -967,6 +1198,8 @@
       var orb = this._summary && this._summary.orbit;
       if (orb && orb.achieved && this.flight.time > (this._orbitEventTime || 1e9) - 1) {
         this.elDrift.textContent = fmtAlt(orb.periapsis) + ' × ' + fmtAlt(orb.apoapsis);
+      } else if (this._bangfai && this._vehicles.length > 1) {
+        this.elDrift.textContent = 'บั้งไฟ ' + this._vehicles.length + ' ลูก';
       } else {
         var dx = (st.position && st.position.x) || 0;
         this.elDrift.textContent = fmtAlt(Math.abs(dx)) +
@@ -988,7 +1221,7 @@
   // ---- Physics Autopsy report ------------------------------------
   FlightScreen.prototype._showAutopsy = function () {
     this._autopsyShown = true;
-    this._revealChrome();          // flight's over — bring the controls back
+    this._revealChrome();
     this._renderVerdict();
     var s = this._summary || {};
     var orb = s.orbit || {};
@@ -1007,6 +1240,9 @@
       ['เวลาบินรวม', (s.flightTime || 0).toFixed(1) + ' s'],
       ['มวลเมื่อเชื้อเพลิงหมด', fmtMass(s.burnoutMass || 0)]
     ];
+    if (this._vehicles.length > 1) {
+      cells.unshift(['บั้งไฟที่ปล่อยทั้งหมด', this._vehicles.length + ' ลูก']);
+    }
     $('fs-autopsy-stats').innerHTML = cells.map(function (c) {
       return '<div class="fs-ap-stat"><span>' + c[0] + '</span><b>' + c[1] + '</b></div>';
     }).join('');

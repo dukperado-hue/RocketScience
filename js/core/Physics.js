@@ -38,7 +38,11 @@
   var SCALE_H = 6000;      // m, density scale height (thin — this is a small world)
   var ATMOS_TOP = 70000;   // m — above this, drag is numerically dead / "space"
 
-  var CONTRACT_VERSION = '1.6.0';
+  //  1.7.0 — adds simulateMany() : a multi-vehicle BUNDLE for a festival of
+  //  rockets flying at once (sequential "launch next" + groundwork for true
+  //  multi-staging). The single-vehicle SimulationResult shape is UNCHANGED —
+  //  simulateMany() just composes N locked results and tags their events.
+  var CONTRACT_VERSION = '1.7.0';
 
   // --- gravity turn / pitch program -----------------------------------------
   //  Straight up until (alt > 500 m AND speed > 50 m/s). A short pitch KICK
@@ -909,6 +913,71 @@
     return Math.abs(m) >= 1000 ? (m / 1000).toFixed(1) + ' km' : Math.round(m) + ' m';
   }
 
+  // ---------------------------------------------------------------------------
+  //  simulateMany() — a BUNDLE of vehicles flying at once
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Run several vehicles as ONE flight. A Bang Fai festival is rapid-fire: the
+   * next rocket is lit while the last is still climbing / arcing / smoking.
+   *
+   * The vehicles do not interact (shared sky + wind, no collisions), so
+   * "stepping every active vehicle each dt in one interleaved loop" and
+   * "integrating each vehicle independently" are bit-identical. simulateMany()
+   * therefore loops the vehicle list and runs each through the LOCKED
+   * single-vehicle simulate(), then composes the results into a bundle:
+   *   · every trajectory sample + event time is shifted by that vehicle's `t0`
+   *     (its wall-clock release offset — 0 for the first, = the master clock at
+   *     the moment "launch next" was pressed for the rest)
+   *   · every event is tagged with `vehicleId`
+   *
+   * @param {{id?:string, model:Object, t0?:number}[]} specs
+   * @param {Object} [opts]  passed straight through to simulate() (dt, wind, …)
+   * @returns {{ok:boolean, contractVersion:string, mode:string,
+   *            masterDuration:number,
+   *            vehicles:{id:string,t0:number,sim:SimulationResult}[],
+   *            events:{vehicleId:string,localTime:number}[],
+   *            meta:Object}}
+   */
+  function simulateMany(specs, opts) {
+    specs = specs || [];
+    var vehicles = [], events = [], anyOk = false, masterDur = 0;
+
+    for (var i = 0; i < specs.length; i++) {
+      var spec = specs[i] || {};
+      var id = spec.id || ('v' + i);
+      var t0 = (isFinite(spec.t0) && spec.t0 > 0) ? +spec.t0 : 0;
+      var sim = simulate(spec.model, opts);
+      anyOk = anyOk || !!sim.ok;
+
+      (sim.events || []).forEach(function (e) {
+        var tagged = {};
+        for (var k in e) if (e.hasOwnProperty(k)) tagged[k] = e[k];
+        tagged.localTime = e.time;
+        tagged.time = round(e.time + t0, 3);
+        tagged.vehicleId = id;
+        events.push(tagged);
+      });
+
+      var localDur = sim.trajectory && sim.trajectory.length
+        ? sim.trajectory[sim.trajectory.length - 1].time : 0;
+      masterDur = Math.max(masterDur, t0 + localDur);
+      vehicles.push({ id: id, t0: t0, sim: sim });
+    }
+
+    events.sort(function (a, b) { return a.time - b.time; });
+
+    return {
+      ok: anyOk,
+      contractVersion: CONTRACT_VERSION,
+      mode: (vehicles[0] && vehicles[0].sim) ? vehicles[0].sim.mode : 'none',
+      masterDuration: round(masterDur, 3),
+      vehicles: vehicles,
+      events: events,
+      meta: (vehicles[0] && vehicles[0].sim) ? vehicles[0].sim.meta : {}
+    };
+  }
+
   /** Attach events + diagnostics + contract version. */
   function finalize(sim, model) {
     sim.contractVersion = CONTRACT_VERSION;
@@ -1019,7 +1088,8 @@
     orbitElements: orbitElements,
     motorOutput: motorOutput,
     step: step,
-    simulate: simulate
+    simulate: simulate,
+    simulateMany: simulateMany
   };
 
 })(typeof window !== 'undefined' ? window : this);
