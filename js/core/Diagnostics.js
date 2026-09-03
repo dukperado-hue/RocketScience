@@ -112,6 +112,20 @@
         ' m/s — CoM เลื่อนไปหน้า CoP ตอนเชื้อเพลิงเผาไหม้');
     }
 
+    // --- 4c · gravity turn (guided vehicles) -----------------------
+    if (model && model.gravityTurn) {
+      var pv = events.filter(function (e) { return e.type === 'PITCH_OVER'; })[0];
+      var dr = Math.abs(sum.impactX || 0);
+      if (pv) {
+        add('guidance', OK, 'ไจโรเลี้ยวโค้งสำเร็จ (Gravity Turn)',
+          'เริ่มเอียงที่ ' + fmtAlt(pv.altitude) + ' · ตกไกลจากฐาน ' + fmtAlt(dr) +
+          ' · ความเร็วสูงสุด ' + Math.round(sum.maxVelocity || 0) + ' m/s');
+      } else {
+        add('guidance', WARN, 'ยังไม่เข้าโปรแกรมเลี้ยวโค้ง',
+          'ต้องพ้น 500 ม. และเร็วเกิน 50 m/s ก่อนไจโรจะเริ่มเอียงหัว');
+      }
+    }
+
     // --- 5 · flight outcome ------------------------------------------
     if (!sim || !sim.ok) {
       add('outcome', FAIL, 'การจำลองไม่สำเร็จ', (sim && sim.reason) || '');

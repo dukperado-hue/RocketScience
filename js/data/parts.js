@@ -273,8 +273,91 @@
 
   RS.PartsCatalog.registerAll(ERA1_5);
 
+  // ---------------------------------------------------------------------------
+  //  ERA 3 · V-2 — the first LIQUID rocket and the first GUIDED one. A regen-
+  //  cooled alcohol/LOX motor fed from separate tanks (mass flow from a shared
+  //  pool, not a self-contained grain), instant ignition, and — critically — a
+  //  gyro + graphite vanes that fly a PITCH PROGRAM: straight up off the pad,
+  //  then a slow tilt downrange (the gravity turn) that trades climb for
+  //  horizontal speed. That tilt is the whole foundation of orbital flight —
+  //  Newton's cannonball fired flat enough that the ground curves away.
+  //
+  //  Parts carry `meshUrl` where a real .glb exists; VehicleRenderer falls back
+  //  to procedural primitives when a model is missing so nothing is blocked.
+  // ---------------------------------------------------------------------------
+  var ERA3 = [
+    {
+      id: 'v2_nose',
+      name: 'หัวรบ / เพย์โหลด V-2',
+      category: C.PAYLOAD,
+      icon: '🛰️',
+      era: '3-v2',
+      blurb: 'ส่วนหัวเพรียวลม บรรจุเพย์โหลด — ผิวเรียบแรงต้านต่ำ นำหน้าตลอดการเลี้ยวโค้ง',
+      mass: 1.4,
+      cost: 60,
+      size: { w: 1, h: 1 },
+      meshUrl: 'assets/models/capsule.glb',   // NASA Gemini capsule stands in as the payload
+      meshScale: 1.0,
+      aerodynamics: { dragCoefficient: 0.22, crossSectionArea: 0.030 },
+      structural: { maxDynamicPressure: 90000 },
+      attachNodes: [
+        { id: 'bottom', dx: 0.5, dy: 1, type: NODE.STACK, accepts: ['Structural', 'Propulsion'] }
+      ]
+    },
+    {
+      id: 'v2_tank',
+      name: 'ถังเชื้อเพลิง (แอลกอฮอล์ + LOX)',
+      category: C.STRUCTURAL,
+      icon: '🛢️',
+      era: '3-v2',
+      blurb: 'ถังคู่บรรจุเชื้อเพลิงเหลวมหาศาล — ต่อซ้อนได้ ยิ่งหลายถัง ยิ่งเผาได้นาน ยิ่งไปไกล',
+      mass: 2.6,
+      cost: 55,
+      size: { w: 1, h: 3 },
+      propellantMass: 16,     // kg into the SHARED pool the engine draws from
+      aerodynamics: { dragCoefficient: 0.30, crossSectionArea: 0.050 },
+      structural: { maxDynamicPressure: 55000 },
+      attachNodes: [
+        { id: 'top',    dx: 0.5, dy: 0, type: NODE.STACK, accepts: ['Payload', 'Structural'] },
+        { id: 'bottom', dx: 0.5, dy: 3, type: NODE.STACK, accepts: ['Propulsion', 'Structural'] }
+      ]
+    },
+    {
+      id: 'v2_engine',
+      name: 'มอเตอร์เหลว V-2 (มีไจโร)',
+      category: C.PROPULSION,
+      icon: '🚀',
+      era: '3-v2',
+      blurb: 'มอเตอร์แอลกอฮอล์/LOX จุดติดทันที แรงคงที่ ~23 วิต่อถัง + ไจโรคุมทิศ บินโปรแกรมเลี้ยวโค้งเอง',
+      mass: 4.5,
+      cost: 140,
+      size: { w: 1, h: 2 },
+      // fat finned skirt: big REFERENCE area at the very aft keeps CoP behind CoM,
+      // low drag COEFFICIENT so it doesn't brake the climb (the fin trick again)
+      aerodynamics: { dragCoefficient: 0.10, crossSectionArea: 0.060 },
+      structural: { maxDynamicPressure: 120000 },
+      propulsion: {
+        mode: 'rocket',
+        thrust: 1400,           // N steady
+        burnTime: 999,          // s — a ceiling; real cutoff is tank depletion
+        specificImpulse: 215,   // s — early regen-cooled liquid bipropellant
+        propellantMass: 0,      // the grain lives in the tanks, not here
+        massFlow: 0.70,         // kg/s drawn from the shared pool
+        spoolTime: 0,           // liquid ignition is effectively instant
+        guidance: true          // gyro-guided → flies the pitch program, no tumble
+      },
+      attachNodes: [
+        { id: 'top', dx: 0.5, dy: 0, type: NODE.STACK, accepts: ['Structural'] }
+      ]
+    }
+  ];
+
+  RS.PartsCatalog.registerAll(ERA3);
+
   // handy for tools / data browsers
   RS.data = RS.data || {};
-  RS.data.parts = { '0-khomloy': ERA0, '1-bangfai': ERA1, '1p5-fireworks': ERA1_5 };
+  RS.data.parts = {
+    '0-khomloy': ERA0, '1-bangfai': ERA1, '1p5-fireworks': ERA1_5, '3-v2': ERA3
+  };
 
 })(typeof window !== 'undefined' ? window : this);

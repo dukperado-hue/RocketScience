@@ -32,7 +32,14 @@
   var RHO0 = 1.225;        // kg/m^3 at sea level
   var SCALE_H = 8500;      // m, density scale height
 
-  var CONTRACT_VERSION = '1.4.0';
+  var CONTRACT_VERSION = '1.5.0';
+
+  // --- gravity turn / pitch program -------------------------------------------
+  var PITCH_UP = Math.PI / 2;         // straight up
+  var PITCH_MIN = Math.PI / 4;        // 45° — the target downrange attitude
+  var TURN_ALT = 500;                // m — begin the turn above this altitude
+  var TURN_SPEED = 50;               // m/s — …and above this speed
+  var TURN_RATE = 0.030;             // rad/s — how fast pitch bleeds toward 45°
 
   // --- dynamic aero-instability ("the tumble") ---------------------------------
   var TUMBLE_SPEED_MIN = 12;      // m/s — below this, too slow to weathercock
@@ -51,7 +58,8 @@
    * @property {number} time                       seconds since ignition
    * @property {{x:number,y:number,z:number}} position   metres (y = altitude, up)
    * @property {number} velocity                   signed vertical velocity, m/s
-   * @property {number} speed                      |velocity|, m/s
+   * @property {number} vx                         signed horizontal (downrange) velocity, m/s
+   * @property {number} speed                      |velocity vector| = hypot(velocity, vx), m/s
    * @property {number} acceleration               m/s^2
    * @property {number} mass                       kg (drops as propellant burns)
    * @property {{pitch:number,yaw:number,roll:number}} orientation  degrees
@@ -67,8 +75,8 @@
    *
    * @typedef {Object} FlightEvent
    * @property {number} time
-   * @property {'IGNITION'|'LIFTOFF'|'MAX_Q'|'APOGEE'|'BURNOUT'|'LOSS_OF_CONTROL'|'IMPACT'} type
-   *   LIFTOFF is emitted by the integrator at the exact tick y first exceeds 0.
+   * @property {'IGNITION'|'LIFTOFF'|'PITCH_OVER'|'MAX_Q'|'APOGEE'|'BURNOUT'|'LOSS_OF_CONTROL'|'IMPACT'} type
+   *   LIFTOFF and PITCH_OVER (gravity-turn start) are emitted by the integrator.
    * @property {string} message
    * @property {number} altitude
    * @property {number} velocity
@@ -122,29 +130,42 @@
       return { force: Math.max(lift, 0), mdot: mdot };
     }
 
-    // rocket mode: near-instant spool, flat thrust, hard cutoff at burnTime
+    // rocket mode: spool ramp, flat thrust, hard cutoff at burnTime (a ceiling
+    // when the motor draws from a shared tank — see the pool check in step()).
     if (t > bt || bt <= 0) return { force: 0, mdot: 0 };
     var f = spool > 0 && t < spool ? motor.thrust * (t / spool) : motor.thrust;
-    var flow = motor.propellantMass > 0 ? motor.propellantMass / bt : 0;
+    var flow = motor.massFlow > 0
+      ? motor.massFlow
+      : (motor.propellantMass > 0 ? motor.propellantMass / bt : 0);
     return { force: f, mdot: flow };
   }
 
   /**
-   * One integration step (semi-implicit Euler on Y, stable implicit relax on X).
-   * @param {{t:number,y:number,v:number,x:number,vx:number,propRemaining:number,tumbling:boolean}} state
+   * One integration step.
+   *   · ROCKET/BALLISTIC : full 2-D vector — thrust resolved along `pitchCmd`
+   *     (π/2 = straight up), gravity on Y only, drag opposing the velocity
+   *     vector relative to wind. Y explicit (identical to the old 1-D path when
+   *     pitch = π/2); X semi-implicit so a stiff crosswind can't blow up.
+   *   · BUOYANCY / TUMBLE : unchanged vertical model + the shared implicit X.
+   * @param {{t,y,v,x,vx,propRemaining,tumbling,liftedOff}} state
    * @param {Object} model  Vehicle.toPhysicsModel() output
    * @param {number} dt
    * @param {number} wind   ambient horizontal wind, m/s (+x)
+   * @param {number} [pitchCmd=π/2]  commanded thrust direction (radians)
    */
-  function step(state, model, dt, wind) {
+  function step(state, model, dt, wind, pitchCmd) {
     wind = wind || 0;
+    if (typeof pitchCmd !== 'number' || !isFinite(pitchCmd)) pitchCmd = PITCH_UP;
     var g = gravity(state.y);
     var rho = airDensity(state.y);
 
     var thrust = 0, buoyancy = 0, mdotTotal = 0;
     for (var i = 0; i < model.motors.length; i++) {
-      var out = motorOutput(model.motors[i], state.t);
-      if (model.motors[i].mode === 'buoyancy') buoyancy += out.force;
+      var mtr = model.motors[i];
+      var out = motorOutput(mtr, state.t);
+      // a liquid engine fed by separate tanks cuts the instant the pool is dry
+      if (mtr.massFlow > 0 && state.propRemaining <= 1e-9) { out.force = 0; out.mdot = 0; }
+      if (mtr.mode === 'buoyancy') buoyancy += out.force;
       else thrust += out.force;
       mdotTotal += out.mdot;
     }
@@ -171,11 +192,13 @@
         propRemaining: propRemaining, a: 0, mass: mass,
         thrust: thrust, buoyancy: buoyancy, drag: 0,
         q: 0, g: g, rho: rho, onPad: true, padLocked: true,
+        pitchCmd: pitchCmd, vectored: false,
         liftedOff: false, tumbling: false
       };
     }
 
-    var v, y, a, drag;
+    var v, y, a, drag, vx, x;
+    var vectorX = false;                 // did the rocket branch already solve X?
     var buoyMode = !!model.buoyancyDominant;
 
     if (state.tumbling) {
@@ -202,34 +225,53 @@
       y = state.y + v * dt;
 
     } else {
-      // ---- ROCKET / BALLISTIC -----------------------------------------
-      drag = 0.5 * rho * model.dragArea * state.v * Math.abs(state.v);
-      a = clampA((thrust + buoyancy - mass * g - drag) / mass);
+      // ---- ROCKET / BALLISTIC · 2-D VECTOR ---------------------------
+      //  thrust  = ( T·cos θ ,  T·sin θ )   θ = pitchCmd, π/2 = straight up
+      //  gravity = ( 0 , −m·g )
+      //  drag    = −½·ρ·Cd·A·|u|·u   with  u = velocity − wind   (both axes)
+      var thrustX = thrust * Math.cos(pitchCmd);
+      var thrustY = thrust * Math.sin(pitchCmd);
+      var ux = state.vx - wind;
+      var uy = state.v;
+      var spd = Math.sqrt(ux * ux + uy * uy);
+      var kA = 0.5 * rho * model.dragArea * spd;   // N per (m/s) on a component
+      drag = kA * spd;                              // |drag|, for telemetry
+
+      // Y — explicit (reduces EXACTLY to the old 1-D rocket path at θ = π/2)
+      a = clampA((thrustY + buoyancy - mass * g - kA * uy) / mass);
       v = state.v + a * dt;
       y = state.y + v * dt;
+
+      // X — semi-implicit in vx: vx' = vx + dt·(Tx − kA·(vx' − wind))/m
+      var rhsX = state.vx + dt * (thrustX / mass + kA * wind / mass);
+      vx = rhsX / (1 + dt * kA / mass);
+      x = state.x + vx * dt;
+      vectorX = true;
     }
 
     var onPad = false;
     if (y <= 0) { y = 0; if (v < 0) { v = 0; onPad = true; } }
 
-    // ---- SHARED X-AXIS · crosswind drift --------------------------------
-    // dvx/dt = -k·(vx-wind)·|vx-wind|.  Solve it implicitly so it is stable
-    // even for a lantern whose k is enormous — it just snaps vx toward wind.
-    var grounded = state.y <= 1e-3 && y <= 1e-3;
-    var vx, x;
-    if (grounded) {
-      vx = 0; x = state.x;
-    } else {
-      var airX = state.vx - wind;
-      var kx = 0.5 * rho * model.dragArea * (state.tumbling ? TUMBLE_DRAG_MULT : 1) / mass;
-      vx = wind + airX / (1 + kx * Math.abs(airX) * dt);
-      x = state.x + vx * dt;
+    if (!vectorX) {
+      // ---- SHARED X-AXIS · crosswind drift (buoyancy / tumble) ---------
+      // dvx/dt = -k·(vx-wind)·|vx-wind|.  Solved implicitly so it is stable
+      // even for a lantern whose k is enormous — it just snaps vx toward wind.
+      var grounded = state.y <= 1e-3 && y <= 1e-3;
+      if (grounded) {
+        vx = 0; x = state.x;
+      } else {
+        var airX = state.vx - wind;
+        var kx = 0.5 * rho * model.dragArea * (state.tumbling ? TUMBLE_DRAG_MULT : 1) / mass;
+        vx = wind + airX / (1 + kx * Math.abs(airX) * dt);
+        x = state.x + vx * dt;
+      }
     }
 
     return {
       t: state.t + dt, y: y, v: v, x: x, vx: vx, propRemaining: propRemaining,
       a: clampA(a), mass: mass, thrust: thrust, buoyancy: buoyancy, drag: drag,
-      q: 0.5 * rho * v * v, g: g, rho: rho, onPad: onPad,
+      q: 0.5 * rho * (v * v + vx * vx), g: g, rho: rho, onPad: onPad,
+      pitchCmd: pitchCmd, vectored: vectorX,
       padLocked: false, liftedOff: !!state.liftedOff || y > 1e-6,
       tumbling: !!state.tumbling
     };
@@ -290,7 +332,11 @@
     var liftoffTime = null, liftoffAlt = 0, liftoffVel = 0;   // exact break-of-inertia
     var prevForce = 0;                          // to catch sub-sample burn edges
     var tumbleT = Infinity;                    // time the tumble started
-    var canTumble = !!model.rocketDominant && isFinite(model.copAxisM);
+    // a guided vehicle follows a pitch program and never passively tumbles
+    var canTumble = !!model.rocketDominant && isFinite(model.copAxisM) && !model.gravityTurn;
+    var pitchCmd = PITCH_UP;                   // current commanded thrust attitude
+    var turnT0 = null;                         // time the gravity turn began
+    var pitchOverTime = null, pitchOverAlt = 0, pitchOverVel = 0;
     var reason = 'สิ้นสุดการบิน';
 
     // seed t=0 state so playback starts exactly on the pad
@@ -299,7 +345,24 @@
     nextSample += sampleEvery;
 
     while (state.t < maxTime) {
-      var d = step(state, model, dt, wind);
+      // --- PITCH PROGRAM · the gravity turn ------------------------------
+      //  Straight up until (alt > 500 m AND speed > 50 m/s), then bleed the
+      //  commanded pitch from 90° toward 45° at TURN_RATE, converting the
+      //  climb into downrange (X) velocity. This is Newton's-cannonball 101.
+      if (model.gravityTurn && liftedOff && !state.tumbling) {
+        if (turnT0 === null &&
+            state.y > TURN_ALT && Math.abs(state.v) > TURN_SPEED) {
+          turnT0 = state.t;
+          pitchOverTime = state.t;
+          pitchOverAlt = state.y;
+          pitchOverVel = Math.sqrt(state.v * state.v + state.vx * state.vx);
+        }
+        if (turnT0 !== null) {
+          pitchCmd = Math.max(PITCH_MIN, PITCH_UP - (state.t - turnT0) * TURN_RATE);
+        }
+      }
+
+      var d = step(state, model, dt, wind, pitchCmd);
 
       // --- LIFTOFF : the exact integration tick the stack breaks inertia.
       //     Physics owns this event; it is not left to sample interpolation.
@@ -319,7 +382,8 @@
 
       if (d.y > 0.02) liftedOff = true;
       if (d.y > apogee) { apogee = d.y; apogeeTime = d.t; }
-      if (Math.abs(d.v) > maxV) maxV = Math.abs(d.v);
+      var spdNow = Math.sqrt(d.v * d.v + d.vx * d.vx);   // true speed, both axes
+      if (spdNow > maxV) maxV = spdNow;
       if (d.q > maxQ) maxQ = d.q;
       finalX = d.x;
       if (Math.abs(d.x) > maxDrift) maxDrift = Math.abs(d.x);
@@ -329,7 +393,7 @@
       //     stack weathercocks the wrong way and departs controlled flight.
       var wasTumbling = state.tumbling;
       if (canTumble && !state.tumbling && liftedOff &&
-          Math.abs(d.v) > TUMBLE_SPEED_MIN) {
+          spdNow > TUMBLE_SPEED_MIN) {
         var pf = model.propellantMass > 0
           ? d.propRemaining / model.propellantMass : 1;
         var comAxis = model.comDryAxisM +
@@ -385,6 +449,13 @@
         altitude: round(liftoffAlt, 2), velocity: round(liftoffVel, 2)
       });
     }
+    if (pitchOverTime !== null) {
+      physicsEvents.push({
+        time: round(pitchOverTime, 3), type: 'PITCH_OVER',
+        message: 'เริ่มเลี้ยวโค้ง (Gravity Turn) — เอียงหัวทำความเร็วแนวราบ',
+        altitude: round(pitchOverAlt, 2), velocity: round(pitchOverVel, 2)
+      });
+    }
 
     return finalize({
       ok: true, reason: reason, trajectory: trajectory, events: [],
@@ -418,19 +489,29 @@
     // Straight up until the vehicle departs controlled flight; then it pitches
     // over and spins — a wild, escalating attitude the replay can show literally.
     var o = { pitch: 90, yaw: 0, roll: 0 };
+    var vx = d.vx || 0;
     if (d.tumbling && isFinite(tumbleT)) {
       var tt = Math.max(0, d.t - tumbleT);
       o.pitch = 90 - (tt * 130 + Math.sin(tt * 9) * 55);
       o.yaw = Math.sin(tt * 5.5) * 45 + tt * 70;
       o.roll = tt * 260;
+    } else if (d.vectored && (Math.abs(vx) > 0.5 || (isFinite(d.pitchCmd) && d.pitchCmd < Math.PI / 2 - 1e-3))) {
+      // point along the thrust vector while burning, else along the velocity
+      // vector — atan2(vertical, horizontal) is already the "90° = up" convention
+      var ang = (d.thrust > 1 && isFinite(d.pitchCmd))
+        ? d.pitchCmd
+        : Math.atan2(d.v, vx);
+      o.pitch = ang * 180 / Math.PI;
     }
     var dx = round(d.x || 0, 3);
+    var spd = Math.sqrt(d.v * d.v + vx * vx);
     return {
       time: round(d.t, 3),
       position: { x: dx, y: round(d.y, 3), z: 0 },
       drift: dx,
       velocity: round(d.v, 3),
-      speed: round(Math.abs(d.v), 3),
+      vx: round(vx, 3),
+      speed: round(spd, 3),
       acceleration: round(d.a, 3),
       mass: round(d.mass, 4),
       orientation: { pitch: round(o.pitch, 2), yaw: round(o.yaw, 2), roll: round(o.roll, 2) },

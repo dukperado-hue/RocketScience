@@ -195,7 +195,7 @@
     var s = {
       partCount: this.instances.length,
       connected: this.isConnected(),
-      dryMass: 0, propellantMass: 0, totalMass: 0, cost: 0,
+      dryMass: 0, propellantMass: 0, totalMass: 0, cost: 0, guided: false,
       com: { x: 0, y: 0 }, cop: { x: 0, y: 0 },
       totalThrust: 0, totalBuoyancy: 0, motorMode: 'none',
       dragArea: 0, refArea: 0,
@@ -213,7 +213,9 @@
       var wet = p.wetMass();
 
       s.dryMass += p.mass;
-      s.propellantMass += p.propulsion ? p.propulsion.propellantMass : 0;
+      s.propellantMass += (p.propulsion ? p.propulsion.propellantMass : 0) +
+                          (p.propellantMass || 0);   // + tank load for the shared pool
+      if (p.propulsion && p.propulsion.guidance) s.guided = true;
       s.cost += p.cost;
 
       massMomentX += wet * c.x;
@@ -324,7 +326,9 @@
           burnTime: p.burnTime,
           spoolTime: p.spoolTime,
           specificImpulse: p.specificImpulse,
-          propellantMass: p.propellantMass
+          propellantMass: p.propellantMass,
+          massFlow: p.massFlow,
+          guidance: !!p.guidance
         };
       });
     return {
@@ -337,6 +341,9 @@
       motors: motors,
       valid: s.valid,
       stable: s.stable,
+      // a guided vehicle flies a pitch program (gravity turn) and will not
+      // passively weathercock into a tumble — its control system holds attitude
+      gravityTurn: !!s.guided,
       // dynamic aero-stability inputs (flight axis, metres; +y = aft)
       rocketDominant: s.totalThrust > s.totalBuoyancy && s.totalThrust > 0,
       buoyancyDominant: s.totalBuoyancy > s.totalThrust && s.totalBuoyancy > 0,

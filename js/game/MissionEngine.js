@@ -101,6 +101,24 @@
           ' — ต้องการ ' + o.targetAltitude + ' ม.');
       }
 
+      if (o.maxVelocityMin != null) {
+        var mv = sum.maxVelocity || 0;
+        var metMv = mv >= o.maxVelocityMin;
+        res.objectives.push({ label: 'ความเร็วสูงสุด ≥ ' + o.maxVelocityMin + ' m/s',
+          met: metMv, actual: mv.toFixed(0) + ' m/s' });
+        if (!metMv) res.failReasons.push('ความเร็วสูงสุดแค่ ' + mv.toFixed(0) +
+          ' m/s — ต้องการ ' + o.maxVelocityMin);
+      }
+
+      if (o.downrangeMin != null) {
+        var dr = Math.abs(sum.impactX || 0);
+        var metDr = dr >= o.downrangeMin;
+        res.objectives.push({ label: 'ตกไกลจากฐาน ≥ ' + o.downrangeMin + ' ม.',
+          met: metDr, actual: fmtM(dr) });
+        if (!metDr) res.failReasons.push('ตกห่างจากฐานแค่ ' + fmtM(dr) +
+          ' — ต้องบินแนวราบให้เกิน ' + fmtM(o.downrangeMin) + ' (ใช้ Gravity Turn)');
+      }
+
       if (o.flightTimeMin != null) {
         var ft = sum.flightTime || 0;
         var metFt = ft >= o.flightTimeMin;

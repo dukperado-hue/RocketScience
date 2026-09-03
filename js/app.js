@@ -16,6 +16,17 @@
   RS.EraManager.init();
   RS.MissionEngine.init();
 
+  // warm the .glb cache for every part that has a model (safe if none / no loader)
+  if (RS.render.VehicleRenderer && RS.render.VehicleRenderer.preload) {
+    RS.render.VehicleRenderer.preload(RS.PartsCatalog).then(function () {
+      if (previewModal && !previewModal.hidden) refreshPreview();
+    });
+  }
+  function ensureModels(v) {
+    return (RS.render.VehicleRenderer && RS.render.VehicleRenderer.ensureFor)
+      ? RS.render.VehicleRenderer.ensureFor(v) : Promise.resolve();
+  }
+
   function setEraTag(eraId) {
     var e = RS.EraManager.get(eraId);
     if (!e) return;
@@ -52,7 +63,9 @@
 
   watchBtn.addEventListener('click', function () {
     if (lastSim && lastSim.ok && flightScreen && flightScreen.available) {
-      flightScreen.open(lastSim, vehicle, activeMission);   // re-watch: no cinematic
+      ensureModels(vehicle).then(function () {
+        flightScreen.open(lastSim, vehicle, activeMission);   // re-watch: no cinematic
+      });
     }
   });
 
@@ -140,6 +153,8 @@
     };
     if (o.targetAltitude != null) chips.push(chip(false, '🎯 ≥ ' + o.targetAltitude + ' ม.'));
     if (o.flightTimeMin != null) chips.push(chip(false, '⏱️ ≥ ' + o.flightTimeMin + ' วิ'));
+    if (o.maxVelocityMin != null) chips.push(chip(false, '💨 ≥ ' + o.maxVelocityMin + ' m/s'));
+    if (o.downrangeMin != null) chips.push(chip(false, '➡️ ตกไกล ≥ ' + o.downrangeMin + ' ม.'));
     if (o.surviveFlight) chips.push(chip(false, '🛡️ ไม่เสียการควบคุม'));
     if (m.wind) chips.push(chip(true, '🌬️ ลม ' + m.wind + ' m/s'));
     if (c.safeZoneRadius != null) chips.push(chip(false, '🚫 NOTAM ' + c.safeZoneRadius + ' ม.'));
@@ -185,7 +200,16 @@
   function buildSample(eraId) {
     builder.reset();
     var C = RS.PartsCatalog;
-    if (eraId === '1p5-fireworks') {
+    if (eraId === '3-v2') {
+      // nose · tank · engine — the classic liquid stack. It flies straight up,
+      // then the gyro tilts it downrange (the gravity turn).
+      var v2eng = vehicle.addInstance(C.get('v2_engine'), 0, 4, []);
+      var v2tank = vehicle.addInstance(C.get('v2_tank'), 0, 1,
+        [{ node: 'bottom', toIid: v2eng.iid, toNode: 'top' }]);
+      vehicle.addInstance(C.get('v2_nose'), 0, 0,
+        [{ node: 'bottom', toIid: v2tank.iid, toNode: 'top' }]);
+      builder._afterEdit('V-2 ตัวอย่าง — กด ▶ แล้วดูมันเลี้ยวโค้งหลังพ้น 500 ม. (Gravity Turn)');
+    } else if (eraId === '1p5-fireworks') {
       // tube on the pad · lift charge inside · shell on top. spoolTime 0 —
       // it will not creep, it will POP the instant it is lit.
       var tube = vehicle.addInstance(C.get('fw_mortar_tube'), 0, 2, []);
@@ -247,8 +271,10 @@
     void transEl.offsetWidth;             // flush so the fade-in actually plays
     transEl.classList.add('show');
 
-    // hold the "CALCULATING…" screen ~650ms, then resolve everything at once
-    setTimeout(function () {
+    // hold the "CALCULATING…" screen ~650ms; also wait for any .glb models this
+    // vehicle needs so the flight scene shows them from frame one, not popping in
+    var holdDone = new Promise(function (r) { setTimeout(r, 650); });
+    Promise.all([holdDone, ensureModels(vehicle)]).then(function () {
       try {
         var simOpts = { dt: 0.02, sampleEvery: 0.25 };
         if (activeMission) {
@@ -290,7 +316,7 @@
       transEl.classList.remove('show');
       setTimeout(function () { transEl.hidden = true; }, 360);
       launching = false;
-    }, 650);
+    });
   });
 
   function renderMissionResult(r) {
@@ -409,7 +435,10 @@
   // ---- sync the era UI to the persisted era ----------------------
   var runBtn = document.getElementById('bp-run');
   function syncEraLabels(eraId) {
-    if (eraId === '1p5-fireworks') {
+    if (eraId === '3-v2') {
+      sampleBtn.textContent = 'V-2 ตัวอย่าง';
+      runBtn.textContent = '🚀 ปล่อย V-2';
+    } else if (eraId === '1p5-fireworks') {
       sampleBtn.textContent = 'ครกตัวอย่าง';
       runBtn.textContent = '🎆 จุดดอกไม้ไฟ';
     } else if (eraId === '1-bangfai') {
@@ -442,7 +471,7 @@
     openPreview: openPreview,
     simulate: function () { return RS.Physics.simulate(vehicle.toPhysicsModel()); }
   };
-  console.log('%cFROM FIRE TO ORBIT — Reboot Phase 7 ready', 'color:#5fe0a8;font-weight:bold');
+  console.log('%cFROM FIRE TO ORBIT — Reboot Phase 8 ready', 'color:#5fe0a8;font-weight:bold');
   console.log('contract v' + RS.Physics.CONTRACT_VERSION +
     ' · try FIRE_TO_ORBIT.simulate()');
 })();

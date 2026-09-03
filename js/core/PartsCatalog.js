@@ -62,8 +62,20 @@
    * @param {number} [def.propulsion.burnTime]        - s of useful output
    * @param {number} [def.propulsion.specificImpulse] - Isp, s (0 for buoyancy)
    * @param {number} [def.propulsion.propellantMass]  - kg consumed across burnTime
+   *                                                    (self-contained motors: bang fai, firework)
+   * @param {number} [def.propulsion.massFlow]         - kg/s draw from the SHARED propellant pool
+   *                                                    (liquid engines fed by separate v2_tank parts).
+   *                                                    When set, mdot = massFlow and burnTime is just
+   *                                                    a ceiling — real cutoff is pool depletion.
    * @param {number} [def.propulsion.spoolTime]       - s to ramp from 0 to full output
+   * @param {boolean} [def.propulsion.guidance]       - true = the vehicle is actively guided; it
+   *                                                    follows a pitch program (gravity turn) and
+   *                                                    does NOT passively weathercock into a tumble
    * @param {'rocket'|'buoyancy'} [def.propulsion.mode] - default "rocket"
+   * @param {number} [def.propellantMass]  - kg of propellant this part CARRIES for the shared pool
+   *                                         (a tank). Adds to wet mass + the burn budget; no thrust.
+   * @param {string} [def.meshUrl]         - optional .glb/.gltf model; procedural primitive if absent
+   * @param {number} [def.meshScale]       - uniform scale applied to the loaded model (default 1)
    * @param {AttachNodeDef[]} def.attachNodes
    */
   function Part(def) {
@@ -79,8 +91,11 @@
     this.era = def.era || '0-khomloy';
     this.blurb = def.blurb || '';
 
-    this.mass = num(def.mass, 0);          // kg, dry
+    this.mass = num(def.mass, 0);              // kg, dry structure
+    this.propellantMass = num(def.propellantMass, 0);  // kg, tank load for the shared pool
     this.cost = num(def.cost, 0);          // Baht
+    this.meshUrl = def.meshUrl || null;    // optional .glb model
+    this.meshScale = num(def.meshScale, 1);
     this.size = {
       w: num(def.size && def.size.w, 1),
       h: num(def.size && def.size.h, 1)
@@ -97,10 +112,12 @@
       this.propulsion = {
         mode: p.mode === 'buoyancy' ? 'buoyancy' : 'rocket',
         thrust: num(p.thrust, 0),                    // N (peak, or steady)
-        burnTime: num(p.burnTime, 0),                // s
+        burnTime: num(p.burnTime, 0),                // s (ceiling when massFlow is set)
         specificImpulse: num(p.specificImpulse, 0),  // s
-        propellantMass: num(p.propellantMass, 0),    // kg
-        spoolTime: num(p.spoolTime, 0)               // s
+        propellantMass: num(p.propellantMass, 0),    // kg (self-contained motor)
+        massFlow: num(p.massFlow, 0),                // kg/s draw from the shared pool
+        spoolTime: num(p.spoolTime, 0),              // s
+        guidance: !!p.guidance                       // actively guided (pitch program, no tumble)
       };
     } else {
       this.propulsion = null;
@@ -128,9 +145,10 @@
     return !!this.propulsion && this.propulsion.thrust > 0;
   };
 
-  /** Wet mass = dry mass + whatever propellant it carries. */
+  /** Wet mass = dry mass + self-contained motor grain + tank load. */
   Part.prototype.wetMass = function () {
-    return this.mass + (this.propulsion ? this.propulsion.propellantMass : 0);
+    return this.mass + this.propellantMass +
+      (this.propulsion ? this.propulsion.propellantMass : 0);
   };
 
   /** A node accepts a part of `category` if its whitelist says so. */

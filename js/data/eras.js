@@ -39,6 +39,15 @@
       partIds: ['fw_shell_peony', 'fw_lift_charge', 'fw_mortar_tube'],
       unlock: { type: 'default' },
       envelope: { apogee: 400, note: 'พุ่งด้วยแรงกระแทกเดียว แล้วลอยตามความเฉื่อย' }
+    },
+    {
+      id: '3-v2',
+      order: 3,
+      name: 'ยุค 3 · V-2',
+      tagline: 'จรวดเชื้อเพลิงเหลวลูกแรก + ไจโรคุมทิศ — โปรแกรมเลี้ยวโค้ง (Gravity Turn) คือรากฐานของวงโคจร',
+      partIds: ['v2_nose', 'v2_tank', 'v2_engine'],
+      unlock: { type: 'default' },
+      envelope: { apogee: 60000, note: 'บินขึ้นตรงแล้วเอียงหัวทำความเร็วแนวราบ — ยิงไกลข้ามขอบฟ้า' }
     }
   ];
 

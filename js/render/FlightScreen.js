@@ -23,6 +23,7 @@
   var LABEL_TH = {
     IGNITION: 'จุดไฟ',
     LIFTOFF:  'ทะยานพ้นพื้น',
+    PITCH_OVER: 'เลี้ยวโค้ง',
     MAX_Q:    'แรงดันอากาศสูงสุด',
     APOGEE:   'จุดสูงสุด',
     BURNOUT:  'เชื้อเพลิงหมด',
@@ -30,7 +31,7 @@
     IMPACT:   'แตะพื้น'
   };
   var EVENT_COLOR = {
-    IGNITION: '#e9f1ff', LIFTOFF: '#5fe0a8', MAX_Q: '#5bd6ff',
+    IGNITION: '#e9f1ff', LIFTOFF: '#5fe0a8', PITCH_OVER: '#b98cff', MAX_Q: '#5bd6ff',
     BURNOUT: '#ffb63a', APOGEE: '#ffce40', LOSS_OF_CONTROL: '#ff3b3b', IMPACT: '#ff6a5a'
   };
   var RATES = [0.5, 1, 2, 4];

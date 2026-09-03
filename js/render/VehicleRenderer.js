@@ -29,6 +29,100 @@
   }
 
   // ---------------------------------------------------------------------------
+  //  GLTF / GLB model loader — cache + graceful fallback
+  //
+  //  Official space-agency models ship pre-separated into modular parts, which
+  //  maps straight onto our attachNodes. A part with `meshUrl` gets its .glb
+  //  loaded once, cached, and cloned per instance. If GLTFLoader is missing, a
+  //  file 404s, or a load throws — `_tpl[url]` stays null and makeMesh falls
+  //  back to the procedural primitive. Nothing blocks.
+  // ---------------------------------------------------------------------------
+  var _loadPromise = {};   // url -> Promise (settles to a template Object3D or null)
+  var _tpl = {};           // url -> Object3D template (loaded)  |  null (failed)
+  var _loader = null;
+
+  function gltfLoader() {
+    if (_loader) return _loader;
+    if (THREE && typeof THREE.GLTFLoader === 'function') _loader = new THREE.GLTFLoader();
+    return _loader;
+  }
+
+  /** Load (once) and cache a model template. Always resolves — null on failure. */
+  function loadModel(url) {
+    if (!url) return Promise.resolve(null);
+    if (_loadPromise[url]) return _loadPromise[url];
+
+    var ld = gltfLoader();
+    if (!ld) {
+      console.warn('[render/VehicleRenderer] GLTFLoader unavailable — "' + url + '" → procedural');
+      _tpl[url] = null;
+      return (_loadPromise[url] = Promise.resolve(null));
+    }
+
+    _loadPromise[url] = new Promise(function (resolve) {
+      ld.load(url,
+        function (gltf) {
+          var scene = gltf && (gltf.scene || (gltf.scenes && gltf.scenes[0]));
+          if (!scene) { _tpl[url] = null; resolve(null); return; }
+          scene.traverse(function (o) {
+            if (o.isMesh) {
+              o.castShadow = false; o.receiveShadow = false;
+              if (o.material && o.material.map == null && o.material.color &&
+                  o.material.color.getHex() === 0xffffff) {
+                o.material.color.setHex(0xcfd3da);   // untextured NASA models are stark white
+              }
+            }
+          });
+          _tpl[url] = scene;
+          resolve(scene);
+        },
+        undefined,
+        function (err) {
+          console.warn('[render/VehicleRenderer] model load failed "' + url + '" → procedural', err);
+          _tpl[url] = null;
+          resolve(null);
+        });
+    });
+    return _loadPromise[url];
+  }
+
+  /** Preload every meshUrl in the catalog. Returns Promise.all (never rejects). */
+  function preload(catalog) {
+    var urls = {};
+    (catalog && catalog.all ? catalog.all() : []).forEach(function (p) {
+      if (p.meshUrl) urls[p.meshUrl] = 1;
+    });
+    return Promise.all(Object.keys(urls).map(loadModel));
+  }
+
+  /** Ensure just the models THIS vehicle needs are loaded before it is displayed. */
+  function ensureFor(vehicle) {
+    var urls = {};
+    ((vehicle && vehicle.instances) || []).forEach(function (i) {
+      if (i.part && i.part.meshUrl) urls[i.part.meshUrl] = 1;
+    });
+    return Promise.all(Object.keys(urls).map(loadModel));
+  }
+
+  /** Clone a loaded template, scaled + recentred so its bbox centre sits at the node. */
+  function instantiateModel(url, entry) {
+    var tpl = _tpl[url];
+    if (!tpl) return null;
+    var m = tpl.clone(true);
+    var s = (entry.meshScale || 1);
+    m.scale.setScalar(s);
+    m.updateMatrixWorld(true);
+    var box = new THREE.Box3().setFromObject(m);
+    if (box.isEmpty()) { m.position.set(entry.world.x, entry.world.y, entry.world.z); }
+    else {
+      var c = box.getCenter(new THREE.Vector3());
+      m.position.set(entry.world.x - c.x, entry.world.y - c.y, entry.world.z - c.z);
+    }
+    m.userData.iid = entry.iid;
+    return m;
+  }
+
+  // ---------------------------------------------------------------------------
   //  PURE — grid graph -> world placements (no THREE)
   // ---------------------------------------------------------------------------
 
@@ -64,6 +158,8 @@
         iid: i.iid,
         partId: i.part.id,
         category: i.part.category,
+        meshUrl: i.part.meshUrl || null,
+        meshScale: i.part.meshScale || 1,
         world: {
           x: (cx - hCenter) * M,
           y: (maxGY - cy) * M,        // grid +y is DOWN; world +y is UP
@@ -92,6 +188,69 @@
     var d = entry.dims;
     var color = CAT_COLOR[entry.category] || 0x9aa7b4;
     var geo, mat, mesh;
+
+    // ---- LOADED .glb MODEL (if cached) — else fall through to procedural ----
+    if (entry.meshUrl && _tpl[entry.meshUrl]) {
+      var loaded = instantiateModel(entry.meshUrl, entry);
+      if (loaded) return loaded;
+    }
+
+    // ---- ERA 3 · V-2 (liquid) ------------------------------------------
+    if (entry.partId === 'v2_nose') {
+      geo = new THREE.ConeGeometry(d.w * 0.44, d.h * 1.1, 22);
+      mat = new THREE.MeshStandardMaterial({ color: 0xd7dce3, roughness: 0.4, metalness: 0.35 });
+      mesh = new THREE.Mesh(geo, mat);
+      mesh.position.set(entry.world.x, entry.world.y, entry.world.z);
+      mesh.userData.iid = entry.iid;
+      return mesh;
+    }
+    if (entry.partId === 'v2_tank') {
+      geo = new THREE.CylinderGeometry(d.w * 0.42, d.w * 0.42, d.h * 0.98, 24);
+      mat = new THREE.MeshStandardMaterial({ color: 0x9fa6b0, roughness: 0.45, metalness: 0.4 });
+      mesh = new THREE.Mesh(geo, mat);
+      var seam = new THREE.Mesh(
+        new THREE.TorusGeometry(d.w * 0.42, d.w * 0.03, 6, 24),
+        new THREE.MeshStandardMaterial({ color: 0x6a7076, roughness: 0.6 }));
+      seam.rotation.x = Math.PI / 2;
+      mesh.add(seam);
+      mesh.position.set(entry.world.x, entry.world.y, entry.world.z);
+      mesh.userData.iid = entry.iid;
+      return mesh;
+    }
+    if (entry.partId === 'v2_engine') {
+      var eg = new THREE.Group();
+      var body = new THREE.Mesh(
+        new THREE.CylinderGeometry(d.w * 0.40, d.w * 0.44, d.h * 0.60, 22),
+        new THREE.MeshStandardMaterial({ color: 0x3d4148, roughness: 0.5, metalness: 0.5 }));
+      body.position.y = d.h * 0.15;
+      var bell = new THREE.Mesh(
+        new THREE.CylinderGeometry(d.w * 0.18, d.w * 0.40, d.h * 0.42, 22, 1, true),
+        new THREE.MeshStandardMaterial({ color: 0x26262c, roughness: 0.4, metalness: 0.6, side: THREE.DoubleSide }));
+      bell.position.y = -d.h * 0.34;
+      eg.add(body); eg.add(bell);
+      // four V-2 fins — the big aft reference area that keeps it stable
+      var finMat = new THREE.MeshStandardMaterial({ color: 0x53575e, roughness: 0.7, side: THREE.DoubleSide });
+      for (var fn = 0; fn < 4; fn++) {
+        var blade = new THREE.Mesh(new THREE.BoxGeometry(d.w * 0.5, d.h * 0.5, d.w * 0.05), finMat);
+        var hold = new THREE.Group();
+        blade.position.x = d.w * 0.42;
+        hold.add(blade);
+        hold.rotation.y = fn * Math.PI / 2;
+        hold.position.y = -d.h * 0.22;
+        eg.add(hold);
+      }
+      var flame = new THREE.Mesh(
+        new THREE.ConeGeometry(d.w * 0.22, d.h * 0.9, 16),
+        new THREE.MeshBasicMaterial({ color: 0xffd07a }));
+      flame.position.y = -d.h * 0.85;
+      flame.rotation.x = Math.PI;
+      eg.add(flame);
+      eg.position.set(entry.world.x, entry.world.y, entry.world.z);
+      eg.userData.iid = entry.iid;
+      eg.userData.isMotor = true;
+      eg.userData.exhaustLocalY = -d.h * 0.6;
+      return eg;
+    }
 
     // ---- ERA 1 · Bang Fai ------------------------------------------------
     if (entry.partId === 'nose_cone_wood') {
@@ -266,6 +425,11 @@
   }
 
   /**
+   * Build a vehicle Group. SYNCHRONOUS — parts whose .glb is already cached use
+   * it; the rest use procedural primitives. If a model is still loading, the
+   * placeholder is swapped for the real mesh when it arrives, and
+   * `group.userData.modelsReady` resolves once every swap is done.
+   *
    * @param {import('../core/Vehicle').Vehicle} vehicle
    * @returns {THREE.Group|null}  null if THREE is unavailable
    */
@@ -274,25 +438,52 @@
     var lo = layout(vehicle);
     var group = new THREE.Group();
     var meshes = {};
-    var exhaustY = null;
+    var pending = [];
+
     lo.parts.forEach(function (entry) {
       var m = makeMesh(entry);
       meshes[entry.iid] = m;
       group.add(m);
-      if (m.userData && m.userData.isMotor) {
-        var ey = m.position.y + (m.userData.exhaustLocalY || 0);
-        if (exhaustY == null || ey < exhaustY) exhaustY = ey;   // lowest motor
+
+      // model requested but not cached yet → load, then swap the placeholder
+      if (entry.meshUrl && !_tpl[entry.meshUrl]) {
+        pending.push(loadModel(entry.meshUrl).then(function (tpl) {
+          if (!tpl || group.userData.disposed) return;
+          var real = instantiateModel(entry.meshUrl, entry);
+          if (!real) return;
+          var old = meshes[entry.iid];
+          if (old && old.parent === group) group.remove(old);
+          meshes[entry.iid] = real;
+          group.add(real);
+          recomputeExhaustY(group, meshes);
+        }));
       }
     });
-    group.userData = {
-      partMeshes: meshes, bounds: lo.bounds, isVehicle: true,
-      exhaustY: exhaustY != null ? exhaustY : (lo.bounds ? -lo.bounds.height * 0.1 : -0.3)
-    };
+
+    group.userData.partMeshes = meshes;
+    group.userData.bounds = lo.bounds;
+    group.userData.isVehicle = true;
+    recomputeExhaustY(group, meshes);
+    group.userData.modelsReady = pending.length ? Promise.all(pending) : Promise.resolve();
     return group;
+  }
+
+  function recomputeExhaustY(group, meshes) {
+    var exhaustY = null;
+    Object.keys(meshes).forEach(function (k) {
+      var m = meshes[k];
+      if (m && m.userData && m.userData.isMotor) {
+        var ey = m.position.y + (m.userData.exhaustLocalY || 0);
+        if (exhaustY == null || ey < exhaustY) exhaustY = ey;
+      }
+    });
+    var b = group.userData && group.userData.bounds;
+    group.userData.exhaustY = exhaustY != null ? exhaustY : (b ? -b.height * 0.1 : -0.3);
   }
 
   function disposeGroup(group) {
     if (!group) return;
+    if (group.userData) group.userData.disposed = true;
     group.traverse(function (o) {
       if (o.geometry) o.geometry.dispose();
       if (o.material) {
@@ -306,9 +497,12 @@
   global.RS.render = global.RS.render || {};
   global.RS.render.VehicleRenderer = {
     CAT_COLOR: CAT_COLOR,
-    layout: layout,        // pure
-    build: build,          // THREE
-    disposeGroup: disposeGroup
+    layout: layout,          // pure
+    build: build,            // THREE (sync; models swap in + userData.modelsReady)
+    disposeGroup: disposeGroup,
+    loadModel: loadModel,    // Promise<Object3D|null>, cached
+    preload: preload,        // Promise.all over every catalog meshUrl
+    ensureFor: ensureFor     // Promise.all over one vehicle's meshUrls
   };
 
 })(typeof window !== 'undefined' ? window : this);

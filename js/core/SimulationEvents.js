@@ -14,6 +14,7 @@
   var TYPES = {
     IGNITION: 'IGNITION',
     LIFTOFF:  'LIFTOFF',
+    PITCH_OVER: 'PITCH_OVER',
     MAX_Q:    'MAX_Q',
     APOGEE:   'APOGEE',
     BURNOUT:  'BURNOUT',
@@ -24,6 +25,7 @@
   var LABEL_TH = {
     IGNITION: 'จุดระเบิด / จุดไฟ',
     LIFTOFF:  'ทะยานพ้นพื้น',
+    PITCH_OVER: 'เลี้ยวโค้ง (Gravity Turn)',
     MAX_Q:    'แรงดันอากาศสูงสุด (Max-Q)',
     APOGEE:   'จุดสูงสุด',
     BURNOUT:  'เชื้อเพลิงหมด',

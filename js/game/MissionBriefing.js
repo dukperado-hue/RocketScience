@@ -174,6 +174,14 @@
       rows.push({ icon: '⏱️', label: 'ลอยอยู่บนฟ้า ≥ ' + o.flightTimeMin + ' วินาที',
         sub: 'ยิ่งเบา ยิ่งลอยนาน' });
     }
+    if (o.maxVelocityMin != null) {
+      rows.push({ icon: '💨', label: 'ความเร็วสูงสุด ≥ ' + o.maxVelocityMin + ' m/s',
+        sub: 'ความเร็วรวมทั้งแนวดิ่งและแนวราบ' });
+    }
+    if (o.downrangeMin != null) {
+      rows.push({ icon: '➡️', label: 'ตกไกลจากฐาน ≥ ' + o.downrangeMin + ' ม.',
+        sub: 'พิสูจน์ว่าบินแนวราบด้วย Gravity Turn ไม่ใช่พุ่งขึ้นตรง ๆ' });
+    }
     if (o.surviveFlight) {
       rows.push({ icon: '🛡️', label: 'บินได้โดยไม่เสียการควบคุม',
         sub: 'ห้ามตีลังกา / โครงสร้างห้ามพัง' });

@@ -112,6 +112,7 @@
         z: lerp(a.position.z, b.position.z, f)
       },
       velocity: lerp(a.velocity, b.velocity, f),
+      vx: lerp(a.vx || 0, b.vx || 0, f),
       speed: lerp(a.speed, b.speed, f),
       acceleration: lerp(a.acceleration, b.acceleration, f),
       mass: lerp(a.mass, b.mass, f),
