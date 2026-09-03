@@ -198,10 +198,70 @@
   text-align: right; line-height: 1.5; pointer-events: none;
 }
 
+/* ---- Era 0 · manual two-step ignition button (centre-lower) ----------- */
+.fs-ignite {
+  position: absolute; left: 50%; bottom: 15%; transform: translateX(-50%);
+  z-index: 4;
+  font-family: var(--bp-font, "Sarabun", system-ui, sans-serif);
+  font-size: 17px; font-weight: 700; letter-spacing: 0.03em;
+  color: #ffe6c4;
+  padding: 15px 34px; border-radius: 999px;
+  border: 1px solid rgba(255,150,70,0.55);
+  background: radial-gradient(120% 160% at 50% 0%, rgba(255,138,58,0.34), rgba(10,16,32,0.86));
+  box-shadow: 0 0 34px rgba(255,130,50,0.28), inset 0 0 22px rgba(255,150,70,0.12);
+  cursor: pointer;
+  transition: opacity .5s ease, transform .35s ease, box-shadow .5s ease, background .5s ease;
+  animation: fs-ignite-breathe 3.4s ease-in-out infinite;
+}
+.fs-ignite[hidden] { display: none; }
+.fs-ignite:hover { transform: translateX(-50%) scale(1.04); }
+.fs-ignite:disabled {
+  cursor: default; opacity: 0.5; animation: none;
+  color: #cdb79a; border-color: rgba(180,150,120,0.4);
+  box-shadow: none;
+}
+.fs-ignite.ready {
+  color: #fff4e2;
+  border-color: rgba(120,220,180,0.65);
+  background: radial-gradient(120% 160% at 50% 0%, rgba(80,210,160,0.32), rgba(10,20,26,0.88));
+  box-shadow: 0 0 40px rgba(90,220,170,0.4), inset 0 0 22px rgba(120,220,180,0.16);
+  animation: fs-ignite-ready 1.9s ease-in-out infinite;
+}
+@keyframes fs-ignite-breathe {
+  0%, 100% { box-shadow: 0 0 26px rgba(255,130,50,0.22), inset 0 0 20px rgba(255,150,70,0.10); }
+  50%      { box-shadow: 0 0 40px rgba(255,150,70,0.4),  inset 0 0 26px rgba(255,170,90,0.18); }
+}
+@keyframes fs-ignite-ready {
+  0%, 100% { transform: translateX(-50%) scale(1); }
+  50%      { transform: translateX(-50%) scale(1.045); }
+}
+
+/* ---- the poetry — philosophical haiku, lower third, very slow fade ---- */
+.fs-haiku {
+  position: absolute; left: 50%; bottom: 20%; transform: translate(-50%, 12px);
+  z-index: 3; pointer-events: none;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  text-align: center;
+  font-family: var(--bp-font, "Sarabun", serif);
+  font-size: clamp(17px, 2.5vw, 25px); font-weight: 400; line-height: 1.5;
+  letter-spacing: 0.04em;
+  color: #f2e6d6;
+  text-shadow: 0 2px 24px rgba(0,0,0,0.85), 0 0 40px rgba(0,0,0,0.6);
+  opacity: 0;
+  transition: opacity 2.6s ease, transform 2.6s ease;
+}
+.fs-haiku[hidden] { display: none; }
+.fs-haiku.show { opacity: 0.96; transform: translate(-50%, 0); }
+.fs-haiku span { display: block; }
+.fs-haiku span:nth-child(2) { color: #e7d4bd; }
+.fs-haiku span:nth-child(3) { color: #d8c3a8; font-style: italic; }
+
 @media (max-width: 720px) {
   .fs-autopsy { right: 10px; left: 10px; width: auto; }
   .fs-hint { display: none; }
   .fs-bar { gap: 7px; padding: 8px 10px; }
+  .fs-ignite { font-size: 15px; padding: 13px 26px; bottom: 17%; }
+  .fs-haiku { font-size: 16px; bottom: 24%; }
 }
 
 /* builder: the "watch flight" button variant */

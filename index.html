@@ -9,9 +9,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/blueprint.css?v=29">
-<link rel="stylesheet" href="css/flight.css?v=29">
-<link rel="stylesheet" href="css/mission.css?v=29">
+<link rel="stylesheet" href="css/blueprint.css?v=30">
+<link rel="stylesheet" href="css/flight.css?v=30">
+<link rel="stylesheet" href="css/mission.css?v=30">
 </head>
 <body class="bp-body">
 
@@ -120,6 +120,12 @@
 
   <div class="fs-toast" id="fs-toast" hidden></div>
 
+  <!-- Era 0 · two-step manual release: 🔥 จุดไฟ → ปล่อยโคม -->
+  <button type="button" class="fs-ignite" id="fs-ignite" hidden>🔥 จุดไฟ</button>
+
+  <!-- the poetry — philosophical haiku on ความไม่เที่ยง -->
+  <div class="fs-haiku" id="fs-haiku" hidden></div>
+
   <p class="fs-hint">ลาก = หมุนกล้อง · สกรอลล์ = ซูม<br>Space = เล่น/หยุด · C = สลับกล้อง · R = เริ่มใหม่ · Esc = ปิด</p>
 
   <!-- Physics Autopsy report -->
@@ -213,36 +219,36 @@
 </div>
 
 <!-- ═══ core/ — ZERO dependency on render/ or Three.js ═══ -->
-<script src="js/core/PartsCatalog.js?v=29"></script>
-<script src="js/core/Vehicle.js?v=29"></script>
-<script src="js/core/SimulationEvents.js?v=29"></script>
-<script src="js/core/Diagnostics.js?v=29"></script>
-<script src="js/core/Physics.js?v=29"></script>
-<script src="js/core/Blueprint2D.js?v=29"></script>
+<script src="js/core/PartsCatalog.js?v=30"></script>
+<script src="js/core/Vehicle.js?v=30"></script>
+<script src="js/core/SimulationEvents.js?v=30"></script>
+<script src="js/core/Diagnostics.js?v=30"></script>
+<script src="js/core/Physics.js?v=30"></script>
+<script src="js/core/Blueprint2D.js?v=30"></script>
 
 <!-- ═══ data/ — pure content ═══ -->
-<script src="js/data/parts.js?v=29"></script>
-<script src="js/data/eras.js?v=29"></script>
-<script src="js/data/missions.js?v=29"></script>
+<script src="js/data/parts.js?v=30"></script>
+<script src="js/data/eras.js?v=30"></script>
+<script src="js/data/missions.js?v=30"></script>
 
 <!-- ═══ game/ — rules, consumes the contract ═══ -->
-<script src="js/game/EraManager.js?v=29"></script>
-<script src="js/game/MissionEngine.js?v=29"></script>
-<script src="js/game/MissionBriefing.js?v=29"></script>
+<script src="js/game/EraManager.js?v=30"></script>
+<script src="js/game/MissionEngine.js?v=30"></script>
+<script src="js/game/MissionBriefing.js?v=30"></script>
 
 <!-- ═══ vendor ═══ -->
-<script src="vendor/three/three.min.js?v=29"></script>
-<script src="vendor/three/loaders/GLTFLoader.js?v=29"></script>
+<script src="vendor/three/three.min.js?v=30"></script>
+<script src="vendor/three/loaders/GLTFLoader.js?v=30"></script>
 
 <!-- ═══ render/ — consumes data, needs Three.js ═══ -->
-<script src="js/render/Scene.js?v=29"></script>
-<script src="js/render/CameraController.js?v=29"></script>
-<script src="js/render/VehicleRenderer.js?v=29"></script>
-<script src="js/render/ExhaustFX.js?v=29"></script>
-<script src="js/render/FlightRenderer.js?v=29"></script>
-<script src="js/render/FestivalEnv.js?v=29"></script>
-<script src="js/render/FlightScreen.js?v=29"></script>
+<script src="js/render/Scene.js?v=30"></script>
+<script src="js/render/CameraController.js?v=30"></script>
+<script src="js/render/VehicleRenderer.js?v=30"></script>
+<script src="js/render/ExhaustFX.js?v=30"></script>
+<script src="js/render/FlightRenderer.js?v=30"></script>
+<script src="js/render/FestivalEnv.js?v=30"></script>
+<script src="js/render/FlightScreen.js?v=30"></script>
 
-<script src="js/app.js?v=29"></script>
+<script src="js/app.js?v=30"></script>
 </body>
 </html>

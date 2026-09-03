@@ -77,6 +77,7 @@
    * @param {boolean} st.powered     an engine is producing force this frame
    * @param {boolean} st.padLocked   welded to the pad, fighting inertia
    * @param {boolean} st.buoyant     hot-air lantern (no hard exhaust)
+   * @param {boolean} st.wisp        a lantern warming on the pad — thin heat-haze only
    * @param {number} st.exhaustY     motor exhaust offset below the vehicle origin
    */
   ExhaustFX.prototype.update = function (dt, st) {
@@ -89,7 +90,26 @@
     var exhaustBase = (st.y || 0) + (st.exhaustY != null ? st.exhaustY : -0.3);
 
     // ---- emit -----------------------------------------------------------
-    if (st.powered && !st.buoyant) {
+    if (st.powered && st.wisp) {
+      // a khom loy being held on the pad while the wax catches: no roaring
+      // exhaust, just a slow thread of warm smoke rising off the flame
+      this._emitAcc += 15 * dt;
+      var wn = this._emitAcc | 0;
+      this._emitAcc -= wn;
+      for (var w = 0; w < wn; w++) {
+        this._spawn({
+          x: ex + (Math.random() - 0.5) * 0.32,
+          y: GROUND + Math.random() * 0.5,
+          z: (Math.random() - 0.5) * 0.32,
+          vx: (Math.random() - 0.5) * 0.4,
+          vy: 0.45 + Math.random() * 0.75,
+          vz: (Math.random() - 0.5) * 0.4,
+          max: 1.4 + Math.random() * 1.9
+        });
+      }
+      this.material.size = 2.4;
+      this.material.opacity = 0.26;
+    } else if (st.powered && !st.buoyant) {
       var rate = onPad ? 260 : 110;             // heavy pool on the pad
       this._emitAcc += rate * dt;
       var n = this._emitAcc | 0;

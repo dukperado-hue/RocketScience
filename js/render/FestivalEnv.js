@@ -25,6 +25,7 @@
   var THREE = global.THREE;
 
   function rand(a, b) { return a + Math.random() * (b - a); }
+  function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
   function FestivalEnv(scene) {
     this.available = !!THREE && !!scene && !!scene.scene;
@@ -40,6 +41,15 @@
     this._candles = [];
     this._skyData = [];
 
+    // ---- INTIMATE COMPANIONS — fully-realized khom loys that drift past ----
+    //  the player mid-flight, close enough to give a sense of scale, community
+    //  and fleeting encounter. Pooled; FlightScreen feeds update() the player
+    //  position and listens on `onEncounter` for the poetry trigger.
+    this._companions = [];
+    this._compTimer = 0;
+    this._compVec = null;
+    this.onEncounter = null;
+
     if (this.available) {
       this._m4 = new THREE.Matrix4();
       this._q  = new THREE.Quaternion();
@@ -48,6 +58,7 @@
       this._s  = new THREE.Vector3();
       this._p  = new THREE.Vector3();
       this._col = new THREE.Color();
+      this._compVec = new THREE.Vector3();
     }
   }
 
@@ -66,9 +77,164 @@
     this._buildTree(g);
     this._buildFireflies(g);
     this._buildLamps(g);
+    this._buildCompanions(g);
     this.scene.scene.add(g);
 
     this._buildSky(this.scene.scene);
+  };
+
+  // --- INTIMATE COMPANIONS — a small pool of hero khom loys ---------------
+  FestivalEnv.prototype._buildCompanions = function (parent) {
+    var POOL = 3;
+    // shared geometry — cheap; materials are per-instance so each can tint +
+    // fade on its own
+    var envGeo = new THREE.CylinderGeometry(0.55, 0.72, 1.7, 8, 1, true);
+    var lidGeo = new THREE.CircleGeometry(0.55, 8);
+    var rimGeo = new THREE.TorusGeometry(0.72, 0.045, 5, 8);
+    var flameGeo = new THREE.ConeGeometry(0.13, 0.44, 6);
+
+    for (var i = 0; i < POOL; i++) {
+      var grp = new THREE.Group();
+      grp.visible = false;
+
+      var hue = 0.055 + Math.random() * 0.03;
+      var envMat = new THREE.MeshStandardMaterial({
+        color: 0xffe1bd, roughness: 0.72, metalness: 0,
+        emissive: new THREE.Color().setHSL(hue, 0.9, 0.42),
+        emissiveIntensity: 0.9,
+        transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: true
+      });
+      var env = new THREE.Mesh(envGeo, envMat);
+      grp.add(env);
+
+      var lid = new THREE.Mesh(lidGeo, new THREE.MeshStandardMaterial({
+        color: 0x2a1a0c, roughness: 1, transparent: true, opacity: 0,
+        side: THREE.DoubleSide
+      }));
+      lid.rotation.x = -Math.PI / 2;
+      lid.position.y = 0.85;
+      grp.add(lid);
+
+      var rim = new THREE.Mesh(rimGeo, new THREE.MeshStandardMaterial({
+        color: 0x6b4a2a, roughness: 1, transparent: true, opacity: 0
+      }));
+      rim.rotation.x = Math.PI / 2;
+      rim.position.y = -0.85;
+      grp.add(rim);
+
+      var flame = new THREE.Mesh(flameGeo, new THREE.MeshBasicMaterial({
+        color: 0xffce8a, transparent: true, opacity: 0,
+        depthWrite: false, blending: THREE.AdditiveBlending, fog: false
+      }));
+      flame.position.y = -0.5;
+      grp.add(flame);
+
+      var light = new THREE.PointLight(0xff8a3a, 0, 7.5, 2);
+      light.position.y = -0.2;
+      grp.add(light);
+
+      parent.add(grp);
+      this._companions.push({
+        group: grp, env: env, lid: lid, rim: rim, flame: flame, light: light,
+        active: false, age: 0, ttl: 0,
+        pos: new THREE.Vector3(), vel: new THREE.Vector3(),
+        ph: Math.random() * 6.283, lightBase: 2.0 + Math.random() * 0.9,
+        prevDist: 1e9, encountered: false
+      });
+    }
+  };
+
+  /** Deactivate every companion + arm the first spawn. Call on each flight open. */
+  FestivalEnv.prototype.resetCompanions = function () {
+    for (var i = 0; i < this._companions.length; i++) {
+      var c = this._companions[i];
+      c.active = false; c.encountered = false; c.prevDist = 1e9;
+      c.group.visible = false; c.light.intensity = 0;
+    }
+    this._compTimer = rand(5, 9);   // first encounter comes fairly soon
+  };
+
+  FestivalEnv.prototype._spawnCompanion = function (px, py, pz) {
+    for (var i = 0; i < this._companions.length; i++) {
+      var c = this._companions[i];
+      if (c.active) continue;
+      var side = Math.random() < 0.5 ? -1 : 1;
+      c.pos.set(
+        px + side * rand(10, 20),        // enters from one side
+        py + rand(-11, 15),              // near the player's altitude, a touch above
+        (pz || 0) + rand(4, 16)          // in the foreground, toward the camera
+      );
+      c.vel.set(
+        -side * rand(0.75, 1.7),         // drifts across the view and out the far side
+        rand(0.22, 0.68),                // gentle, contemplative rise
+        rand(-0.3, 0.18)
+      );
+      var sc = rand(0.8, 1.25);
+      c.group.scale.setScalar(sc);
+      c.age = 0; c.ttl = rand(20, 28);
+      c.encountered = false; c.prevDist = 1e9;
+      c.active = true; c.group.visible = true;
+      return c;
+    }
+    return null;
+  };
+
+  FestivalEnv.prototype._animCompanions = function (dt, player) {
+    if (!this._companions.length) return;
+    var hasPlayer = player && typeof player.y === 'number';
+
+    if (hasPlayer && player.y > 8) {
+      this._compTimer -= dt;
+      if (this._compTimer <= 0) {
+        this._compTimer = rand(15, 20);
+        var many = Math.random() < 0.45 ? 2 : 1;
+        for (var s = 0; s < many; s++) this._spawnCompanion(player.x || 0, player.y, player.z || 0);
+      }
+    }
+
+    var pv = this._compVec;
+    if (hasPlayer) pv.set(player.x || 0, player.y, player.z || 0);
+    var w = this._t;
+
+    for (var i = 0; i < this._companions.length; i++) {
+      var c = this._companions[i];
+      if (!c.active) continue;
+      c.age += dt;
+      c.pos.addScaledVector(c.vel, dt);
+
+      var swx = Math.sin(w * 0.7 + c.ph) * 0.32;
+      var swz = Math.cos(w * 0.58 + c.ph) * 0.32;
+      c.group.position.set(c.pos.x + swx, c.pos.y, c.pos.z + swz);
+      c.group.rotation.z = Math.sin(w * 0.7 + c.ph) * 0.09;
+      c.group.rotation.y += dt * 0.16;
+
+      // slow fade in, long linger, slow fade out — nothing pops
+      var fin = clamp(c.age / 3.5, 0, 1);
+      var fout = clamp((c.ttl - c.age) / 4.5, 0, 1);
+      var a = Math.min(fin, fout);
+      c.env.material.opacity = 0.94 * a;
+      c.lid.material.opacity = 0.9 * a;
+      c.rim.material.opacity = 0.9 * a;
+      c.flame.material.opacity = 0.85 * a * (0.7 + 0.3 * Math.sin(w * 9 + c.ph));
+      c.flame.scale.y = 0.8 + 0.3 * (0.5 + 0.5 * Math.sin(w * 11 + c.ph));
+      c.light.intensity = c.lightBase * a * (0.75 + 0.25 * Math.sin(w * 8 + c.ph * 1.7));
+
+      // ENCOUNTER — fire once, at the moment it has passed closest approach
+      if (hasPlayer && !c.encountered) {
+        var d = c.pos.distanceTo(pv);
+        if (d > c.prevDist && c.prevDist < 24) {
+          c.encountered = true;
+          if (typeof this.onEncounter === 'function') {
+            try { this.onEncounter(c); } catch (e) {}
+          }
+        }
+        c.prevDist = d;
+      }
+
+      if (c.age >= c.ttl) {
+        c.active = false; c.group.visible = false; c.light.intensity = 0;
+      }
+    }
   };
 
   // --- stylized grass — one InstancedMesh, blades that sway in the wind -----
@@ -313,13 +479,17 @@
     if (this.skyGlow) this.skyGlow.visible = on;
     if (!on) {
       for (var i = 0; i < this._candles.length; i++) this._candles[i].light.intensity = 0;
+      for (var j = 0; j < this._companions.length; j++) {
+        var c = this._companions[j];
+        c.active = false; c.group.visible = false; c.light.intensity = 0;
+      }
     }
   };
 
   // ---------------------------------------------------------------------------
   //  ANIMATE  — call every rendered frame while visible
   // ---------------------------------------------------------------------------
-  FestivalEnv.prototype.update = function (dt) {
+  FestivalEnv.prototype.update = function (dt, player) {
     if (!this.available || !this.group || !this.group.visible) return;
     dt = Math.min(Math.max(dt || 0.016, 0), 0.05);
     this._t += dt;
@@ -329,6 +499,7 @@
     this._animFireflies();
     this._animLamps();
     this._animSky(dt);
+    this._animCompanions(dt, player);
   };
 
   FestivalEnv.prototype._animGrass = function () {

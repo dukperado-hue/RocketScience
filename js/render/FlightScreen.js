@@ -47,6 +47,16 @@
   };
   var AUTO_CAM = { observer: 1, chase: 1, ground: 1 };   // rigs a drag breaks out of
 
+  // ---- THE POETRY — philosophical Thai haiku on อนิจจัง (impermanence) -------
+  //  Three lines each, fired on specific flight events. Slow fade in, linger,
+  //  slow fade out — see _showHaiku / css .fs-haiku.
+  var HAIKU = {
+    release: ['ปล่อยมือจากเชือก', 'ลมกลางคืนพากลืนหาย', 'เหลือแสงกับฟากฟ้า'],
+    encounter: ['พบพานกลางนภา', 'ดั่งดาราเพียงชั่วครู่', 'ลอยล่องแล้วจากไป'],
+    burnout: ['แสงเทียนเริ่มริบหรี่', 'ลมราตรีพัดแผ่วเบา', 'คืนกลับสู่ผืนดิน'],
+    burn: ['ลุกโชนสว่างจ้า', 'เผาผลาญสิ้นในพริบตา', 'เถ้าถ่านปลิวตามลม']
+  };
+
   function $(id) { return document.getElementById(id); }
   function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
   function perfNow() {
@@ -82,6 +92,20 @@
     this.scrub   = $('fs-scrub');
     this.marks   = $('fs-marks');
     this.autopsy = $('fs-autopsy');
+    this.btnIgnite = $('fs-ignite');   // Era-0: two-step 🔥 จุดไฟ → ปล่อยโคม
+    this.elHaiku = $('fs-haiku');      // the poetry overlay
+
+    // ---- manual ignition / release gate (khom loy only) ------------------
+    this._gate = null;                 // null | 'prelaunch' | 'igniting' | 'held'
+    this._ignT = 0;                    // trajectory time reached during the spool
+    this._liftoffTime = 0;             // the tick physics says it breaks the pad
+    this._igniteDur = 6;               // wall-clock seconds the spool is stretched over
+    // ---- haiku queue ----------------------------------------------------
+    this._haikuQueue = [];
+    this._haikuActive = false;
+    this._haikuFading = false;
+    this._haikuTimer = 0;
+    this._lastHaikuT = -1e9;
 
     this.flight = new RS.render.FlightRenderer({ playbackRate: 1 });
 
@@ -131,6 +155,9 @@
       self.btnRate.textContent = RATES[self._rateIdx] + '×';
     });
     this.btnCam.addEventListener('click', function () { self._cycleCam(); });
+    if (this.btnIgnite) {
+      this.btnIgnite.addEventListener('click', function () { self._onIgnite(); });
+    }
 
     // cinematic reveal: after a launch the HUD/transport start hidden and
     // fade in on the first real interaction (or a short auto-timeout).
@@ -147,6 +174,7 @@
     });
 
     this.scrub.addEventListener('input', function () {
+      if (self._gate) { self._syncScrub(); return; }   // locked during the ignition ceremony
       self._scrubbing = true;
       self.flight.pause();
       var t = (self.scrub.value / 1000) * self.flight.duration;
@@ -210,6 +238,9 @@
       self._phaseText = (LABEL_TH[evt.type] || evt.type);
       self._showToast((LABEL_TH[evt.type] || evt.type) + ' · ' + evt.message);
       if (self._glow && evt.type === 'IGNITION') self._glowPulse = 1;
+      // the poetry of impermanence, keyed to what just happened
+      if (evt.type === 'MIDAIR_BURN') self._maybeHaiku('burn', 5400);
+      else if (evt.type === 'BURNOUT' && self.flight.buoyant) self._maybeHaiku('burnout', 5400);
       // reaching orbit → swing the camera out to the orbital map
       var mapIdx = CAM_MODES.indexOf('map');
       if (evt.type === 'ORBIT' && self._camIdx !== mapIdx) {
@@ -390,10 +421,142 @@
 
   // ---- cinematic chrome reveal --------------------------------------
   FlightScreen.prototype._revealChrome = function () {
+    if (this._gate) return;             // keep the frame clean during the ceremony
     if (!this._chromeHidden) return;
     this._chromeHidden = false;
     if (this._chromeTimer) { global.clearTimeout(this._chromeTimer); this._chromeTimer = 0; }
     this.root.classList.remove('fs-cinematic');
+  };
+
+  // ======================================================================
+  //  THE RELEASE — manual two-step ignition (Era 0 / khom loy)
+  // ======================================================================
+  FlightScreen.prototype._onIgnite = function () {
+    if (this._gate === 'prelaunch') {
+      // STEP 1 — light the wick. The lantern stays welded to the pad while the
+      // wax spools; the flame + inner glow + a thread of smoke build.
+      this._gate = 'igniting';
+      this._ignT = 0;
+      this.btnIgnite.disabled = true;
+      this.btnIgnite.classList.remove('ready');
+      this.btnIgnite.textContent = 'กำลังจุดไฟ…';
+      this._phaseText = 'จุดไฟ — ประคองโคมไว้';
+      this._showToast('จุดไฟ · ประคองโคมไว้จนอิ่มไอร้อน');
+    } else if (this._gate === 'held') {
+      // STEP 3 — let go. Playback resumes exactly at the tick physics says the
+      // lantern breaks the pad, so it lifts off from a standstill, gracefully.
+      this._gate = null;
+      this.btnIgnite.hidden = true;
+      this.btnIgnite.classList.remove('ready');
+      this.btnIgnite.disabled = false;
+      this.flight.seek(this._liftoffTime || 0);
+      this._camTX = this._camTY = null;       // re-lock the camera onto the rising lantern
+      this._phaseText = 'ปล่อยโคม';
+      this._lastHaikuT = this.flight.time;    // let the launch breathe before the next poem
+      this._showToast('ปล่อยโคม · โคมลอยขึ้นสู่ราตรี');
+      this._showHaiku(HAIKU.release, 5200);
+      this._revealChrome();
+      this._last = perfNow();
+      this.play();
+    }
+  };
+
+  FlightScreen.prototype._enterHeld = function () {
+    // STEP 2 — the wax is hot, buoyancy is positive: offer the string.
+    this._gate = 'held';
+    this.btnIgnite.disabled = false;
+    this.btnIgnite.classList.add('ready');
+    this.btnIgnite.textContent = 'ปล่อยโคม';
+    this._phaseText = 'ไอร้อนเต็มลูก — พร้อมปล่อย';
+    this._showToast('ไอร้อนเต็มลูกแล้ว — แตะเพื่อปล่อยโคม');
+  };
+
+  FlightScreen.prototype._gateFrame = function (dt) {
+    var lt = this._liftoffTime || 0;
+    if (this._gate === 'prelaunch') this._phaseText = 'ประคองโคมไว้ · รอจุดไฟ';
+    if (this._gate === 'igniting') {
+      var rate = this._igniteDur > 0 ? lt / this._igniteDur : lt;
+      this._ignT += dt * rate;
+      if (this._ignT >= lt) { this._ignT = lt; this._enterHeld(); }
+      this.flight.seek(clamp(this._ignT, 0, lt));
+    }
+    var st = this.flight.sampleAt(this.flight.time) || this.flight.sampleAt(0);
+
+    // flame BUILD factor: 0 before ignite → ramps over the spool → full when held
+    var s = (this._gate === 'prelaunch') ? 0
+      : (this._gate === 'igniting') ? clamp(this._ignT / Math.max(lt, 1e-6), 0, 1)
+      : 1;
+    if (RS.render.VehicleRenderer && this.vehicleGroup) {
+      RS.render.VehicleRenderer.flicker(this.vehicleGroup, s > 0.02, false, s);
+    }
+    if (this._glow) this._glow.intensity = s * (1.6 + Math.random() * 0.8);
+
+    // a held lantern only breathes a thin heat-haze, never a roaring exhaust
+    if (this._exhaust) {
+      this._exhaust.update(this._gate === 'prelaunch' ? 0 : dt, {
+        x: 0, y: 0, v: 0,
+        powered: this._gate !== 'prelaunch',
+        wisp: true, buoyant: true, padLocked: true,
+        exhaustY: this._exhaustY
+      });
+    }
+
+    if (this._festival) {
+      this._festival.update(dt || 0.016, {
+        x: (st.position && st.position.x) || 0, y: st.altitude || 0, z: 0
+      });
+    }
+
+    this._updateCamera(st.altitude || 0, st);
+    this._updateHud(st);
+    this._drainHaiku(dt);
+    this.scene.renderOnce();
+    this._syncScrub();
+  };
+
+  // ---- THE POETRY — haiku overlay -------------------------------------
+  FlightScreen.prototype._maybeHaiku = function (key, linger) {
+    if (!HAIKU[key]) return;
+    var now = this.flight ? this.flight.time : 0;
+    if (now - this._lastHaikuT < 13) return;    // never stack poems on each other
+    this._lastHaikuT = now;
+    this._showHaiku(HAIKU[key], linger);
+  };
+
+  FlightScreen.prototype._showHaiku = function (lines, linger) {
+    if (!this.elHaiku || !lines) return;
+    this._haikuQueue.push({ lines: lines, linger: (linger || 4600) / 1000 });
+    if (!this._haikuActive) this._nextHaiku();
+  };
+
+  FlightScreen.prototype._nextHaiku = function () {
+    var h = this._haikuQueue.shift();
+    if (!h) { this._haikuActive = false; return; }
+    this._haikuActive = true;
+    this._haikuFading = false;
+    this.elHaiku.innerHTML = h.lines.map(function (l) {
+      return '<span>' + esc(l) + '</span>';
+    }).join('');
+    this.elHaiku.hidden = false;
+    void this.elHaiku.offsetWidth;               // flush so the fade-in plays from 0
+    this.elHaiku.classList.add('show');
+    this._haikuTimer = Math.max(2.5, h.linger);
+  };
+
+  FlightScreen.prototype._drainHaiku = function (dt) {
+    if (!this._haikuActive) return;
+    this._haikuTimer -= (dt || 0.016);
+    if (this._haikuTimer > 0) return;
+    if (!this._haikuFading) {
+      this._haikuFading = true;
+      this.elHaiku.classList.remove('show');     // slow CSS fade-out
+      this._haikuTimer = 2.8;
+    } else {
+      this.elHaiku.hidden = true;
+      this._haikuActive = false;
+      this._haikuFading = false;
+      this._nextHaiku();
+    }
   };
 
   // ---- per-open setup --------------------------------------------------
@@ -500,10 +663,51 @@
     this._hideToast();
     this._buildMarkers(simResult.events || [], this.flight.duration);
 
+    // ---- THE RELEASE — manual two-step ignition for a khom loy -----------
+    //  Physics has already pad-locked + spooled the lantern; we simply hold
+    //  playback on the pad, let the player light the wick and feel the heat
+    //  build, then hand them the string to let go.
+    this._haikuQueue.length = 0;
+    this._haikuActive = this._haikuFading = false;
+    this._lastHaikuT = -1e9;
+    if (this.elHaiku) { this.elHaiku.hidden = true; this.elHaiku.classList.remove('show'); }
+
+    var holdT = (simResult.summary && simResult.summary.holdTime != null)
+      ? simResult.summary.holdTime
+      : ((simResult.events || []).filter(function (e) { return e.type === 'LIFTOFF'; })[0] || {}).time;
+    var canGate = !!(opts.cinematic && this.btnIgnite &&
+      (simResult && simResult.mode) === 'buoyancy' && holdT != null && holdT > 0.05);
+
+    if (canGate) {
+      this._gate = 'prelaunch';
+      this._liftoffTime = holdT;
+      this._igniteDur = clamp(holdT * 1.7, 5, 11);   // stretch the spool — slow, contemplative
+      this._ignT = 0;
+      this.flight.seek(0);
+      this.btnIgnite.hidden = false;
+      this.btnIgnite.disabled = false;
+      this.btnIgnite.classList.remove('ready');
+      this.btnIgnite.textContent = '🔥 จุดไฟ';
+      this._phaseText = 'ประคองโคมไว้ — รอจุดไฟ';
+    } else {
+      this._gate = null;
+      if (this.btnIgnite) {
+        this.btnIgnite.hidden = true;
+        this.btnIgnite.disabled = false;
+        this.btnIgnite.classList.remove('ready');
+      }
+    }
+
+    if (this._festival) {
+      this._festival.resetCompanions();
+      var self = this;
+      this._festival.onEncounter = function () { self._maybeHaiku('encounter', 4800); };
+    }
+
     this.scene.resize();
     this._renderFrame(this.flight.sampleAt(0));
     this._last = perfNow();
-    this.play();
+    if (!this._gate) this.play();
     if (!this._raf) this._loop();
   };
 
@@ -513,6 +717,11 @@
     if (this._chromeTimer) { global.clearTimeout(this._chromeTimer); this._chromeTimer = 0; }
     this.root.classList.remove('fs-cinematic');
     this._chromeHidden = false;
+    this._gate = null;
+    if (this.btnIgnite) { this.btnIgnite.hidden = true; this.btnIgnite.classList.remove('ready'); }
+    if (this.elHaiku) { this.elHaiku.hidden = true; this.elHaiku.classList.remove('show'); }
+    this._haikuActive = this._haikuFading = false;
+    this._haikuQueue.length = 0;
     this.root.hidden = true;
   };
 
@@ -550,6 +759,7 @@
   };
   FlightScreen.prototype.pauseIt = function () { this.flight.pause(); this._reflectPlay(); };
   FlightScreen.prototype.togglePlay = function () {
+    if (this._gate) return;             // no scrubbing past the ignition ceremony
     this.flight.playing ? this.pauseIt() : this.play();
   };
   FlightScreen.prototype._reflectPlay = function () {
@@ -564,9 +774,12 @@
     this._last = t;
     this._frameDt = dt;
 
+    if (this._gate) { this._gateFrame(dt); return; }
+
     if (this.flight.playing && !this._scrubbing) this.flight.update(dt);
     var st = this.flight.sampleAt(this.flight.time);
     this._renderFrame(st);
+    this._drainHaiku(dt);
     if (!this._scrubbing) this._syncScrub();
     if (!this.flight.playing) this._reflectPlay();
 
@@ -614,7 +827,15 @@
       });
     }
 
-    if (this._festival) this._festival.update(this._frameDt || 0.016);
+    if (this._festival) {
+      // feed the festival the player's position so it can spawn intimate
+      // companion lanterns near the flight path and fire the encounter haiku
+      this._festival.update(this._frameDt || 0.016, {
+        x: (st.position && st.position.x) || 0,
+        y: st.altitude || 0,
+        z: (st.position && st.position.z) || 0
+      });
+    }
 
     this._updateCamera(alt, st);
     this._recomputePhase(this.flight.time);

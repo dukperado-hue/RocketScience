@@ -585,7 +585,12 @@
         trajectory.push(toState(d, tumbleT, burnT));
       }
       var forceEdge = (prevForce <= 1e-6) !== (force <= 1e-6);
-      var densePhase = force > 1e-6 && d.t < 3.0;
+      // sample every tick through the powered opening seconds — and, for a
+      // hot-air lantern, through the ENTIRE pad hold, so the buoyancy spool
+      // (and the flame that tracks it) ramps up perfectly smoothly while the
+      // player holds the lantern down under the manual-release gate.
+      var densePhase = force > 1e-6 &&
+        (d.t < 3.0 || (motorMode === 'buoyancy' && !state.liftedOff));
       prevForce = force;
 
       if (d.alt > 0.02) liftedOff = true;
@@ -712,6 +717,9 @@
       apogeeTime: round(apogeeTime, 2),
       burnoutMass: round(eff.dryMass + state.propRemaining, 4),
       liftedOff: liftedOff,
+      // the tick the stack first broke inertia — the render layer holds a
+      // khom loy on the pad up to here while the flame spools, then RELEASES
+      holdTime: liftoffTime != null ? round(liftoffTime, 3) : null,
       impactX: round(finalX, 2),
       maxDrift: round(maxDrift, 2),
       // ground-track angle × RE — only meaningful for a suborbital flight
@@ -851,7 +859,7 @@
   function emptySummary() {
     return {
       apogee: 0, maxVelocity: 0, maxQ: 0, flightTime: 0,
-      apogeeTime: 0, burnoutMass: 0, liftedOff: false,
+      apogeeTime: 0, burnoutMass: 0, liftedOff: false, holdTime: null,
       impactX: 0, maxDrift: 0, downrange: 0, stagesFlown: 0,
       orbit: { achieved: false, apoapsis: 0, periapsis: 0, eccentricity: 0, period: 0 },
       mode: 'none'

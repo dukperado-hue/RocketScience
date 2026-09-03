@@ -637,14 +637,17 @@
    * the whole envelope is on fire — pump the light + swell the flame. A pure
    * per-frame side effect — no allocation, safe on any group (no-op w/o flames).
    */
-  function flicker(group, active, blaze) {
+  function flicker(group, active, blaze, scale) {
     var fl = group && group.userData && group.userData.flicker;
     if (!fl || !fl.length) return;
     var now = Date.now();
     var b = blaze ? 1 : 0;
+    // optional 0..1 build factor — the manual-ignition gate ramps this from 0
+    // to 1 over the spool so the wick catches and grows instead of snapping on
+    var s = (typeof scale === 'number' && isFinite(scale)) ? clamp01(scale) : 1;
     for (var i = 0; i < fl.length; i++) {
       var f = fl[i];
-      if (active === false) {
+      if (active === false || s <= 0.001) {
         if (f.light) f.light.intensity = 0;
         if (f.flame) f.flame.visible = false;
         if (f.flameCore) f.flameCore.visible = false;
@@ -654,20 +657,21 @@
       // PointLight stays lively but always positive
       var jitter = Math.sin(now * 0.015) + Math.random() * 0.2;
       if (f.light) {
-        f.light.intensity = Math.max(0.15,
-          (f.base || 2.5) * (0.78 + 0.16 * jitter) * (1 + b * (2.0 + Math.random())));
+        f.light.intensity = Math.max(0.15 * s,
+          (f.base || 2.5) * (0.78 + 0.16 * jitter) * (1 + b * (2.0 + Math.random())) * s);
       }
       if (f.flame) {
         f.flame.visible = true;
         var sy = 0.86 + 0.26 * (0.5 + 0.5 * Math.sin(now * 0.023)) + Math.random() * 0.12;
-        f.flame.scale.set(1 + b * 1.6, sy * (1 + b * 1.4), 1 + b * 1.6);
+        f.flame.scale.set((1 + b * 1.6) * s, sy * (1 + b * 1.4) * s, (1 + b * 1.6) * s);
       }
       if (f.flameCore) {
         f.flameCore.visible = true;
-        f.flameCore.scale.setScalar((0.85 + Math.random() * 0.22) * (1 + b * 1.2));
+        f.flameCore.scale.setScalar((0.85 + Math.random() * 0.22) * (1 + b * 1.2) * s);
       }
     }
   }
+  function clamp01(v) { return v < 0 ? 0 : (v > 1 ? 1 : v); }
 
   function disposeGroup(group) {
     if (!group) return;
