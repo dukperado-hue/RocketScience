@@ -21,7 +21,7 @@
 
   function ExhaustFX(opts) {
     opts = opts || {};
-    this.max = opts.max || 520;          // headroom for a dirty หมื่อ plume
+    this.max = opts.max || 720;          // headroom for a dirty หมื่อ plume + a 5 s pad build
     this.available = !!THREE;
     if (!this.available) return;
 
@@ -57,9 +57,9 @@
     // ---- the flame JET — a bright additive flare driving through the smoke
     //  right at the nozzle base (used only for a "dirty" หมื่อ engine)
     this.jet = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.12, 0.42, 1, 14, 1, true),
+      new THREE.CylinderGeometry(0.1, 0.34, 1, 14, 1, true),
       new THREE.MeshBasicMaterial({
-        color: 0xffc766, transparent: true, opacity: 0, depthWrite: false,
+        color: 0xff9a3c, transparent: true, opacity: 0, depthWrite: false,
         blending: THREE.AdditiveBlending, side: THREE.DoubleSide, toneMapped: false
       }));
     this.jet.frustumCulled = false;
@@ -130,10 +130,10 @@
     if (this.jet) {
       this.jet.visible = jetOn;
       if (jetOn) {
-        var jl = 2.0 + Math.random() * 1.4;
-        this.jet.scale.set(1 + Math.random() * 0.3, jl, 1 + Math.random() * 0.3);
+        var jl = 1.7 + Math.random() * 1.2;
+        this.jet.scale.set(0.7 + Math.random() * 0.25, jl, 0.7 + Math.random() * 0.25);
         this.jet.position.set(ex, exhaustBase - jl * 0.5 + 0.25, 0);
-        this.jet.material.opacity = 0.5 + Math.random() * 0.22;
+        this.jet.material.opacity = 0.32 + Math.random() * 0.16;
         this.jetLight.position.set(ex, exhaustBase - 0.4, 0);
         this.jetLight.intensity = 3.0 + Math.random() * 2.0;
       } else {
@@ -143,30 +143,52 @@
     }
 
     // ---- emit -----------------------------------------------------------
+    // a 0..1 buildup factor the FlightScreen ignition gate ramps over its
+    // ~5 s pressure hold — scales the emission so the ground cloud GROWS into a
+    // dramatic wall of smoke instead of appearing all at once.
+    var build = (typeof st.buildFactor === 'number')
+      ? Math.max(0, Math.min(1, st.buildFactor)) : 1;
+
     if (st.powered && st.bigPlume) {
       // a hand-rammed black-powder หมื่อ burns filthy — a dense, fast-expanding
-      // white/grey cloud that dwarfs the rocket. On the rail it piles into a
-      // wall of smoke; climbing, it unspools into a fat billowing trail.
-      var pr = onPad ? 460 : 300;
+      // white/grey cloud that dwarfs the rocket. On the rail (esp. during the
+      // 5-second pressure build) it SLAMS into the ground and rolls outward in
+      // a low, spreading carpet; climbing, it unspools into a fat billowing trail.
+      var pr = onPad ? (260 + 460 * build) : 300;
       this._emitAcc += pr * dt;
       var pn = this._emitAcc | 0;
       this._emitAcc -= pn;
       for (var pi = 0; pi < pn; pi++) {
         var pa = Math.random() * Math.PI * 2;
-        var pk = onPad ? (2.2 + Math.random() * 6.5) : (1.4 + Math.random() * 3.4);
-        this._spawn({
-          x: ex + Math.cos(pa) * (0.2 + Math.random() * 0.7),
-          y: (onPad ? GROUND + Math.random() * 0.6 : exhaustBase - Math.random() * 1.4),
-          z: Math.sin(pa) * (0.2 + Math.random() * 0.7),
-          vx: Math.cos(pa) * pk,
-          vy: onPad ? (0.5 + Math.random() * 2.0) : (-2.0 - Math.random() * 3.5 - Math.abs(st.v || 0) * 0.04),
-          vz: Math.sin(pa) * pk,
-          max: 2.6 + Math.random() * 3.0
-        });
+        if (onPad) {
+          // low, wide, fast — slams the ground and billows horizontally into a
+          // spreading wall of smoke that grows over the pressure build
+          var pk = 4 + Math.random() * (7 + 9 * build);
+          this._spawn({
+            x: ex + Math.cos(pa) * (0.15 + Math.random() * 0.6),
+            y: GROUND + Math.random() * 0.5,
+            z: Math.sin(pa) * (0.15 + Math.random() * 0.6),
+            vx: Math.cos(pa) * pk,
+            vy: 0.1 + Math.random() * (0.7 + 0.8 * build),   // barely rises — it spreads
+            vz: Math.sin(pa) * pk,
+            max: 3.8 + Math.random() * 5.0       // lingers, piling up
+          });
+        } else {
+          var pk2 = 1.4 + Math.random() * 3.4;
+          this._spawn({
+            x: ex + Math.cos(pa) * (0.2 + Math.random() * 0.7),
+            y: exhaustBase - Math.random() * 1.4,
+            z: Math.sin(pa) * (0.2 + Math.random() * 0.7),
+            vx: Math.cos(pa) * pk2,
+            vy: -2.0 - Math.random() * 3.5 - Math.abs(st.v || 0) * 0.04,
+            vz: Math.sin(pa) * pk2,
+            max: 2.6 + Math.random() * 3.0
+          });
+        }
       }
-      this.material.size = onPad ? 5.5 : 3.6;
-      this.material.opacity = onPad ? 0.72 : 0.5;
-      this.material.color.setHex(0xe6e6ea);
+      this.material.size = onPad ? (5.5 + 3.5 * build) : 3.6;
+      this.material.opacity = onPad ? (0.5 + 0.32 * build) : 0.5;
+      this.material.color.setHex(0xececef);
     } else if (st.powered && st.wisp) {
       // a khom loy being held on the pad while the wax catches: no roaring
       // exhaust, just a slow thread of warm smoke rising off the flame
@@ -231,11 +253,22 @@
       var p = this._p[i];
       if (p.life <= 0) { pos[i * 3 + 1] = -99999; continue; }
       p.life -= dt;
-      p.vy += 2.4 * dt;                          // hot smoke lifts as it ages
-      var damp = 1 - Math.min(1, 1.6 * dt);
+      // low, ground-hugging smoke barely lifts (it rolls out as a carpet);
+      // once it has drifted clear and thinned it starts to rise like hot smoke
+      var lift = (p.y < 2.2) ? 0.55 : 2.4;
+      p.vy += lift * dt;
+      var damp = 1 - Math.min(1, 1.35 * dt);     // gentler damping = it rolls further
       p.vx *= damp; p.vz *= damp;
       p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
-      if (p.y < GROUND) { p.y = GROUND; p.vy *= -0.18; p.vx *= 0.7; p.vz *= 0.7; }
+      if (p.y < GROUND) {
+        // collide with the ground: kill the downward motion and convert it into
+        // an outward horizontal surge — the billow spreads instead of bouncing
+        p.y = GROUND;
+        p.vy = Math.abs(p.vy) * 0.08 + 0.15;
+        var hsp = Math.hypot(p.vx, p.vz);
+        var surge = 1 + 0.7 * Math.min(1, hsp / 6);   // faster hit → wider spread
+        p.vx *= surge; p.vz *= surge;
+      }
       pos[i * 3]     = p.x;
       pos[i * 3 + 1] = p.y;
       pos[i * 3 + 2] = p.z;

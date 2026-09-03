@@ -223,9 +223,54 @@
     return g;
   }
 
+  // ---------------------------------------------------------------------------
+  //  A beautiful daytime gradient sky — a large inward-facing sphere with a
+  //  vertical-gradient ShaderMaterial: a soft warm glow at the horizon melting
+  //  up into a deep azure zenith. No sun geometry — the light does that. It is
+  //  `fog:false` so the horizon line stays a clean gradient, and it renders
+  //  first with depthWrite off so everything sits in front of it.
+  //  @returns {THREE.Mesh|null}  centre it on the camera each frame for zero parallax
+  // ---------------------------------------------------------------------------
+  function makeGradientSky(opts) {
+    if (!THREE) return null;
+    opts = opts || {};
+    var top = new THREE.Color(opts.top != null ? opts.top : 0x2f6db0);
+    var horizon = new THREE.Color(opts.horizon != null ? opts.horizon : 0xdfe9e6);
+    var ground = new THREE.Color(opts.ground != null ? opts.ground : 0xb9c6c0);
+    var mat = new THREE.ShaderMaterial({
+      uniforms: {
+        uTop: { value: top },
+        uHorizon: { value: horizon },
+        uGround: { value: ground },
+        uExp: { value: opts.exponent != null ? opts.exponent : 0.55 }
+      },
+      vertexShader:
+        'varying vec3 vDir;' +
+        'void main(){ vDir = normalize(position); ' +
+        'gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+      fragmentShader:
+        'uniform vec3 uTop; uniform vec3 uHorizon; uniform vec3 uGround; uniform float uExp;' +
+        'varying vec3 vDir;' +
+        'void main(){' +
+        '  float h = vDir.y;' +
+        '  vec3 c;' +
+        '  if (h >= 0.0) { c = mix(uHorizon, uTop, pow(clamp(h,0.0,1.0), uExp)); }' +
+        '  else { c = mix(uHorizon, uGround, pow(clamp(-h,0.0,1.0), 0.5)); }' +
+        '  gl_FragColor = vec4(c, 1.0);' +
+        '}',
+      side: THREE.BackSide, depthWrite: false, depthTest: false, fog: false
+    });
+    var mesh = new THREE.Mesh(new THREE.SphereGeometry(opts.radius || 40000, 32, 24), mat);
+    mesh.renderOrder = -100;
+    mesh.frustumCulled = false;
+    mesh.userData.isGradientSky = true;
+    return mesh;
+  }
+
   global.RS = global.RS || {};
   global.RS.render = global.RS.render || {};
   global.RS.render.Scene = Scene;
   global.RS.render.makeLaunchRig = makeLaunchRig;
+  global.RS.render.makeGradientSky = makeGradientSky;
 
 })(typeof window !== 'undefined' ? window : this);

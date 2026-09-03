@@ -475,24 +475,17 @@
     this._planet = planet;
     this._atmo = atmo;
 
-    // ---- the DAYTIME SUN — a bright disc far along the key-light vector,
-    //  shown only for Era-1 (Bang Fai) daylight, off for night / space
-    var sun = new THREE.Mesh(
-      new THREE.SphereGeometry(1, 24, 16),
-      new THREE.MeshBasicMaterial({ color: 0xfff4d6, fog: false, toneMapped: false })
-    );
-    sun.scale.setScalar(3200);
-    sun.position.set(16000, 22000, 9000);
-    sun.visible = false;
-    var sunHalo = new THREE.Mesh(
-      new THREE.SphereGeometry(1, 24, 16),
-      new THREE.MeshBasicMaterial({ color: 0xffe6a8, transparent: true, opacity: 0.28,
-        fog: false, depthWrite: false })
-    );
-    sunHalo.scale.setScalar(2.2);
-    sun.add(sunHalo);
-    sc.add(sun);
-    this._sun = sun;
+    // ---- the DAYTIME GRADIENT SKY — a large inward sphere, warm horizon glow
+    //  melting up into a deep azure zenith. NO sun geometry — the directional
+    //  key light + hemisphere ambient carry "daytime". Hidden for night / dusk.
+    if (RS.render.makeGradientSky) {
+      this._skyDome = RS.render.makeGradientSky({
+        top: 0x2f6fb2, horizon: 0xe4ebe4, ground: 0x9fae9c,
+        exponent: 0.5, radius: RE * 3.5
+      });
+      this._skyDome.visible = false;
+      sc.add(this._skyDome);
+    }
 
     // ---- near-pad ground : soft radial-gradient disc (night only) ----
     var gtc = document.createElement('canvas');
@@ -515,17 +508,7 @@
     sc.add(nearGround);
     this._nearGround = nearGround;
 
-    // ---- near-pad ground that RECEIVES the sharp daytime shadow ------
-    var dayGround = new THREE.Mesh(
-      new THREE.CircleGeometry(900, 48),
-      new THREE.MeshStandardMaterial({ color: 0x5f7245, roughness: 1, metalness: 0 })
-    );
-    dayGround.rotation.x = -Math.PI / 2;
-    dayGround.position.y = 0.012;
-    dayGround.receiveShadow = true;
-    dayGround.visible = false;
-    sc.add(dayGround);
-    this._dayGround = dayGround;
+    // (the lush daytime ground disc + grass live in FestivalEnv's dayGroup)
 
     // ---- near-pad detail (only visible when zoomed right in) --------
     var grid = new THREE.GridHelper(2400, 96, 0x356b41, 0x1d3a27);
@@ -575,35 +558,40 @@
     var S = this.scene; if (!S || !S.available) return;
     var L = S.lights, R = S.renderer;
 
-    if (R) R.setClearColor(day ? 0x8fc4e8 : 0x05080f, 1);
+    if (R) R.setClearColor(day ? 0xdfe9e4 : 0x05080f, 1);
     if (this._stars) this._stars.visible = !day;
+    if (this._skyDome) this._skyDome.visible = day;
 
     if (L) {
-      L.hemi.intensity = day ? 0.95 : night ? 0.38 : 0.95;
-      if (L.hemi.color && L.hemi.color.setHex) L.hemi.color.setHex(day ? 0xbfdcff : 0xbfd4ff);
+      // a clear Isan afternoon — bright but not blown out; the key still bites
+      // hard enough for crisp shadows
+      L.hemi.intensity = day ? 0.72 : night ? 0.38 : 0.95;
+      if (L.hemi.color && L.hemi.color.setHex) L.hemi.color.setHex(day ? 0xbcd6f2 : 0xbfd4ff);
       if (L.hemi.groundColor && L.hemi.groundColor.setHex)
-        L.hemi.groundColor.setHex(day ? 0x7a8a63 : 0x25324a);
-      L.key.intensity = day ? 1.95 : night ? 0.35 : 1.05;
-      if (L.key.color && L.key.color.setHex) L.key.color.setHex(day ? 0xfff4e0 : 0xfff2dd);
-      L.rim.intensity = day ? 0.55 : night ? 0.5 : 0.35;
+        L.hemi.groundColor.setHex(day ? 0x46512f : 0x25324a);
+      L.key.intensity = day ? 1.55 : night ? 0.35 : 1.05;
+      if (L.key.color && L.key.color.setHex) L.key.color.setHex(day ? 0xfff4df : 0xfff2dd);
+      L.rim.intensity = day ? 0.42 : night ? 0.5 : 0.35;
       if (L.rim.color && L.rim.color.setHex)
-        L.rim.color.setHex(night ? 0x3355aa : (day ? 0x9ec9ff : 0x88aaff));
+        L.rim.color.setHex(night ? 0x3355aa : (day ? 0xaecbe8 : 0x88aaff));
     }
     if (this._planet && this._planet.material)
-      this._planet.material.color.setHex(day ? 0x4c7a3c : night ? 0x0d1119 : 0x1f5133);
+      this._planet.material.color.setHex(day ? 0x496f36 : night ? 0x0d1119 : 0x1f5133);
     if (this._atmo && this._atmo.material) {
-      this._atmo.material.opacity = day ? 0.42 : night ? 0.05 : 0.10;
+      this._atmo.material.opacity = day ? 0.0 : night ? 0.05 : 0.10;   // the sky dome does it now
       this._atmo.material.color.setHex(day ? 0x8fc4e8 : night ? 0x2a4a80 : 0x5aa9ff);
     }
+    // no grid in daylight — the lush grass IS the ground
     if (this._padGrid && this._padGrid.material)
-      this._padGrid.material.opacity = night ? 0.10 : day ? 0.18 : 0.42;
+      this._padGrid.material.opacity = night ? 0.10 : day ? 0.0 : 0.42;
+    if (this._padGrid) this._padGrid.visible = !day;
     if (this._nearGround) this._nearGround.visible = night;
-    if (this._dayGround) this._dayGround.visible = day;
-    if (this._sun) this._sun.visible = day;
-    if (this._festival) this._festival.setVisible(night);
+    if (this._festival) this._festival.setMode(day ? 'day' : (night ? 'night' : 'off'));
     if (S.fog) {
-      S.fog.density = day ? 0.00019 : night ? 0.0016 : 0.0011;
-      S.fog.color.setHex(day ? 0xa9cfe6 : night ? 0x080a12 : 0x060912);
+      // a soft warm haze that melts the far grassland + treeline into the
+      // horizon glow; the camera hugs the rocket so it stays crisp
+      S.fog.density = day ? 0.0012 : night ? 0.0016 : 0.0011;
+      S.fog.color.setHex(day ? 0xd7e4d6 : night ? 0x080a12 : 0x060912);
     }
 
     // crisp daytime shadows — the plume + rocket cast onto the day ground
@@ -654,17 +642,28 @@
   };
 
   // ======================================================================
-  //  THE RELEASE — manual two-step ignition (Era 0 / khom loy)
+  //  THE RELEASE — manual two-step ignition
+  //    · Era 0 (khom loy)  : light the wick → heat builds → let go the string
+  //    · Era 1 (Bang Fai)  : จุดชนวน → ~5 s packed-bore pressure build (a wall
+  //      of ground smoke) → ปล่อยบั้งไฟ; it creeps off the rail, then roars up
   // ======================================================================
   FlightScreen.prototype._onIgnite = function () {
+    var bf = this._bangfai;
     if (this._gate === 'prelaunch') {
       this._gate = 'igniting';
       this._ignT = 0;
       this.btnIgnite.disabled = true;
       this.btnIgnite.classList.remove('ready');
-      this.btnIgnite.textContent = 'กำลังจุดไฟ…';
-      this._phaseText = 'จุดไฟ — ประคองโคมไว้';
-      this._showToast('จุดไฟ · ประคองโคมไว้จนอิ่มไอร้อน');
+      this.btnIgnite.textContent = bf ? 'กำลังอัดแรงดัน…' : 'กำลังจุดไฟ…';
+      this._phaseText = bf ? 'จุดชนวนแล้ว — แรงดันกำลังก่อตัวในลำ' : 'จุดไฟ — ประคองโคมไว้';
+      this._showToast(bf ? 'จุดชนวน · ดินขับกำลังอัดแรงดัน ควันท่วมฐาน'
+                         : 'จุดไฟ · ประคองโคมไว้จนอิ่มไอร้อน');
+      // the หมื่อ catches — a long, building rocket rumble under everything
+      if (bf && this._sound) {
+        var prm = this._focusedRec();
+        var v = this._sound.play('ignite', { volume: 0.6, rate: 0.96 });
+        if (prm) { prm._igniteVoice = v; prm._igniteSfx = true; }
+      }
     } else if (this._gate === 'held') {
       this._gate = null;
       this.btnIgnite.hidden = true;
@@ -673,10 +672,23 @@
       this.flight.seek(this._liftoffTime || 0);
       this._masterT = this._liftoffTime || 0;
       this._camTX = this._camTY = null;
-      this._phaseText = 'ปล่อยโคม';
-      this._lastHaikuT = this.flight.time;
-      this._showToast('ปล่อยโคม · โคมลอยขึ้นสู่ราตรี');
-      this._showHaiku(HAIKU.release, 5200);
+      if (bf) {
+        this._camIdx = CAM_MODES.indexOf('chase');   // follow it up the sky
+        this.btnCam.textContent = CAM_LABEL.chase;
+        this._phaseText = 'ปล่อยบั้งไฟ!';
+        this._showToast('ปล่อยบั้งไฟ! — คลายรางแล้ว บั้งไฟค่อย ๆ พ้นราง');
+        // the whoosh off the rail (the LIFTOFF event is seeked past on release)
+        if (this._sound) {
+          this._sound.play('liftoff', { volume: 0.75, rate: 0.97 });
+          var pr0 = this._focusedRec();
+          if (pr0 && pr0._igniteVoice) this._sound.fade(pr0._igniteVoice, 0.22, 800);
+        }
+      } else {
+        this._phaseText = 'ปล่อยโคม';
+        this._lastHaikuT = this.flight.time;
+        this._showToast('ปล่อยโคม · โคมลอยขึ้นสู่ราตรี');
+        this._showHaiku(HAIKU.release, 5200);
+      }
       this._revealChrome();
       this._last = perfNow();
       this.play();
@@ -684,17 +696,22 @@
   };
 
   FlightScreen.prototype._enterHeld = function () {
+    var bf = this._bangfai;
     this._gate = 'held';
     this.btnIgnite.disabled = false;
     this.btnIgnite.classList.add('ready');
-    this.btnIgnite.textContent = 'ปล่อยโคม';
-    this._phaseText = 'ไอร้อนเต็มลูก — พร้อมปล่อย';
-    this._showToast('ไอร้อนเต็มลูกแล้ว — แตะเพื่อปล่อยโคม');
+    this.btnIgnite.textContent = bf ? 'ปล่อยบั้งไฟ' : 'ปล่อยโคม';
+    this._phaseText = bf ? 'แรงดันเต็มลำ — พร้อมปล่อย' : 'ไอร้อนเต็มลูก — พร้อมปล่อย';
+    this._showToast(bf ? 'แรงดันเต็มลำแล้ว — แตะเพื่อคลายรางปล่อยบั้งไฟ'
+                       : 'ไอร้อนเต็มลูกแล้ว — แตะเพื่อปล่อยโคม');
   };
 
   FlightScreen.prototype._gateFrame = function (dt) {
+    var bf = this._bangfai;
     var lt = this._liftoffTime || 0;
-    if (this._gate === 'prelaunch') this._phaseText = 'ประคองโคมไว้ · รอจุดไฟ';
+    if (this._gate === 'prelaunch') {
+      this._phaseText = bf ? 'จ่อชนวน — รอจุด' : 'ประคองโคมไว้ · รอจุดไฟ';
+    }
     if (this._gate === 'igniting') {
       var rate = this._igniteDur > 0 ? lt / this._igniteDur : lt;
       this._ignT += dt * rate;
@@ -703,21 +720,39 @@
     }
     var st = this.flight.sampleAt(this.flight.time) || this.flight.sampleAt(0);
 
+    // 0 → 1 pressure / heat build factor over the ignition hold
     var s = (this._gate === 'prelaunch') ? 0
       : (this._gate === 'igniting') ? clamp(this._ignT / Math.max(lt, 1e-6), 0, 1)
       : 1;
+
+    // khom-loy flame build (no-op for a Bang Fai — it has no flicker meshes)
     if (RS.render.VehicleRenderer && this.vehicleGroup) {
       RS.render.VehicleRenderer.flicker(this.vehicleGroup, s > 0.02, false, s);
     }
-    if (this._glow) this._glow.intensity = s * (1.6 + Math.random() * 0.8);
+    if (this._glow) {
+      this._glow.intensity = bf
+        ? s * (2.4 + Math.random() * 1.8)      // the bore mouth glows hotter as it packs
+        : s * (1.6 + Math.random() * 0.8);
+    }
 
     if (this._exhaust) {
-      this._exhaust.update(this._gate === 'prelaunch' ? 0 : dt, {
-        x: 0, y: 0, v: 0,
-        powered: this._gate !== 'prelaunch',
-        wisp: true, buoyant: true, padLocked: true,
-        exhaustY: this._exhaustY
-      });
+      if (bf) {
+        // a WALL of ground smoke that grows over the 5 s pressure build
+        this._exhaust.update(this._gate === 'prelaunch' ? 0 : dt, {
+          x: 0, y: 0, v: 0,
+          powered: this._gate !== 'prelaunch',
+          padLocked: true, bigPlume: true, buoyant: false,
+          buildFactor: s,
+          exhaustY: this._exhaustY
+        });
+      } else {
+        this._exhaust.update(this._gate === 'prelaunch' ? 0 : dt, {
+          x: 0, y: 0, v: 0,
+          powered: this._gate !== 'prelaunch',
+          wisp: true, buoyant: true, padLocked: true,
+          exhaustY: this._exhaustY
+        });
+      }
     }
 
     if (this._festival) {
@@ -829,7 +864,9 @@
         this._launchRig = RS.render.makeLaunchRig(la);
         this._rigAngle = la;
         if (this._launchRig) {
-          this._launchRig.traverse(function (m) { if (m.isMesh) m.receiveShadow = true; });
+          this._launchRig.traverse(function (m) {
+            if (m.isMesh) { m.receiveShadow = true; m.castShadow = true; }
+          });
           this.scene.add(this._launchRig);
         }
       }
@@ -869,19 +906,26 @@
     var holdT = (simResult.summary && simResult.summary.holdTime != null)
       ? simResult.summary.holdTime
       : ((simResult.events || []).filter(function (e) { return e.type === 'LIFTOFF'; })[0] || {}).time;
-    var canGate = !!(opts.cinematic && this.btnIgnite && buoy && holdT != null && holdT > 0.05);
+    // both a khom loy AND a Bang Fai get the manual two-step ignition gate
+    var canGate = !!(opts.cinematic && this.btnIgnite && (buoy || this._bangfai) &&
+      holdT != null && holdT > 0.02);
 
     if (canGate) {
       this._gate = 'prelaunch';
       this._liftoffTime = holdT;
-      this._igniteDur = clamp(holdT * 1.7, 5, 11);
+      // the Bang Fai needs a FULL ~5 s of packed-bore pressure build (huge
+      // smoke) before it will creep off the rail
+      this._igniteDur = this._bangfai ? 5.2 : clamp(holdT * 1.7, 5, 11);
       this._ignT = 0;
       this.flight.seek(0);
       this.btnIgnite.hidden = false;
       this.btnIgnite.disabled = false;
       this.btnIgnite.classList.remove('ready');
-      this.btnIgnite.textContent = '🔥 จุดไฟ';
-      this._phaseText = 'ประคองโคมไว้ — รอจุดไฟ';
+      this.btnIgnite.textContent = this._bangfai ? '🔥 จุดชนวน' : '🔥 จุดไฟ';
+      this._phaseText = this._bangfai
+        ? 'จ่อชนวนที่ก้นบั้งไฟ — พร้อมจุด' : 'ประคองโคมไว้ — รอจุดไฟ';
+      // watch the rail + the billowing ground smoke from a planted low angle
+      if (this._bangfai) this._camIdx = CAM_MODES.indexOf('observer');
     } else {
       this._gate = null;
       if (this.btnIgnite) {
@@ -1130,7 +1174,11 @@
     var mode = CAM_MODES[this._camIdx];
     var RE = this._RE || 600000;
 
-    var wantFog = this.scene.fog && mode !== 'map' && alt < 60000;
+    // fog hugs the near-pad views; drop it for the orbital map, up in vacuum,
+    // and once a planted observer cam is far enough from a high rocket that the
+    // haze would swallow it
+    var wantFog = this.scene.fog && mode !== 'map' && alt < 60000 &&
+      !(mode === 'observer' && alt > 260);
     this.scene.scene.fog = wantFog ? this.scene.fog : null;
 
     var wantFov = (mode === 'observer') ? clamp(55 * this._zoom, 15, 75) : 50;

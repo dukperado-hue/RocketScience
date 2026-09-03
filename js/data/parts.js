@@ -170,7 +170,7 @@
       category: C.PROPULSION,
       icon: '🧨',
       era: '1-bangfai',
-      blurb: 'ดินปืนตำอัดแน่นในกระบอก เจาะรูแกน จุดแล้วอัดแรงดัน ~1.8 วิ ค่อยพุ่ง แรงพีคสูง แล้วค่อย ๆ อ่อนลงตอนท้าย — เผาสกปรก ควันมหาศาล',
+      blurb: 'ดินปืนตำอัดแน่นในกระบอก เจาะรูแกน จุดชนวนแล้วอัดแรงดันในลำ ~5 วิ (ควันมหาศาลกองพื้น) ค่อย ๆ พ้นราง แล้วเร่งพุ่งแรงขึ้นเรื่อย ๆ จนสูงเป็นพันฟุต แล้วค่อยอ่อนลงตอนท้าย — เผาสกปรก',
       mass: 0.55,
       cost: 42,
       size: { w: 1, h: 3 },
@@ -178,13 +178,16 @@
       structural: { maxDynamicPressure: 8500 },
       propulsion: {
         mode: 'rocket',
-        thrust: 190,            // N peak
-        burnTime: 5.6,          // s
-        specificImpulse: 72,    // s — hand-rammed compressed black powder, dirty
-        propellantMass: 0.95,   // kg of grain
-        spoolTime: 1.8,         // s — pressure builds in the packed bore; it sits
-                               //     on the rail smoking until thrust beats weight
-        taperTime: 2.2          // s — the bore widens as it burns: a long, slow
+        thrust: 275,            // N peak
+        burnTime: 9.0,          // s — a long, hard burn that climbs for thousands of ft
+        specificImpulse: 76,    // s — hand-rammed compressed black powder, dirty
+        propellantMass: 2.1,    // kg of grain
+        spoolTime: 5.0,         // s — the packed bore takes a full 5 s to build
+                               //     pressure: it sits on the rail wreathed in
+                               //     smoke, THEN slowly climbs off as thrust
+                               //     finally beats weight, accelerating hard as
+                               //     the ramp completes
+        taperTime: 3.0         // s — the bore widens as it burns: a long, slow
                                //     regressive tail from peak thrust down to 0
       },
       attachNodes: [

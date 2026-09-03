@@ -30,9 +30,12 @@
   function FestivalEnv(scene) {
     this.available = !!THREE && !!scene && !!scene.scene;
     this.scene = scene;                 // an RS.render.Scene
-    this.group = null;                  // ground content + oil-lamp lights (vis-toggled)
+    this.group = null;                  // NIGHT ground content + oil-lamp lights
+    this.dayGroup = null;               // DAYTIME lush grassland (Phase 11.6)
     this.sky = null;                    // InstancedMesh — sky lanterns
     this.skyGlow = null;                // InstancedMesh — additive haloes
+    this._mode = 'off';                 // 'off' | 'night' | 'day'
+    this._dayBlades = null; this._dayBladeData = [];
     this._t = 0;
     this._frame = 0;
 
@@ -89,6 +92,223 @@
 
     this._buildSky(this.scene.scene);
     this._buildComet(this.scene.scene);
+
+    // ---- DAYTIME lush grassland (Phase 11.6) — a separate group, same
+    //  InstancedMesh foliage tech, tuned for a bright Isan festival afternoon
+    var d = new THREE.Group();
+    d.visible = false;
+    this.dayGroup = d;
+    this._buildDayGround(d);
+    this._buildDayGrass(d);
+    this._buildDayFlora(d);
+    this.scene.scene.add(d);
+  };
+
+  // ===========================================================================
+  //  DAYTIME GRASSLAND
+  // ===========================================================================
+
+  // a big soft green ground disc — catches the daytime key light + shadows,
+  // a warm scorched ring right under the scaffold, lush green outward
+  FestivalEnv.prototype._buildDayGround = function (parent) {
+    var c = document.createElement('canvas');
+    c.width = c.height = 512;
+    var x = c.getContext('2d');
+    // lush green everywhere; a small dark scorch disc right under the scaffold;
+    // a subtle mottle so it isn't a flat billiard table
+    x.fillStyle = '#3c6a2e'; x.fillRect(0, 0, 512, 512);
+    // a soft green mottle so the field isn't a flat billiard table — NO scorch
+    // ring here (it would smear across ~130 m of the disc); the scaffold carries
+    // its own small scorch patch
+    for (var m = 0; m < 1400; m++) {
+      var lgt = Math.random();
+      var r = lgt < 0.5 ? (30 + (Math.random() * 30 | 0)) : (70 + (Math.random() * 45 | 0));
+      var gn = lgt < 0.5 ? (58 + (Math.random() * 34 | 0)) : (96 + (Math.random() * 45 | 0));
+      var bl = lgt < 0.5 ? (24 + (Math.random() * 22 | 0)) : (44 + (Math.random() * 30 | 0));
+      x.fillStyle = 'rgba(' + r + ',' + gn + ',' + bl + ',0.3)';
+      x.beginPath();
+      x.arc(Math.random() * 512, Math.random() * 512, 4 + Math.random() * 30, 0, 7);
+      x.fill();
+    }
+    var tex = new THREE.CanvasTexture(c);
+    var disc = new THREE.Mesh(
+      new THREE.CircleGeometry(1600, 72),
+      new THREE.MeshLambertMaterial({ map: tex, color: 0xffffff })
+    );
+    disc.rotation.x = -Math.PI / 2;
+    disc.position.y = 0.006;
+    disc.receiveShadow = true;
+    parent.add(disc);
+    this._dayDisc = disc;
+
+    // a small scorched patch right under the scaffold foot
+    var scorch = new THREE.Mesh(
+      new THREE.CircleGeometry(3.4, 20),
+      new THREE.MeshLambertMaterial({ color: 0x2a2016 })
+    );
+    scorch.rotation.x = -Math.PI / 2;
+    scorch.position.y = 0.014;
+    parent.add(scorch);
+  };
+
+  // reuse the night-grass InstancedMesh approach — vivid green, denser, taller,
+  // per-instance hue variation, gentle daytime breeze
+  FestivalEnv.prototype._buildDayGrass = function (parent) {
+    // two InstancedMeshes: a DENSE near carpet (small blades, animated) and a
+    // sparser far scatter of bigger clumps for silhouette against the sky
+    var mk = function (geoW, geoH) {
+      var b = new THREE.PlaneGeometry(geoW, geoH, 1, 2);
+      var pp = b.attributes.position;
+      for (var i = 0; i < pp.count; i++) {
+        if (pp.getY(i) > geoH * 0.25) pp.setX(i, pp.getX(i) * 0.15);
+      }
+      b.translate(0, geoH / 2, 0);
+      return b;
+    };
+
+    var N = 5000;
+    var mat = new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+    var mesh = new THREE.InstancedMesh(mk(0.08, 0.36), mat, N);
+    mesh.receiveShadow = true;
+
+    var m4 = new THREE.Matrix4(), q = new THREE.Quaternion(),
+        e = new THREE.Euler(), s = new THREE.Vector3(), p = new THREE.Vector3(),
+        col = new THREE.Color();
+    for (var k = 0; k < N; k++) {
+      var ang = Math.random() * Math.PI * 2;
+      // heavily weighted toward the camera (area-uniform would leave the
+      // foreground bare); out to ~70 m
+      var radr = Math.pow(Math.random(), 1.7) * 68 + 1.4;
+      if (radr < 2.6) radr = 2.6 + Math.random() * 2.4;      // clear the scaffold foot
+      p.set(Math.cos(ang) * radr, 0, Math.sin(ang) * radr);
+      var yaw = Math.random() * Math.PI * 2;
+      var lean = rand(-0.16, 0.16);
+      var sc = rand(0.6, 1.35);
+      e.set(0, yaw, lean); q.setFromEuler(e); s.set(rand(0.85, 1.3), sc, 1);
+      m4.compose(p, q, s); mesh.setMatrixAt(k, m4);
+      // vivid varied greens — mostly true green, a few sunlit yellow-green tips
+      col.setHSL(0.27 + Math.random() * 0.07, 0.5 + Math.random() * 0.28,
+        0.26 + Math.random() * 0.16);
+      mesh.setColorAt(k, col);
+      this._dayBladeData.push({
+        p: p.clone(), yaw: yaw, lean: lean, s: sc,
+        ph: Math.random() * 6.283, amp: rand(0.05, 0.16)
+      });
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    this._dayBlades = mesh;
+    parent.add(mesh);
+
+    // far static clumps — bigger, darker, just for a textured horizon
+    var FN = 1400;
+    var far = new THREE.InstancedMesh(mk(0.16, 0.8),
+      new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide }), FN);
+    for (var j = 0; j < FN; j++) {
+      var fa = Math.random() * Math.PI * 2;
+      var fr = 55 + Math.sqrt(Math.random()) * 240;
+      p.set(Math.cos(fa) * fr, 0, Math.sin(fa) * fr);
+      e.set(0, Math.random() * 6.283, rand(-0.12, 0.12)); q.setFromEuler(e);
+      var fs2 = rand(0.8, 1.8);
+      s.set(rand(1, 2.2), fs2, 1);
+      m4.compose(p, q, s); far.setMatrixAt(j, m4);
+      col.setHSL(0.25 + Math.random() * 0.06, 0.42 + Math.random() * 0.2,
+        0.24 + Math.random() * 0.12);
+      far.setColorAt(j, col);
+    }
+    far.instanceMatrix.needsUpdate = true;
+    if (far.instanceColor) far.instanceColor.needsUpdate = true;
+    parent.add(far);
+  };
+
+  // low-poly foreground: a few leafy trees at the field edge for horizon depth,
+  // scattered wildflowers, a couple of mossy rocks by the scaffold
+  FestivalEnv.prototype._buildDayFlora = function (parent) {
+    // --- distant treeline (a broken ring, breaks the flat horizon) ---
+    var trunkMat = new THREE.MeshLambertMaterial({ color: 0x4a3826, flatShading: true });
+    var canopyMats = [
+      new THREE.MeshLambertMaterial({ color: 0x3f7a34, flatShading: true }),
+      new THREE.MeshLambertMaterial({ color: 0x336b2c, flatShading: true }),
+      new THREE.MeshLambertMaterial({ color: 0x579a3e, flatShading: true })
+    ];
+    var canopyGeo = new THREE.IcosahedronGeometry(1, 0);
+    var trunkGeo = new THREE.CylinderGeometry(0.18, 0.4, 5.4, 6);
+    for (var i = 0; i < 16; i++) {
+      var a = (i / 16) * Math.PI * 2 + rand(-0.18, 0.18);
+      var r = rand(150, 320);
+      var t = new THREE.Group();
+      var trunk = new THREE.Mesh(trunkGeo, trunkMat);
+      trunk.position.y = 2.7;
+      t.add(trunk);
+      var blobs = 2 + (Math.random() * 3 | 0);
+      for (var b = 0; b < blobs; b++) {
+        var cm = canopyMats[(Math.random() * canopyMats.length) | 0];
+        var blob = new THREE.Mesh(canopyGeo, cm);
+        var rad = rand(2.2, 4.2);
+        blob.scale.set(rad, rad * rand(0.8, 1.1), rad);
+        blob.position.set(rand(-1.8, 1.8), rand(5, 8), rand(-1.8, 1.8));
+        t.add(blob);
+      }
+      var sc = rand(1.0, 1.9);
+      t.scale.setScalar(sc);
+      t.position.set(Math.cos(a) * r, 0, Math.sin(a) * r);
+      t.rotation.y = Math.random() * Math.PI;
+      parent.add(t);
+    }
+
+    // --- wildflowers — tiny bright dots low in the near grass ---
+    var N = 55;
+    var petal = new THREE.PlaneGeometry(0.075, 0.075);
+    var fmesh = new THREE.InstancedMesh(
+      petal, new THREE.MeshLambertMaterial({ color: 0xffffff, side: THREE.DoubleSide }), N);
+    var cols = [0xffe14d, 0xff9ec0, 0xfff4e0, 0xffb347];
+    var m4 = new THREE.Matrix4(), q = new THREE.Quaternion(),
+        e = new THREE.Euler(), s = new THREE.Vector3(), p = new THREE.Vector3(),
+        col = new THREE.Color();
+    for (var f = 0; f < N; f++) {
+      var ang = Math.random() * Math.PI * 2;
+      var radr = Math.pow(Math.random(), 1.4) * 40 + 3;
+      p.set(Math.cos(ang) * radr, rand(0.1, 0.24), Math.sin(ang) * radr);
+      e.set(-Math.PI / 2 + rand(-0.3, 0.3), Math.random() * 6.283, 0);
+      q.setFromEuler(e);
+      var sc2 = rand(0.7, 1.4);
+      s.set(sc2, sc2, sc2);
+      m4.compose(p, q, s); fmesh.setMatrixAt(f, m4);
+      col.setHex(cols[(Math.random() * cols.length) | 0]);
+      fmesh.setColorAt(f, col);
+    }
+    fmesh.instanceMatrix.needsUpdate = true;
+    if (fmesh.instanceColor) fmesh.instanceColor.needsUpdate = true;
+    parent.add(fmesh);
+
+    // --- a couple of mossy rocks anchoring the scaffold ---
+    var rockGeo = new THREE.IcosahedronGeometry(1, 0);
+    var rockMat = new THREE.MeshLambertMaterial({ color: 0x6a6f58, flatShading: true });
+    var specs = [[4.4, -3.6, 1.1], [-5.2, 3.0, 0.8], [3.0, 5.6, 0.6], [-6.8, -4.4, 1.35]];
+    for (var s2 = 0; s2 < specs.length; s2++) {
+      var rr = specs[s2][2];
+      var m = new THREE.Mesh(rockGeo, rockMat);
+      m.scale.set(rr * rand(0.9, 1.4), rr * rand(0.55, 0.85), rr * rand(0.9, 1.4));
+      m.rotation.set(Math.random() * 3, Math.random() * 3, Math.random() * 3);
+      m.position.set(specs[s2][0], rr * 0.28, specs[s2][1]);
+      m.receiveShadow = true;
+      parent.add(m);
+    }
+  };
+
+  FestivalEnv.prototype._animDayGrass = function () {
+    var mesh = this._dayBlades; if (!mesh) return;
+    var w = this._t, m4 = this._m4, q = this._q, e = this._e, s = this._s;
+    for (var i = 0; i < this._dayBladeData.length; i++) {
+      var b = this._dayBladeData[i];
+      // a livelier daytime breeze — a travelling gust across the field
+      var gust = Math.sin(w * 0.6 - b.p.x * 0.03 + b.ph) * 0.5 + 0.5;
+      var sway = (Math.sin(w * 1.7 + b.ph) * b.amp +
+                  Math.sin(w * 0.7 + b.ph * 1.7) * b.amp * 0.6) * (0.5 + gust);
+      e.set(0, b.yaw, b.lean + sway); q.setFromEuler(e); s.set(1, b.s, 1);
+      m4.compose(b.p, q, s); mesh.setMatrixAt(i, m4);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
   };
 
   // --- THE RARE COMET — bright head + additive fading tail --------------
@@ -538,19 +758,21 @@
   };
 
   // ---------------------------------------------------------------------------
-  //  VISIBILITY  (night only)
+  //  MODE  —  'off' | 'night' (Rapunzel sky) | 'day' (lush grassland)
   // ---------------------------------------------------------------------------
-  FestivalEnv.prototype.setVisible = function (on) {
-    if (!this.group) return;
-    on = !!on;
-    this.group.visible = on;
-    if (this.sky) this.sky.visible = on;
-    if (this.skyGlow) this.skyGlow.visible = on;
-    if (this._cometHead && !on) {
+  FestivalEnv.prototype.setMode = function (mode) {
+    if (mode !== 'night' && mode !== 'day') mode = 'off';
+    this._mode = mode;
+    var night = mode === 'night';
+
+    if (this.group) this.group.visible = night;
+    if (this.sky) this.sky.visible = night;
+    if (this.skyGlow) this.skyGlow.visible = night;
+    if (this._cometHead && !night) {
       this._cometHead.visible = false; this._cometTrail.visible = false;
       if (this._cometHalo) this._cometHalo.visible = false;
     }
-    if (!on) {
+    if (!night) {
       for (var i = 0; i < this._candles.length; i++) this._candles[i].light.intensity = 0;
       for (var j = 0; j < this._companions.length; j++) {
         var c = this._companions[j];
@@ -558,16 +780,26 @@
       }
       if (this._comet) this._comet.active = false;
     }
+
+    if (this.dayGroup) this.dayGroup.visible = (mode === 'day');
   };
+
+  // legacy shim
+  FestivalEnv.prototype.setVisible = function (on) { this.setMode(on ? 'night' : 'off'); };
 
   // ---------------------------------------------------------------------------
   //  ANIMATE  — call every rendered frame while visible
   // ---------------------------------------------------------------------------
   FestivalEnv.prototype.update = function (dt, player) {
-    if (!this.available || !this.group || !this.group.visible) return;
+    if (!this.available || this._mode === 'off') return;
     dt = Math.min(Math.max(dt || 0.016, 0), 0.05);
     this._t += dt;
     this._frame++;
+
+    if (this._mode === 'day') {
+      this._animDayGrass();
+      return;
+    }
 
     this._animGrass();
     this._animFireflies();
