@@ -50,6 +50,13 @@
     this._compVec = null;
     this.onEncounter = null;
 
+    // ---- THE RARE COMET — a reward for looking up -------------------------
+    this._cometHead = null;
+    this._cometTrail = null;
+    this._cometHist = [];
+    this._comet = null;
+    this._cometTimer = 0;
+
     if (this.available) {
       this._m4 = new THREE.Matrix4();
       this._q  = new THREE.Quaternion();
@@ -81,6 +88,60 @@
     this.scene.scene.add(g);
 
     this._buildSky(this.scene.scene);
+    this._buildComet(this.scene.scene);
+  };
+
+  // --- THE RARE COMET — bright head + additive fading tail --------------
+  FestivalEnv.prototype._buildComet = function (sc) {
+    // WebGL lines are always 1 px, which vanishes against the lantern field —
+    // so the tail is a dense string of additive POINTS whose size + colour
+    // taper to the tail. Reads as a proper glowing streak.
+    var N = 46;
+    var tp = new Float32Array(N * 3);
+    var tc = new Float32Array(N * 3);
+    for (var i = 0; i < N; i++) {
+      var f = i / (N - 1);                       // 0 = tail, 1 = head
+      var e = f * f;                             // ease so the glow hugs the head
+      // additive: near-black at the tail → bright blue-white at the head
+      tc[i * 3] = e * 1.35; tc[i * 3 + 1] = e * 1.45 + 0.04; tc[i * 3 + 2] = e * 1.6 + 0.08;
+    }
+    var tg = new THREE.BufferGeometry();
+    tg.setAttribute('position', new THREE.BufferAttribute(tp, 3));
+    tg.setAttribute('color', new THREE.BufferAttribute(tc, 3));
+    var trail = new THREE.Points(tg, new THREE.PointsMaterial({
+      vertexColors: true, size: 4, sizeAttenuation: false,
+      transparent: true, opacity: 0, blending: THREE.AdditiveBlending,
+      depthWrite: false, fog: false
+    }));
+    trail.frustumCulled = false; trail.renderOrder = -1;
+
+    // the head: a crisp bright point plus a soft halo behind it
+    var hg = new THREE.BufferGeometry();
+    hg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(3), 3));
+    var head = new THREE.Points(hg, new THREE.PointsMaterial({
+      color: 0xf4f9ff, size: 10, sizeAttenuation: false,
+      transparent: true, opacity: 0, blending: THREE.AdditiveBlending,
+      depthWrite: false, fog: false
+    }));
+    head.frustumCulled = false; head.renderOrder = -1;
+    var halo = new THREE.Points(hg, new THREE.PointsMaterial({
+      color: 0x9fc6ff, size: 30, sizeAttenuation: false,
+      transparent: true, opacity: 0, blending: THREE.AdditiveBlending,
+      depthWrite: false, fog: false
+    }));
+    halo.frustumCulled = false; halo.renderOrder = -1;
+
+    sc.add(trail); sc.add(halo); sc.add(head);
+    this._cometTrail = trail;
+    this._cometHead = head;
+    this._cometHalo = halo;
+    this._cometHist = [];
+    for (var k = 0; k < N; k++) this._cometHist.push(new THREE.Vector3());
+    this._comet = {
+      active: false, age: 0, life: 0,
+      pos: new THREE.Vector3(), vel: new THREE.Vector3()
+    };
+    this._cometTimer = rand(25, 60);             // first one within the first minute
   };
 
   // --- INTIMATE COMPANIONS — a small pool of hero khom loys ---------------
@@ -152,6 +213,14 @@
       c.group.visible = false; c.light.intensity = 0;
     }
     this._compTimer = rand(5, 9);   // first encounter comes fairly soon
+    if (this._comet) {
+      this._comet.active = false;
+      if (this._cometHead) {
+        this._cometHead.visible = false; this._cometTrail.visible = false;
+        if (this._cometHalo) this._cometHalo.visible = false;
+      }
+      this._cometTimer = rand(20, 55);   // a shooting star sometime in the first minute
+    }
   };
 
   FestivalEnv.prototype._spawnCompanion = function (px, py, pz) {
@@ -477,12 +546,17 @@
     this.group.visible = on;
     if (this.sky) this.sky.visible = on;
     if (this.skyGlow) this.skyGlow.visible = on;
+    if (this._cometHead && !on) {
+      this._cometHead.visible = false; this._cometTrail.visible = false;
+      if (this._cometHalo) this._cometHalo.visible = false;
+    }
     if (!on) {
       for (var i = 0; i < this._candles.length; i++) this._candles[i].light.intensity = 0;
       for (var j = 0; j < this._companions.length; j++) {
         var c = this._companions[j];
         c.active = false; c.group.visible = false; c.light.intensity = 0;
       }
+      if (this._comet) this._comet.active = false;
     }
   };
 
@@ -500,6 +574,67 @@
     this._animLamps();
     this._animSky(dt);
     this._animCompanions(dt, player);
+    this._animComet(dt);
+  };
+
+  FestivalEnv.prototype._animComet = function (dt) {
+    var c = this._comet;
+    if (!c || !this._cometHead) return;
+
+    if (!c.active) {
+      this._cometTimer -= dt;
+      if (this._cometTimer > 0) return;
+      this._cometTimer = rand(60, 120);          // once every 1–2 min of flight
+      // start high on the sky dome, well beyond the drifting lanterns
+      var ang = rand(0, Math.PI * 2);
+      var R = rand(2900, 3800);
+      c.pos.set(Math.cos(ang) * R, rand(560, 1050), Math.sin(ang) * R);
+      // streak roughly tangential (across the sky) + a little inward + downward
+      var inward = this._p.set(-c.pos.x, 0, -c.pos.z).normalize();
+      var tang = this._s.set(-inward.z, 0, inward.x);
+      var dir = c.vel.set(0, 0, 0)
+        .addScaledVector(tang, rand(620, 940) * (Math.random() < 0.5 ? -1 : 1))
+        .addScaledVector(inward, rand(120, 280));
+      dir.y = rand(-170, -50);
+      c.age = 0; c.life = rand(2.8, 4.4);
+      c.active = true;
+      for (var i = 0; i < this._cometHist.length; i++) this._cometHist[i].copy(c.pos);
+      this._cometHead.visible = true;
+      this._cometTrail.visible = true;
+      if (this._cometHalo) this._cometHalo.visible = true;
+      return;
+    }
+
+    c.age += dt;
+    c.pos.addScaledVector(c.vel, dt);
+
+    var H = this._cometHist;
+    for (var j = 0; j < H.length - 1; j++) H[j].copy(H[j + 1]);
+    H[H.length - 1].copy(c.pos);
+
+    var tpos = this._cometTrail.geometry.attributes.position.array;
+    for (var m = 0; m < H.length; m++) {
+      tpos[m * 3] = H[m].x; tpos[m * 3 + 1] = H[m].y; tpos[m * 3 + 2] = H[m].z;
+    }
+    this._cometTrail.geometry.attributes.position.needsUpdate = true;
+
+    var hpos = this._cometHead.geometry.attributes.position.array;
+    hpos[0] = c.pos.x; hpos[1] = c.pos.y; hpos[2] = c.pos.z;
+    this._cometHead.geometry.attributes.position.needsUpdate = true;
+
+    // fade in fast, burn, fade out
+    var a = Math.min(1, c.age / 0.3) * clamp((c.life - c.age) / 0.9, 0, 1);
+    var twinkle = 0.85 + 0.15 * Math.sin(c.age * 34);
+    this._cometHead.material.opacity = a * twinkle;
+    this._cometTrail.material.opacity = a;
+    if (this._cometHalo) this._cometHalo.material.opacity = a * 0.4 * twinkle;
+
+    if (c.age >= c.life) {
+      c.active = false;
+      this._cometHead.visible = false;
+      this._cometTrail.visible = false;
+      if (this._cometHalo) this._cometHalo.visible = false;
+    }
   };
 
   FestivalEnv.prototype._animGrass = function () {

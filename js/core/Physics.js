@@ -275,7 +275,7 @@
         propRemaining: propRemaining, a: 0, mass: mass,
         thrust: thrust, buoyancy: buoyancy, drag: 0, gx: gv.gx, gy: gv.gy,
         q: 0, g: g, rho: rho, onPad: true, padLocked: true,
-        pitchCmd: pitchCmd, vectored: false,
+        pitchCmd: pitchCmd, vectored: false, buoyMode: !!model.buoyancyDominant,
         liftedOff: false, tumbling: false, burning: false
       };
     }
@@ -372,7 +372,7 @@
       a: clampA(a), mass: mass, thrust: thrust, buoyancy: buoyancy, drag: drag,
       gx: gv.gx, gy: gv.gy,
       q: 0.5 * rho * (v * v + vx * vx), g: g, rho: rho, onPad: onPad,
-      pitchCmd: pitchCmd, vectored: vectorX,
+      pitchCmd: pitchCmd, vectored: vectorX, buoyMode: buoyMode,
       padLocked: false, liftedOff: !!state.liftedOff || newAlt > 1e-6,
       tumbling: !!state.tumbling, burning: !!state.burning
     };
@@ -821,6 +821,17 @@
       o.pitch = 90 - Math.min(150, bt * 55 + Math.sin(bt * 3.1) * 26);
       o.roll = Math.sin(bt * 2.3) * 40 + bt * 55;
       o.yaw = Math.sin(bt * 1.7) * 30;
+    } else if (d.buoyMode && d.v < -0.05) {
+      // A COOLING LANTERN IS A FALLING PAPER BAG — not a stone. Once it is
+      // sinking, the trapped-air symmetry is gone: it tips and rocks on a
+      // low-frequency wander whose amplitude grows with sink rate. The
+      // renderer layers a faster flutter on top; this keeps a paused / scrubbed
+      // frame honest (never bolt-upright while dropping).
+      var fall = Math.min(1.3, 0.35 + (-d.v) / 1.4);
+      var ft = d.t;
+      o.pitch = 90 - (Math.sin(ft * 1.7 + 0.3) * 17 + Math.sin(ft * 0.83 + 1.1) * 9) * fall;
+      o.roll = (Math.sin(ft * 1.31 + 0.7) * 30 + Math.sin(ft * 2.09) * 13) * fall;
+      o.yaw = Math.sin(ft * 1.03) * 22 * fall;
     } else if (d.vectored && (Math.abs(vx) > 0.5 || (isFinite(d.pitchCmd) && d.pitchCmd < Math.PI / 2 - 1e-3))) {
       // point along the thrust vector while burning, else along the velocity
       // vector — atan2(vertical, horizontal) is already the "90° = up" convention

@@ -38,6 +38,11 @@
     this.radius = opts.radius || 4;
     this.minRadius = opts.minRadius || 1.2;
     this.maxRadius = opts.maxRadius || 18;
+    // observer mode is planted — it can't dolly, so the wheel drives FOV
+    // (a telephoto squint at the subject against the sky)
+    this.fov = (camera && camera.fov) || opts.fov || 50;
+    this.minFov = opts.minFov || 15;
+    this.maxFov = opts.maxFov || 75;
     this.theta = Math.PI * 0.25;   // azimuth
     this.phi = Math.PI * 0.36;     // polar from +y
     this.autoRotate = opts.autoRotate !== false;
@@ -84,7 +89,16 @@
     this._onUp = function () { self._drag = null; };
     this._onWheel = function (e) {
       e.preventDefault();
-      self.radius = clamp(self.radius * (e.deltaY < 0 ? 0.9 : 1.1), self.minRadius, self.maxRadius);
+      if (self.mode === 'observer') {
+        // planted eye → zoom by narrowing/widening the field of view
+        self.fov = clamp(self.fov * (e.deltaY < 0 ? 0.92 : 1.08), self.minFov, self.maxFov);
+        if (self.camera && self.camera.isPerspectiveCamera) {
+          self.camera.fov = self.fov;
+          self.camera.updateProjectionMatrix();
+        }
+      } else {
+        self.radius = clamp(self.radius * (e.deltaY < 0 ? 0.9 : 1.1), self.minRadius, self.maxRadius);
+      }
       self.update(0);
     };
 

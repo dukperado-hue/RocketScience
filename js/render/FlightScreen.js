@@ -254,6 +254,7 @@
     this._camIdx = (this._camIdx + 1) % CAM_MODES.length;
     var mode = CAM_MODES[this._camIdx];
     this.btnCam.textContent = CAM_LABEL[mode];
+    this._zoom = 1;                 // every rig starts at a neutral zoom / FOV
     if (mode === 'free') {
       var st = this.flight.sampleAt(this.flight.time);
       this._freeTarget.set(
@@ -853,9 +854,12 @@
     var wantFog = this.scene.fog && mode !== 'map' && alt < 60000;
     this.scene.scene.fog = wantFog ? this.scene.fog : null;
 
-    // observer POV goes a touch wider; every other rig is the standard 50°
-    var wantFov = mode === 'observer' ? 55 : 50;
-    if (cam.fov !== wantFov) { cam.fov = wantFov; cam.updateProjectionMatrix(); }
+    // FOV: the observer is PLANTED (it can't dolly), so the wheel drives its
+    // field of view — scroll in for a telephoto close-up of the glowing paper
+    // against the stars, scroll out for the whole festival sky. `_zoom` starts
+    // at 1; the canvas wheel handler nudges it 0.88/1.14 per notch.
+    var wantFov = (mode === 'observer') ? clamp(55 * this._zoom, 15, 75) : 50;
+    if (Math.abs(cam.fov - wantFov) > 1e-3) { cam.fov = wantFov; cam.updateProjectionMatrix(); }
 
     // camera target = the vehicle's true FIXED-FRAME position (so it tracks
     // correctly all the way around the planet, not just near the pad)
@@ -903,7 +907,7 @@
       cam.lookAt(tx, Math.max(vy, focus), 0);
 
     } else if (mode === 'free') {
-      var fr = clamp(40 * this._zoom, 4, RE * 3);
+      var fr = clamp(40 * this._zoom, 2.5, RE * 3);
       var tg = this._freeTarget;
       cam.position.set(
         tg.x + fr * sp * sth,

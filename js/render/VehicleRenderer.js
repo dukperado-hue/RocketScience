@@ -521,7 +521,11 @@
       flameLight.position.y = d.h * 0.12;
       wg.add(flameLight);
       wg.userData.flicker = {
-        light: flameLight, base: 2.5, flame: flame, flameCore: flameCore
+        light: flameLight, base: 2.5, flame: flame, flameCore: flameCore,
+        // hot amber → deep-red ember; the flame material is lerped between
+        // these as `scale` (net-heat) drops, so a dying flame reddens + shrinks
+        hotCol: new THREE.Color(0xffb347), emberCol: new THREE.Color(0x5a1400),
+        lightHot: new THREE.Color(0xff6600), lightEmber: new THREE.Color(0x40140a)
       };
       wg.position.set(entry.world.x, entry.world.y, entry.world.z);
       wg.userData.iid = entry.iid;
@@ -656,17 +660,28 @@
       // the brief's flicker signal: sin(t·0.015) + random·0.2, folded so the
       // PointLight stays lively but always positive
       var jitter = Math.sin(now * 0.015) + Math.random() * 0.2;
+      // how "alive" the flame is — near 0 = a dying ember, 1 = full heat / blaze
+      var vigour = Math.min(1, s + b);
       if (f.light) {
-        f.light.intensity = Math.max(0.15 * s,
+        f.light.intensity = Math.max(0.05 * s,
           (f.base || 2.5) * (0.78 + 0.16 * jitter) * (1 + b * (2.0 + Math.random())) * s);
+        if (f.light.color && f.lightHot && f.lightEmber) {
+          f.light.color.copy(f.lightEmber).lerp(f.lightHot, vigour);
+        }
       }
       if (f.flame) {
         f.flame.visible = true;
         var sy = 0.86 + 0.26 * (0.5 + 0.5 * Math.sin(now * 0.023)) + Math.random() * 0.12;
         f.flame.scale.set((1 + b * 1.6) * s, sy * (1 + b * 1.4) * s, (1 + b * 1.6) * s);
+        if (f.flame.material && f.flame.material.color && f.hotCol && f.emberCol) {
+          f.flame.material.color.copy(f.emberCol).lerp(f.hotCol, vigour);
+          f.flame.material.opacity = 0.42 + 0.43 * vigour;
+        }
       }
       if (f.flameCore) {
-        f.flameCore.visible = true;
+        // the white-hot heart only exists when there is real heat — a dwindling
+        // ember has no bright centre, just a dull amber coal
+        f.flameCore.visible = vigour > 0.14;
         f.flameCore.scale.setScalar((0.85 + Math.random() * 0.22) * (1 + b * 1.2) * s);
       }
     }

@@ -40,6 +40,14 @@
     // a hot-air lantern "dances" — add a procedural sway on top of the trajectory
     this.buoyant = !!(simResult && simResult.mode === 'buoyancy');
     this.trajectory = (simResult && simResult.trajectory) || [];
+    // peak hot-air lift this flight ever produced — the reference the visual
+    // flame + interior light are scaled against, so they track the REAL
+    // buoyancy (and its exp cool-down), never just burnTime
+    this._peakBuoy = 0;
+    for (var pi = 0; pi < this.trajectory.length; pi++) {
+      var pb = this.trajectory[pi].buoyancy || 0;
+      if (pb > this._peakBuoy) this._peakBuoy = pb;
+    }
     this.events = ((simResult && simResult.events) || []).slice()
       .sort(function (a, b) { return a.time - b.time; });
     this.duration = this.trajectory.length
@@ -149,6 +157,17 @@
         pitch += Math.sin(t * 0.63) * 4.5 + Math.sin(t * 1.9 + 1.1) * 1.8;
         roll  += Math.sin(t * 0.47 + 0.6) * 6.0 + Math.sin(t * 2.3) * 2.2;
         yaw   += Math.sin(t * 0.31) * 9.0;
+
+        // DEAD LEAF — once it is sinking, the gentle dance becomes a chaotic
+        // flutter that grows with descent rate: a falling paper bag, tumbling
+        // and swaying, never a dropped stone. (Physics already sets a slow
+        // base wander in the trajectory; this is the fast render-side shimmer.)
+        if (state.velocity < -0.05) {
+          var fall = Math.min(2.0, 0.4 + (-state.velocity) / 1.2);
+          pitch += (Math.sin(t * 4.1 + 0.4) * 11 + Math.sin(t * 9.3) * 5) * fall;
+          roll  += (Math.sin(t * 3.6 + 1.7) * 19 + Math.sin(t * 7.9 + 0.5) * 8) * fall;
+          yaw   += (Math.sin(t * 2.7) * 13 + Math.sin(t * 6.1) * 6) * fall;
+        }
       }
 
       // pitch 90° == nose up (our authoring default) -> zero rotation about X
@@ -163,8 +182,27 @@
     var ud = this.group.userData;
     if (ud && ud.flicker && ud.flicker.length &&
         global.RS && global.RS.render && global.RS.render.VehicleRenderer) {
-      var lit = (state.buoyancy || 0) > 0.01 || (state.thrust || 0) > 0.01 || state.burning;
-      global.RS.render.VehicleRenderer.flicker(this.group, lit, !!state.burning);
+      // NONG KAPI'S FIX — the visual flame is synced to the NET BUOYANT FORCE,
+      // not burnTime. Hot air is light: while the lantern is still rising or
+      // hovering the flame burns proportional to its lift; the instant lift
+      // drops below weight (it is falling) the flame collapses to a microscopic
+      // ember. The light + the flame follow the SAME exp cool-down curve.
+      var heat;
+      if (state.burning) {
+        heat = 1;                                   // envelope ablaze — blaze pumps it
+      } else if (this.buoyant) {
+        var buoyN = state.buoyancy || 0;
+        var ref = this._peakBuoy || Math.max(buoyN, 1e-3);
+        heat = clamp(buoyN / ref, 0, 1);
+        var weightN = (state.mass || 1) * 9.80665;
+        if (buoyN <= weightN) {                     // lift <= weight → it is falling
+          heat = Math.min(heat, 0.035);             // a glowing ember, nothing more
+        }
+      } else {
+        heat = (state.thrust || 0) > 0.01 ? 1 : 0;  // rockets keep the binary look
+      }
+      var lit = heat > 0.006 || state.burning;
+      global.RS.render.VehicleRenderer.flicker(this.group, lit, !!state.burning, heat);
     }
   };
 
