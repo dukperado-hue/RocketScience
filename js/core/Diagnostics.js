@@ -141,6 +141,10 @@
       add('outcome', FAIL, 'การจำลองไม่สำเร็จ', (sim && sim.reason) || '');
     } else if (!has('LIFTOFF')) {
       add('outcome', FAIL, 'ยานไม่เคยพ้นพื้น', 'ตรวจแรงยก/มวล');
+    } else if (sum.orbit && sum.orbit.achieved) {
+      add('outcome', OK, 'บรรลุวงโคจร — ยานไม่ตกกลับพื้นอีกแล้ว',
+        'วงโคจร ' + fmtAlt(sum.orbit.periapsis) + ' × ' + fmtAlt(sum.orbit.apoapsis) +
+        ' · คาบ ' + Math.round(sum.orbit.period) + ' วิ');
     } else if (!has('IMPACT')) {
       add('outcome', WARN, 'การจำลองจบขณะยานยังลอยอยู่',
         'apogee ' + fmtAlt(sum.apogee) + ' · เพิ่มเวลาจำลองเพื่อดูการร่อนลง');
