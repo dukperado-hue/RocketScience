@@ -346,6 +346,7 @@
       hg2.add(band);
       hg2.position.set(entry.world.x, entry.world.y, entry.world.z);
       hg2.userData.iid = entry.iid;
+      hg2.userData.isNoseWhistle = true;   // burns through + blows off at apogee breakup
       return hg2;
     }
 
@@ -385,17 +386,14 @@
         new THREE.CylinderGeometry(d.w * 0.14, d.w * 0.42, d.h * 0.22, 20, 1, true),
         new THREE.MeshStandardMaterial({ color: 0x4a2f1c, roughness: 0.9, side: THREE.DoubleSide }));
       nozzle2.position.y = -d.h * 0.5;
-      var flame2 = new THREE.Mesh(
-        new THREE.ConeGeometry(d.w * 0.26, d.h * 0.9, 16),
-        new THREE.MeshBasicMaterial({ color: 0xffd24a, toneMapped: false }));
-      flame2.position.y = -d.h * 0.95;
-      flame2.rotation.x = Math.PI;
-      mg.add(casing2); mg.add(wrap); mg.add(nozzle2); mg.add(flame2);
+      // NO rigid flame cone here — the fire is a live additive particle plume
+      // driven by ExhaustFX, emitted from the exact centre of this nozzle.
+      mg.add(casing2); mg.add(wrap); mg.add(nozzle2);
       mg.position.set(entry.world.x, entry.world.y, entry.world.z);
       mg.userData.iid = entry.iid;
       mg.userData.isMotor = true;
-      // a หมื่อ throws a plume far below the nozzle — anchor the exhaust deep
-      mg.userData.exhaustLocalY = -d.h * 0.85;
+      // the flame/plume leaves from the throat, dead-centre of the nozzle
+      mg.userData.exhaustLocalY = -d.h * 0.62;
       return mg;
     }
 
@@ -420,6 +418,65 @@
       tg2.position.set(entry.world.x, entry.world.y, entry.world.z);
       tg2.userData.iid = entry.iid;
       return tg2;
+    }
+
+    // ---- ENGINEERED transitional parts (nose cone + fins) ------------
+    if (entry.partId === 'payload_nosecone') {
+      // a smooth ogive nose — glossy, aerospace, a world away from the whistle
+      var ncGeo = new THREE.ConeGeometry(d.w * 0.4, d.h * 1.3, 28);
+      var ncPos = ncGeo.attributes.position;
+      for (var nci = 0; nci < ncPos.count; nci++) {   // pinch to an ogive curve
+        var ny = (ncPos.getY(nci) + d.h * 0.65) / (d.h * 1.3);   // 0 base → 1 tip
+        var f = Math.sqrt(Math.max(0, 1 - (1 - ny) * (1 - ny)));
+        ncPos.setX(nci, ncPos.getX(nci) * f);
+        ncPos.setZ(nci, ncPos.getZ(nci) * f);
+      }
+      ncGeo.computeVertexNormals();
+      var nc = new THREE.Mesh(ncGeo, new THREE.MeshStandardMaterial({
+        color: 0xe6e9ee, roughness: 0.28, metalness: 0.45 }));
+      nc.castShadow = true;
+      nc.position.set(entry.world.x, entry.world.y + d.h * 0.1, entry.world.z);
+      nc.userData.iid = entry.iid;
+      return nc;
+    }
+
+    if (entry.partId === 'aero_fin_straight' || entry.partId === 'aero_fin_canted') {
+      var canted = entry.partId === 'aero_fin_canted';
+      var fgrp = new THREE.Group();
+      var finMat = new THREE.MeshStandardMaterial({
+        color: canted ? 0x8a5cc0 : 0x53606e, roughness: 0.5, metalness: 0.25,
+        side: THREE.DoubleSide });
+      // 3 swept trapezoidal blades on the airframe axis
+      var span = d.w * 0.95, root = d.h * 0.86, tip = d.h * 0.4, thick = d.w * 0.05;
+      var shape = new THREE.Shape();
+      shape.moveTo(0, root * 0.5);
+      shape.lineTo(span, tip * 0.5 - root * 0.15);
+      shape.lineTo(span, -tip * 0.5 - root * 0.15);
+      shape.lineTo(0, -root * 0.5);
+      shape.closePath();
+      var bladeGeo = new THREE.ExtrudeGeometry(shape, { depth: thick, bevelEnabled: false });
+      bladeGeo.translate(0, 0, -thick / 2);
+      for (var fb = 0; fb < 3; fb++) {
+        var blade = new THREE.Mesh(bladeGeo, finMat);
+        blade.castShadow = true;
+        var holder = new THREE.Group();
+        holder.add(blade);
+        holder.rotation.y = fb * (Math.PI * 2 / 3);
+        if (canted) blade.rotation.y = 0.16;   // the cant that induces spin
+        fgrp.add(holder);
+      }
+      // a small tail ring tying the fins together
+      var ring = new THREE.Mesh(
+        new THREE.TorusGeometry(d.w * 0.16, d.w * 0.03, 6, 20),
+        new THREE.MeshStandardMaterial({ color: 0x2b3038, roughness: 0.6 }));
+      ring.rotation.x = Math.PI / 2;
+      ring.position.y = -root * 0.42;
+      fgrp.add(ring);
+      // fins ride the airframe axis (x≈0) at the aft Y the layout gave this part
+      fgrp.position.set(0, entry.world.y, 0);
+      fgrp.userData.iid = entry.iid;
+      fgrp.userData.isFin = true;
+      return fgrp;
     }
 
     // ---- ERA 1.5 · Fireworks ------------------------------------------
@@ -722,16 +779,25 @@
   }
 
   function recomputeExhaustY(group, meshes) {
-    var exhaustY = null;
+    var exhaustY = null, exhaustX = 0, exhaustZ = 0;
     Object.keys(meshes).forEach(function (k) {
       var m = meshes[k];
       if (m && m.userData && m.userData.isMotor) {
         var ey = m.position.y + (m.userData.exhaustLocalY || 0);
-        if (exhaustY == null || ey < exhaustY) exhaustY = ey;
+        if (exhaustY == null || ey < exhaustY) {
+          exhaustY = ey;
+          // the flame + smoke must leave from the CENTRE of THIS nozzle, not
+          // the stack's bounding-box axis — a Bang Fai's box is offset by the
+          // radial tail stick, so the motor sits noticeably off-centre.
+          exhaustX = m.position.x + (m.userData.exhaustLocalX || 0);
+          exhaustZ = m.position.z + (m.userData.exhaustLocalZ || 0);
+        }
       }
     });
     var b = group.userData && group.userData.bounds;
     group.userData.exhaustY = exhaustY != null ? exhaustY : (b ? -b.height * 0.1 : -0.3);
+    group.userData.exhaustX = exhaustX;
+    group.userData.exhaustZ = exhaustZ;
   }
 
   /**
@@ -788,6 +854,29 @@
   }
   function clamp01(v) { return v < 0 ? 0 : (v > 1 ? 1 : v); }
 
+  /**
+   * APOGEE BREAKUP — a traditional Bang Fai burns through its head + the frame
+   * snaps at the top of the arc. Hide the whistle nose and let the rest tumble.
+   * @returns {{x:number,y:number,z:number}|null} the whistle's world position,
+   *   so the caller can spawn a few falling debris bits there.
+   */
+  function breakup(group) {
+    if (!group || (group.userData && group.userData.brokenUp)) return null;
+    group.userData.brokenUp = true;
+    var meshes = (group.userData && group.userData.partMeshes) || {};
+    var where = null;
+    Object.keys(meshes).forEach(function (k) {
+      var m = meshes[k];
+      if (m && m.userData && m.userData.isNoseWhistle) {
+        if (THREE && m.getWorldPosition) {
+          where = m.getWorldPosition(new THREE.Vector3());
+        }
+        m.visible = false;
+      }
+    });
+    return where;
+  }
+
   function disposeGroup(group) {
     if (!group) return;
     if (group.userData) group.userData.disposed = true;
@@ -807,6 +896,7 @@
     layout: layout,          // pure
     build: build,            // THREE (sync; models swap in + userData.modelsReady)
     disposeGroup: disposeGroup,
+    breakup: breakup,        // apogee break-up: hide the whistle nose
     flicker: flicker,        // per-frame khom-loy flame driver
     loadModel: loadModel,    // Promise<Object3D|null>, cached
     preload: preload,        // Promise.all over every catalog meshUrl

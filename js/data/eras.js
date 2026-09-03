@@ -24,8 +24,9 @@
       id: '1-bangfai',
       order: 1,
       name: 'ยุค 1 · บั้งไฟ',
-      tagline: 'บั้งไฟอีสาน — ไม่มีครีบ นิ่งด้วย "หาง" ไม้ไผ่ยาว: ลาก CoP ไปท้าย + โมเมนต์ความเฉื่อย I ∝ mL² · ยิงจากฐานเฉียง',
-      partIds: ['payload_howot', 'body_lao', 'propulsion_mue', 'frame_tailstick'],
+      tagline: 'บั้งไฟแสน ~120 กก. — ดั้งเดิมนิ่งด้วย "หาง" ไม้ไผ่ยาว (I ∝ mL²) แต่หนัก ลมขวางพัดเป๋ แตกที่ยอด · หรือจะ "วิศวกรรม" ด้วยหัวเพรียวลม + ครีบ (ตรง/เฉียงสปิน)',
+      partIds: ['payload_howot', 'body_lao', 'propulsion_mue', 'frame_tailstick',
+                'payload_nosecone', 'aero_fin_straight', 'aero_fin_canted'],
       unlock: { type: 'default' },
       envelope: { apogee: 3000, note: 'พุ่งเฉียงตามราง หางยาวถ่วงให้นิ่ง แล้วโค้งลงตามแรงโน้มถ่วง' }
     },
@@ -33,8 +34,9 @@
       id: '1p5-fireworks',
       order: 1.5,
       name: 'ยุค 1.5 · ดอกไม้ไฟ',
-      tagline: 'ดินส่งจุดครั้งเดียว แรงกระแทกมหาศาลใน 0.1 วิ — บทเรียนเรื่องความเฉื่อยกับกราฟแรงขับ',
-      partIds: ['fw_shell_peony', 'fw_lift_charge', 'fw_mortar_tube'],
+      tagline: 'จากภูมิปัญญาบ้าน ๆ สู่วิศวกรรม: ดินส่งอิมพัลส์ + หัวเพรียวลม + ครีบ (ตรง/เฉียงสปิน) — บทเรียนแรงต้าน ความเฉื่อย และไจโรสโคปิก',
+      partIds: ['fw_shell_peony', 'fw_lift_charge', 'fw_mortar_tube',
+                'payload_nosecone', 'aero_fin_straight', 'aero_fin_canted'],
       unlock: { type: 'default' },
       envelope: { apogee: 400, note: 'พุ่งด้วยแรงกระแทกเดียว แล้วลอยตามความเฉื่อย' }
     },

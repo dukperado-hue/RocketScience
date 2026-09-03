@@ -42,7 +42,11 @@
   //  rockets flying at once (sequential "launch next" + groundwork for true
   //  multi-staging). The single-vehicle SimulationResult shape is UNCHANGED —
   //  simulateMany() just composes N locked results and tags their events.
-  var CONTRACT_VERSION = '1.7.0';
+  //  1.8.0 — additive sample fields: `brokenUp`, `crashed`, `spinRate`,
+  //  `spinStiff`; new integrator event `APOGEE_BREAKUP`. Engine force is forced
+  //  to 0 once a flown vehicle is back on the ground. Crosswind side-force +
+  //  canted-fin gyroscopic spin. All existing fields unchanged.
+  var CONTRACT_VERSION = '1.8.0';
 
   // --- gravity turn / pitch program -----------------------------------------
   //  Straight up until (alt > 500 m AND speed > 50 m/s). A short pitch KICK
@@ -77,12 +81,25 @@
   //  Bang Fai tail stick makes I enormous → the oscillation is slow and shallow
   //  and a gust barely moves it. A finless / tail-less stack has a NEGATIVE
   //  margin → the "spring" pushes the wrong way → alpha diverges → it departs.
-  var WEATHERCOCK_DAMP = 2.0;     // pitch-damping coefficient (× q·A·arm²/(v·I))
-  var WEATHERCOCK_STIFF = 1.0;    // aero-stiffness coefficient (× q·A·margin/I)
-  var GUST_TORQUE = 0.11;         // wind-gust disturbance torque scale (× q·A·wind/I)
+  var WEATHERCOCK_DAMP = 2.4;     // pitch-damping coefficient (× q·A·arm²/(v·I))
+  var WEATHERCOCK_STIFF = 1.7;    // aero-stiffness coefficient (× q·A·margin/I)
+  var GUST_TORQUE = 0.055;        // wind-gust disturbance torque scale (× q·A·wind/I)
   var DEPART_ALPHA = 1.35;        // rad (~77°) — |angle of attack| past this = tumbling
   var RAIL_LENGTH_M = 4.2;        // m — the guide-rail / scaffold holds the rocket
                                  //     rigid on the launch vector for this distance
+
+  // --- crosswind + gyroscopic spin (Phase 12) --------------------------------
+  //  CROSSWIND: a steady lateral aero force ∝ ½·ρ·(side area)·wind². A tall
+  //  bamboo tail stick has a huge side profile → it gets shoved downwind hard.
+  //  SPIN: canted fins deflect the airstream tangentially, spinning the rocket
+  //  up over the flight. Above SPIN_REF the gyroscopic rigidity is near-total —
+  //  the nose holds its heading and the rocket crabs straight through the wind.
+  var SIDE_WIND_K = 0.65;        // steady lateral-force scale
+  var ROLL_TORQUE_K = 1.4;      // canted-fin roll torque ∝ q·finArea·rollInduce / I_roll
+  var ROLL_DAMP = 0.4;          // aerodynamic roll damping (1/s)
+  var ROLL_RATE_MAX = 48;       // rad/s (~460 RPM) — fin-canted terminal spin
+  var SPIN_REF = 20;            // rad/s (~190 RPM) — full gyroscopic rigidity above this
+  var BREAKUP_DRAG_MULT = 6.5;  // Cd·A blow-up when a traditional Bang Fai breaks up at apogee
 
   // --- hot-air buoyancy: a lantern floats, it never "launches" ----------------
   var BUOY_RISE_MAX = 1.5;        // m/s — the graceful ceiling on rise rate
@@ -318,7 +335,9 @@
       // Broadside to the airstream: Cd·A balloons, the nozzle points every
       // which way. A hard velocity bleed under gravity + misdirected thrust —
       // deterministic, never stiff. A tumble always arcs over and comes down.
-      drag = 0.5 * rho * model.dragArea * TUMBLE_DRAG_MULT * state.v * Math.abs(state.v);
+      // A structural break-up at apogee blows the drag area up even further.
+      var tdm = state.brokenUp ? BREAKUP_DRAG_MULT : TUMBLE_DRAG_MULT;
+      drag = 0.5 * rho * model.dragArea * tdm * state.v * Math.abs(state.v);
       a = (thrust * TUMBLE_THRUST_FRAC) / mass - g - drag / mass;
       v = state.v + a * dt;
       if (v > 2) v *= (1 - Math.min(0.4, TUMBLE_CLIMB_BLEED * dt));
@@ -361,8 +380,13 @@
       v = state.v + a * dt;
       y = state.y + v * dt;
 
-      // X — semi-implicit drag term; explicit thrust + radial gravity
-      var rhsX = state.vx + dt * (thrustX / mass + gv.gx + kA * wind / mass);
+      // X — semi-implicit drag term; explicit thrust + radial gravity + a
+      // STEADY crosswind push ∝ ½·ρ·(side area)·wind² (downwind). refArea is
+      // the side profile: a bamboo tail stick's is enormous, an ogive+fins tiny.
+      var windForce = wind
+        ? SIDE_WIND_K * 0.5 * rho * (model.refArea || 0.01) * wind * Math.abs(wind)
+        : 0;
+      var rhsX = state.vx + dt * (thrustX / mass + gv.gx + (kA * wind + windForce) / mass);
       vx = rhsX / (1 + dt * kA / mass);
       x = state.x + vx * dt;
       vectorX = true;
@@ -395,6 +419,13 @@
       newAlt = 0;
     }
 
+    // ---- ENGINE CUTOFF ON IMPACT -------------------------------------
+    //  Once the vehicle has flown and come back down to the ground, the motor
+    //  is done — no fire keeps burning in the dirt. Force thrust/buoyancy to 0
+    //  so the render layer (flame + smoke) strictly stops.
+    var crashed = !!state.liftedOff && newAlt <= 1e-6;
+    if (crashed) { thrust = 0; buoyancy = 0; }
+
     return {
       t: state.t + dt, y: y, v: v, x: x, vx: vx, alt: newAlt,
       propRemaining: propRemaining,
@@ -403,7 +434,8 @@
       q: 0.5 * rho * (v * v + vx * vx), g: g, rho: rho, onPad: onPad,
       pitchCmd: pitchCmd, vectored: vectorX, buoyMode: buoyMode,
       padLocked: false, liftedOff: !!state.liftedOff || newAlt > 1e-6,
-      tumbling: !!state.tumbling, burning: !!state.burning
+      tumbling: !!state.tumbling, burning: !!state.burning,
+      brokenUp: !!state.brokenUp, crashed: crashed
     };
   }
 
@@ -535,6 +567,14 @@
     var pitchRate = 0;                         // rad/s — nose pitch angular velocity
     var railCleared = !weathercock;            // guided / vertical stacks aren't railed
     var railClearTime = null;
+
+    // --- GYROSCOPIC SPIN (canted fins) + APOGEE BREAKUP (traditional Bang Fai) ---
+    var spinFins = (model.rollInduce || 0) > 0;
+    var Iroll = Math.max(0.02, Ipitch * 0.06);     // roll inertia ≪ pitch inertia
+    var rollRate = 0, rollAngle = 0;               // rad/s, rad — the spin
+    var apogeeBreakup = weathercock && !!model.apogeeBreakup;
+    var brokenUp = false, breakupT = null, breakupAlt = 0, breakupVel = 0;
+    var prevVv = 0;                                // last vertical velocity (apogee detect)
     if (weathercock) pitchCmd = launchAngle;   // start pointed up the rail
     var turnT0 = null;                         // time the gravity turn began
     var pitchOverTime = null, pitchOverAlt = 0, pitchOverVel = 0;
@@ -569,6 +609,20 @@
       var horizVel = (state.vx * (state.y + RE) - state.v * state.x) / rr;
       var fpaLocal = Math.atan2(radialVel, horizVel);          // 0 = local horizontal
       var horizonAng = Math.atan2(state.y + RE, state.x) - Math.PI / 2;  // fixed-frame
+
+      // --- GYROSCOPIC SPIN — canted fins spin the rocket up over the flight.
+      //  rollAccel = k·q·(fin area)·(cant) / I_roll  −  aero roll damping.
+      //  spinStiff (0..1) is how gyroscopically rigid it is — near 1 above
+      //  SPIN_REF: the nose holds its heading and it crabs through a crosswind.
+      var spinStiff = 0;
+      if (spinFins && liftedOff && curSpeed > 1) {
+        var qSpin = 0.5 * airDensity(curAlt) * curSpeed * curSpeed;
+        var rollAcc = ROLL_TORQUE_K * qSpin * (model.rollFinArea || 0.02) *
+          model.rollInduce / Iroll - ROLL_DAMP * rollRate;
+        rollRate = clamp(rollRate + rollAcc * dt, -ROLL_RATE_MAX, ROLL_RATE_MAX);
+        spinStiff = clamp(Math.abs(rollRate) / SPIN_REF, 0, 1);
+      }
+      rollAngle += rollRate * dt;
 
       var burnEnable = true;
       if (model.gravityTurn && liftedOff && !state.tumbling) {
@@ -667,10 +721,24 @@
           // tumble, and what a high-I tail-stick rocket simply damps away.
           var disturb = (0.04 * Math.sin(state.t * 4.7 + 0.3) +
             (wind ? GUST_TORQUE * wind * Math.sin(state.t * 3.3 + 1.1) : 0)) * qA / Ipitch;
+          // GYROSCOPIC RIGIDITY — a fast-spinning rocket resists any change to
+          // its spin-axis attitude: the gust disturbance is largely rejected,
+          // damping is stiffened, and the nose is held toward the launch
+          // heading. It drills straight through the crosswind like a bullet.
+          if (spinStiff > 0.03) {
+            disturb *= (1 - 0.95 * spinStiff);
+            kDamp = Math.min(kDamp * (1 + 6 * spinStiff), 200);
+          }
           // explicit stiffness + disturbance, IMPLICIT damping (unconditionally
           // stable even when the tail makes kDamp huge)
           var pitchAcc0 = -kStiff * Math.sin(alpha) + disturb;
           pitchRate = (pitchRate + pitchAcc0 * dt) / (1 + kDamp * dt);
+          if (spinStiff > 0.03) {
+            pitchRate *= (1 - 0.9 * spinStiff);
+            // ease the commanded attitude back toward the launch heading — rate
+            // proportional to how rigid the spin is (frame-rate-independent)
+            pitchCmd += (launchAngle - pitchCmd) * clamp(3.0 * spinStiff * dt, 0, 0.35);
+          }
           pitchCmd += pitchRate * dt;
           if (pitchCmd > PITCH_UP + 0.9) { pitchCmd = PITCH_UP + 0.9; pitchRate = Math.min(pitchRate, 0); }
           if (pitchCmd < -PITCH_UP - 0.9) { pitchCmd = -PITCH_UP - 0.9; pitchRate = Math.max(pitchRate, 0); }
@@ -686,6 +754,10 @@
       }
 
       var d = step(state, eff, dt, wind, pitchCmd, state.t - stageT0, burnEnable);
+      // carry the spin + breakup state onto this sample for the render layer
+      d.rollRate = rollRate; d.rollAngle = rollAngle;
+      d.spinStiff = spinStiff;
+      d.brokenUp = brokenUp;
 
       // --- ANGLED-RAIL CONSTRAINT — while on the scaffold, motion is locked
       //  to the launch vector; the rail cancels the perpendicular component of
@@ -722,6 +794,19 @@
       if (d.alt > 0.02) liftedOff = true;
       if (d.alt > apogee) { apogee = d.alt; apogeeTime = d.t; }
       var spdNow = Math.hypot(d.v, d.vx);
+
+      // --- APOGEE BREAKUP (traditional Bang Fai) --------------------------
+      //  At the top of the arc a folk-craft บั้งไฟ burns through the head and
+      //  the stick snaps — it does NOT spear back down like a lawn dart, it
+      //  tumbles. An ENGINEERED build (nose cone + fins / spin) holds together.
+      if (apogeeBreakup && !brokenUp && !state.tumbling && liftedOff &&
+          d.v <= 0 && prevVv > 0 && d.alt > 20) {
+        brokenUp = true; breakupT = d.t; breakupAlt = d.alt; breakupVel = spdNow;
+        state.brokenUp = true;
+        state.tumbling = true; d.tumbling = true; d.brokenUp = true;
+        tumbleT = d.t;
+      }
+      prevVv = d.v;
       if (spdNow > maxV) maxV = spdNow;
       if (d.q > maxQ) maxQ = d.q;
       finalX = d.x;
@@ -820,12 +905,13 @@
       state = {
         t: d.t, y: d.y, v: d.v, x: d.x, vx: d.vx,
         propRemaining: d.propRemaining, tumbling: state.tumbling,
-        burning: state.burning,
+        burning: state.burning, brokenUp: brokenUp,
         liftedOff: state.liftedOff || d.liftedOff
       };
 
       if (liftedOff && d.onPad) {
         reason = state.burning ? 'โคมไฟไหม้กลางอากาศแล้วร่วงลงพื้น'
+          : brokenUp ? 'บั้งไฟดั้งเดิมแตกที่จุดสูงสุด ตีลังกาตกลงพื้น'
           : state.tumbling ? 'จรวดเสียการควบคุมแล้วตกกระแทกพื้น'
           : (orbit ? 'กลับเข้าชั้นบรรยากาศแล้วแตะพื้น' : 'ยานแตะพื้นแล้ว');
         trajectory.push(toState(d, tumbleT, burnT));
@@ -881,6 +967,13 @@
       });
     }
     physicsEvents = physicsEvents.concat(stageEvents);
+    if (breakupT !== null) {
+      physicsEvents.push({
+        time: round(breakupT, 3), type: 'APOGEE_BREAKUP',
+        message: 'ถึงจุดสูงสุด — หัวโหวดไหม้ทะลุ โครงหัก บั้งไฟแตกแล้วตีลังกาลง (บั้งไฟหางแบบดั้งเดิม)',
+        altitude: round(breakupAlt, 2), velocity: round(breakupVel, 2)
+      });
+    }
     if (midairBurn) {
       physicsEvents.push({
         time: round(midairBurn.time, 3), type: 'MIDAIR_BURN',
@@ -1007,9 +1100,11 @@
     var vx = d.vx || 0;
     if (d.tumbling && isFinite(tumbleT)) {
       var tt = Math.max(0, d.t - tumbleT);
-      o.pitch = 90 - (tt * 130 + Math.sin(tt * 9) * 55);
-      o.yaw = Math.sin(tt * 5.5) * 45 + tt * 70;
-      o.roll = tt * 260;
+      // a structural break-up at apogee tumbles gentler than a powered LOC
+      var tk = d.brokenUp ? 0.55 : 1;
+      o.pitch = 90 - (tt * 130 * tk + Math.sin(tt * (d.brokenUp ? 5 : 9)) * 55);
+      o.yaw = Math.sin(tt * 5.5) * 45 + tt * 70 * tk;
+      o.roll = tt * (d.brokenUp ? 150 : 260);
     } else if (d.burning && isFinite(burnT)) {
       // a burning lantern tips right over and swings as it falls — steep,
       // slower than a rocket tumble, and it keeps its wind-driven yaw drift
@@ -1038,6 +1133,12 @@
         : Math.atan2(d.v, vx);
       o.pitch = ang * 180 / Math.PI;
     }
+    // canted fins → a real visible roll about the flight axis. Left UNWRAPPED
+    // (monotonic) so the renderer's lerp between samples is a smooth spin, not
+    // a jump every time it crosses 360°.
+    if (isFinite(d.rollAngle) && Math.abs(d.rollRate || 0) > 0.4 && !d.tumbling) {
+      o.roll = d.rollAngle * 180 / Math.PI;
+    }
     var dx = round(d.x || 0, 3);
     var spd = Math.sqrt(d.v * d.v + vx * vx);
     var alt = d.alt != null ? d.alt : altitudeOf(d.x || 0, d.y || 0);
@@ -1061,6 +1162,10 @@
       propRemaining: round(d.propRemaining, 4),
       tumbling: !!d.tumbling,
       burning: !!d.burning,
+      brokenUp: !!d.brokenUp,
+      crashed: !!d.crashed,
+      spinRate: round(d.rollRate || 0, 3),        // rad/s about the flight axis
+      spinStiff: round(d.spinStiff || 0, 3),      // 0..1 gyroscopic rigidity
       padLocked: !!d.padLocked
     };
   }

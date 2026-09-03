@@ -207,11 +207,21 @@
     var dryMomentY = 0;                      // Σ m·y  (DRY mass only — for burnout CoM)
     var areaMomentX = 0, areaMomentY = 0;   // Σ A·r  (aerodynamic reference area)
     var launchAngleDeg = 0;                  // an angled-rail part sets this
+    var topGY = Infinity, noseCd = 0;        // the TOPMOST part sets drag character
+    var rollInduce = 0, rollFinArea = 0;     // canted fins → gyroscopic spin
 
     this.instances.forEach(function (inst) {
       var p = inst.part;
       var c = partCenterCell(inst);
       var wet = p.wetMass();
+
+      // the nose (smallest grid-y) dominates the vehicle's drag: attached vs
+      // separated flow. A sharp cone vs a blunt whistle is a huge difference.
+      if (inst.gy < topGY) { topGY = inst.gy; noseCd = p.aerodynamics.dragCoefficient; }
+      if (p.aerodynamics.rollInduce > 0) {
+        rollInduce += p.aerodynamics.rollInduce;
+        rollFinArea += p.aerodynamics.crossSectionArea;
+      }
 
       s.dryMass += p.mass;
       s.propellantMass += (p.propulsion ? p.propulsion.propellantMass : 0) +
@@ -299,6 +309,19 @@
       h: isFinite(s.maxY - s.minY) ? (s.maxY - s.minY) * mpc : 0
     };
     s.avgCd = s.refArea > 0 ? s.dragArea / s.refArea : 0;
+
+    // ---- NOSE-DOMINATED DRAG -------------------------------------------
+    //  The topmost part's Cd scales the whole vehicle's effective drag. A blunt
+    //  โหวด whistle (Cd 0.55) → ~1.0×; a เพรียวลม nose cone (Cd 0.12) → ~0.5×.
+    //  Same motor, roughly double the apogee. (Only meaningful for a real stack.)
+    s.noseCd = s.partCount > 1 && isFinite(noseCd) ? noseCd : s.avgCd;
+    s.noseDragMult = s.partCount > 1
+      ? Math.max(0.42, Math.min(1.5, 0.38 + s.noseCd * 1.15))
+      : 1;
+
+    // ---- GYROSCOPIC SPIN (canted fins) --------------------------------
+    s.rollInduce = rollInduce;            // 0 = no spin fins
+    s.rollFinArea = rollFinArea;          // m² — the fin area doing the deflecting
 
     // Static stability along the flight axis (vertical, +y = down).
     //  · rocket/ballistic: stable when CoP sits BEHIND the CoM, i.e. below it
@@ -399,6 +422,10 @@
   Vehicle.prototype.toPhysicsModel = function () {
     var s = this.computeStats();
     var stages = this.computeStages();
+    // the nose part's drag character scales every stage's Cd·A too (the
+    // multi-stage integrator reads stages[].dragArea, not the flat field)
+    var ndm = s.noseDragMult || 1;
+    stages.forEach(function (st) { st.dragArea *= ndm; });
     var motors = this.instances
       .filter(function (i) { return i.part.propulsion && i.part.propulsion.thrust > 0; })
       .map(function (i) { return motorData(i.part); });
@@ -408,8 +435,19 @@
       dryMass: s.dryMass,
       propellantMass: s.propellantMass,
       totalMass: s.totalMass,
-      dragArea: s.dragArea,          // Σ Cd·A  (m^2)
+      // effective drag = Σ Cd·A scaled by the NOSE part's character
+      dragArea: s.dragArea * s.noseDragMult,
+      dragAreaRaw: s.dragArea,       // Σ Cd·A  (m^2), before the nose factor
       refArea: s.refArea,            // Σ A     (m^2)
+      noseCd: s.noseCd,
+      noseDragMult: s.noseDragMult,
+      // gyroscopic spin — canted fins spin the vehicle up for rigidity
+      rollInduce: s.rollInduce,
+      rollFinArea: s.rollFinArea,
+      // a TRADITIONAL folk-craft Bang Fai (angled rail + blunt whistle nose,
+      // no engineered fins/spin) burns through + snaps at apogee and tumbles.
+      // Engineer the nose (low Cd) or add canted fins and it holds together.
+      apogeeBreakup: s.launchAngleDeg > 0 && s.noseCd >= 0.4 && !(s.rollInduce > 0),
       structuralLimitPa: s.structuralLimitPa,
       motors: motors,
       valid: s.valid,

@@ -18,6 +18,7 @@
     SEPARATE_STAGE: 'SEPARATE_STAGE',
     MAX_Q:    'MAX_Q',
     APOGEE:   'APOGEE',
+    APOGEE_BREAKUP: 'APOGEE_BREAKUP',
     BURNOUT:  'BURNOUT',
     ORBIT:    'ORBIT',
     LOSS_OF_CONTROL: 'LOSS_OF_CONTROL',
@@ -32,6 +33,7 @@
     SEPARATE_STAGE: 'สลัดท่อน (Staging)',
     MAX_Q:    'แรงดันอากาศสูงสุด (Max-Q)',
     APOGEE:   'จุดสูงสุด',
+    APOGEE_BREAKUP: 'แตกที่จุดสูงสุด (บั้งไฟหาง)',
     BURNOUT:  'เชื้อเพลิงหมด',
     ORBIT:    'เข้าสู่วงโคจร',
     LOSS_OF_CONTROL: 'เสียการควบคุม — ตีลังกา',
@@ -80,7 +82,9 @@
       if (liftoffIdx === -1 && s.altitude > LIFT_EPS) liftoffIdx = i;
       if (s.altitude > traj[apogeeIdx].altitude) apogeeIdx = i;
       if ((s.q || 0) > (traj[maxQIdx].q || 0)) maxQIdx = i;
-      if (tumbleIdx === -1 && s.tumbling) tumbleIdx = i;
+      // a break-up at apogee tumbles too, but it is NOT a loss of control —
+      // the integrator tags those samples `brokenUp` and emits APOGEE_BREAKUP
+      if (tumbleIdx === -1 && s.tumbling && !s.brokenUp) tumbleIdx = i;
     }
 
     var lifted = liftoffIdx !== -1;

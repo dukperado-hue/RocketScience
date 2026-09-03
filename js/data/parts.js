@@ -131,67 +131,70 @@
       category: C.PAYLOAD,
       icon: '🎐',
       era: '1-bangfai',
-      blurb: 'พวงกระบอกไม้ไผ่ผ่าปากที่หัวบั้งไฟ ร้องหวีดตอนพุ่ง — เพิ่มมวลและแรงต้านที่หัวเล็กน้อย (ดึง CoP มาหน้า นิดหน่อย)',
-      mass: 0.08,
+      blurb: 'พวงกระบอกไม้ไผ่ผ่าปากที่หัวบั้งไฟ ร้องหวีดตอนพุ่ง — หัวทู่ แรงต้านสูง (Cd 0.55): ลองเปลี่ยนเป็นหัวจรวดเพรียวลมดูว่าขึ้นสูงกว่ากันแค่ไหน',
+      mass: 1.5,
       cost: 14,
       size: { w: 1, h: 1 },
-      // a draggy little cluster of split tubes at the very nose — it pulls the
-      // CoP slightly FORWARD, a disturbance the tail stick has to out-vote
+      // a BLUNT, draggy cluster of split tubes at the very nose. The topmost
+      // part sets the whole vehicle's drag character (attached vs separated
+      // flow) — swap this for payload_nosecone and the same หมื่อ flies far higher.
       aerodynamics: { dragCoefficient: 0.55, crossSectionArea: 0.016 },
       // the split-tube whistle is the weak point: over-power the หมื่อ and the
       // slipstream shreds it first (Max-Q lesson)
-      structural: { maxDynamicPressure: 6200 },
+      structural: { maxDynamicPressure: 32000 },
       attachNodes: [
         { id: 'bottom', dx: 0.5, dy: 1, type: NODE.STACK, accepts: ['Structural'] }
       ]
     },
     {
       id: 'body_lao',
-      name: 'เลา (ลำตัวบั้งไฟ)',
+      name: 'เลา (ลำตัวบั้งไฟแสน)',
       category: C.STRUCTURAL,
       icon: '🫙',
       era: '1-bangfai',
-      blurb: 'ลำตัวหลัก — ไม้ไผ่ลำใหญ่หรือท่อ PVC พันเชือก ต่อซ้อนได้ (ยิ่งซ้อน = ยิ่งใหญ่: หมื่น → แสน → ล้าน) และมีจุดผูก "หาง" ที่ข้างลำ',
-      mass: 0.35,
+      blurb: 'ลำตัว "บั้งไฟแสน" — ท่อ PVC ลำใหญ่พันเชือกทั้งลำ หนักเอาการ (~8 กก.) ต่อซ้อนได้ (หมื่น → แสน → ล้าน) มีจุดผูก "หาง" ที่ข้างลำ',
+      mass: 8.0,
       cost: 16,
       size: { w: 1, h: 3 },
       aerodynamics: { dragCoefficient: 0.42, crossSectionArea: 0.020 },
-      structural: { maxDynamicPressure: 9500 },
+      structural: { maxDynamicPressure: 45000 },
       attachNodes: [
         { id: 'top',    dx: 0.5, dy: 0,   type: NODE.STACK,  accepts: ['Aerodynamics', 'Payload', 'Structural'] },
         { id: 'bottom', dx: 0.5, dy: 3,   type: NODE.STACK,  accepts: ['Propulsion', 'Structural'] },
-        { id: 'tailL',  dx: 0,   dy: 2.6, type: NODE.RADIAL, accepts: ['Structural'] },
-        { id: 'tailR',  dx: 1,   dy: 2.6, type: NODE.RADIAL, accepts: ['Structural'] }
+        { id: 'tailL',  dx: 0,   dy: 2.6, type: NODE.RADIAL, accepts: ['Structural', 'Aerodynamics'] },
+        { id: 'tailR',  dx: 1,   dy: 2.6, type: NODE.RADIAL, accepts: ['Structural', 'Aerodynamics'] }
       ]
     },
     {
       id: 'propulsion_mue',
-      name: 'หมื่อ (ดินขับบั้งไฟ)',
+      name: 'หมื่อ (ดินขับบั้งไฟแสน ~120 กก.)',
       category: C.PROPULSION,
       icon: '🧨',
       era: '1-bangfai',
-      blurb: 'ดินปืนตำอัดแน่นในกระบอก เจาะรูแกน จุดชนวนแล้วอัดแรงดันในลำ ~5 วิ (ควันมหาศาลกองพื้น) ค่อย ๆ พ้นราง แล้วเร่งพุ่งแรงขึ้นเรื่อย ๆ จนสูงเป็นพันฟุต แล้วค่อยอ่อนลงตอนท้าย — เผาสกปรก',
-      mass: 0.55,
+      blurb: 'ดินปืนตำอัดแน่นเกือบ 90 กก. ในลำ! จุดชนวนแล้วอัดแรงดัน ~5 วิ (ควันท่วมฐาน) — บั้งไฟแสนหนัก ๆ ค่อย ๆ ยกตัวพ้นราง แล้วเร่งพุ่งอย่างรุนแรงขึ้นเป็นกิโลเมตร อันตรายมาก',
+      mass: 12.0,               // kg — the clay-lined casing alone is heavy
       cost: 42,
       size: { w: 1, h: 3 },
       aerodynamics: { dragCoefficient: 0.42, crossSectionArea: 0.022 },
-      structural: { maxDynamicPressure: 8500 },
+      structural: { maxDynamicPressure: 45000 },
       propulsion: {
         mode: 'rocket',
-        thrust: 275,            // N peak
-        burnTime: 9.0,          // s — a long, hard burn that climbs for thousands of ft
+        thrust: 3200,           // N peak — it takes a lot to move 120 kg
+        burnTime: 15.0,         // s — a long, hard burn
         specificImpulse: 76,    // s — hand-rammed compressed black powder, dirty
-        propellantMass: 2.1,    // kg of grain
+        propellantMass: 88.0,   // kg of packed grain — the bulk of the vehicle
         spoolTime: 5.0,         // s — the packed bore takes a full 5 s to build
                                //     pressure: it sits on the rail wreathed in
-                               //     smoke, THEN slowly climbs off as thrust
-                               //     finally beats weight, accelerating hard as
-                               //     the ramp completes
-        taperTime: 3.0         // s — the bore widens as it burns: a long, slow
+                               //     smoke, THEN heaves off as thrust finally
+                               //     beats the 120 kg weight, accelerating hard
+        taperTime: 5.0         // s — the bore widens as it burns: a long, slow
                                //     regressive tail from peak thrust down to 0
       },
       attachNodes: [
-        { id: 'top', dx: 0.5, dy: 0, type: NODE.STACK, accepts: ['Structural'] }
+        { id: 'top',  dx: 0.5, dy: 0,   type: NODE.STACK,  accepts: ['Structural'] },
+        // engineered fins bolt to the aft end of the motor — truly behind the CoM
+        { id: 'finL', dx: 0,   dy: 2.7, type: NODE.RADIAL, accepts: ['Aerodynamics'] },
+        { id: 'finR', dx: 1,   dy: 2.7, type: NODE.RADIAL, accepts: ['Aerodynamics'] }
       ]
     },
     {
@@ -200,15 +203,16 @@
       category: C.STRUCTURAL,
       icon: '🎋',
       era: '1-bangfai',
-      blurb: 'ไม้ไผ่ลำยาว 3–10 เมตร ผูกขนาบลำบั้งไฟ ยื่นเลยหางกระบอกไปไกล — ไม่ใช่ครีบ แต่คือหัวใจของความนิ่ง: ลาก CoP ไปท้ายสุด และเพิ่มโมเมนต์ความเฉื่อย (I ∝ mL²) มหาศาล',
-      mass: 0.55,
+      blurb: 'ไม้ไผ่ลำยาว 6–10 เมตร ผูกขนาบลำบั้งไฟ ยื่นเลยหางกระบอกไปไกล — ไม่ใช่ครีบ แต่คือหัวใจของความนิ่ง: ลาก CoP ไปท้ายสุด + เพิ่มโมเมนต์ความเฉื่อย (I ∝ mL²) มหาศาล · หน้าตัดข้างมโหฬาร = ลมขวางพัดเป๋หนัก',
+      mass: 6.0,               // kg — a 6-10 m green-bamboo pole for a แสน is heavy
       cost: 12,
-      size: { w: 1, h: 12 },   // 6 m in the grid; real ones run 3–10 m
+      size: { w: 1, h: 12 },   // 6 m in the grid; real ones run 6–10 m
       // thin bamboo, edge-on to the airflow: a HUGE side area for the CoP but a
       // tiny frontal drag coefficient (the same big-A / small-Cd trick fins use,
       // taken to its extreme). Its area centre sits far aft of everything else.
+      // That giant side profile is also what a crosswind shoves around.
       aerodynamics: { dragCoefficient: 0.09, crossSectionArea: 0.10 },
-      structural: { maxDynamicPressure: 7500 },
+      structural: { maxDynamicPressure: 40000 },
       // the tail stick is what declares the launch rig angle for the whole stack
       launchAngleDeg: 80,
       attachNodes: [
@@ -273,6 +277,63 @@
       attachNodes: [
         { id: 'top',    dx: 0.5, dy: 0, type: NODE.STACK, accepts: ['Payload'] },
         { id: 'bottom', dx: 0.5, dy: 1, type: NODE.STACK, accepts: ['Structural'] }
+      ]
+    },
+    // ---- ENGINEERED transitional parts — the leap from folk craft to rocketry.
+    //  A traditional บั้งไฟ is stabilised by a 6 m bamboo pole: heavy, draggy in a
+    //  crosswind, and it snaps off / tumbles at apogee. These three parts are the
+    //  aerospace answer: a low-drag nose, light rear fins, and canted fins that
+    //  spin the vehicle for gyroscopic rigidity. Same schema, same motor.
+    {
+      id: 'payload_nosecone',
+      name: 'หัวจรวดเพรียวลม (Nose Cone)',
+      category: C.PAYLOAD,
+      icon: '🔺',
+      era: '1p5-fireworks',
+      blurb: 'หัวโค้งเพรียวลมแบบจรวดจริง — Cd ต่ำมาก (0.12 เทียบกับโหวดทู่ 0.55). ชิ้นบนสุดกำหนดบุคลิกแรงต้านของทั้งลำ → หมื่อตัวเดิมพุ่งได้สูงกว่ากันมาก',
+      mass: 0.9,
+      cost: 30,
+      size: { w: 1, h: 1 },
+      // an ogive nose: attached flow, tiny separated wake
+      aerodynamics: { dragCoefficient: 0.12, crossSectionArea: 0.016 },
+      structural: { maxDynamicPressure: 40000 },
+      attachNodes: [
+        { id: 'bottom', dx: 0.5, dy: 1, type: NODE.STACK, accepts: ['Structural'] }
+      ]
+    },
+    {
+      id: 'aero_fin_straight',
+      name: 'ครีบตรง (Straight Fins)',
+      category: C.AERODYNAMICS,
+      icon: '🪽',
+      era: '1p5-fireworks',
+      blurb: 'ครีบท้าย 3 ใบ วางแนวขนานแกน — ลาก CoP ไปท้ายให้นิ่งเหมือนหางบั้งไฟ แต่หนักแค่เศษเดียว และหน้าตัดข้างเล็ก ลมขวางพัดน้อยกว่ามาก',
+      mass: 0.9,
+      cost: 22,
+      size: { w: 1, h: 3 },   // tall fins that reach well past the nozzle
+      // big side/reference area to pull CoP hard aft, tiny frontal Cd (edge-on)
+      aerodynamics: { dragCoefficient: 0.10, crossSectionArea: 0.42 },
+      structural: { maxDynamicPressure: 16000 },
+      attachNodes: [
+        { id: 'mountL', dx: 0, dy: 0.4, type: NODE.RADIAL, accepts: ['Structural', 'Propulsion'] },
+        { id: 'mountR', dx: 1, dy: 0.4, type: NODE.RADIAL, accepts: ['Structural', 'Propulsion'] }
+      ]
+    },
+    {
+      id: 'aero_fin_canted',
+      name: 'ครีบเฉียง (Canted Fins — สปิน)',
+      category: C.AERODYNAMICS,
+      icon: '🌀',
+      era: '1p5-fireworks',
+      blurb: 'ครีบท้ายบิดมุมเล็กน้อย — อากาศที่ไหลผ่านดันให้จรวดหมุนรอบแกนเร็วขึ้นเรื่อย ๆ ตามความเร็ว รอบสูงพอ = ไจโรสโคปิก จรวดแข็งทื่อ เจาะลมขวางตรงเป๊ะเหมือนกระสุน',
+      mass: 0.95,
+      cost: 28,
+      size: { w: 1, h: 3 },
+      aerodynamics: { dragCoefficient: 0.13, crossSectionArea: 0.42, rollInduce: 1.0 },
+      structural: { maxDynamicPressure: 16000 },
+      attachNodes: [
+        { id: 'mountL', dx: 0, dy: 0.4, type: NODE.RADIAL, accepts: ['Structural', 'Propulsion'] },
+        { id: 'mountR', dx: 1, dy: 0.4, type: NODE.RADIAL, accepts: ['Structural', 'Propulsion'] }
       ]
     },
     {

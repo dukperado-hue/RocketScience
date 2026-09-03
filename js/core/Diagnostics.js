@@ -112,6 +112,15 @@
         ' m/s — CoM เลื่อนไปหน้า CoP ตอนเชื้อเพลิงเผาไหม้');
     }
 
+    // --- 4b″ · traditional Bang Fai broke up at apogee (expected!) --
+    var brk = events.filter(function (e) { return e.type === 'APOGEE_BREAKUP'; })[0];
+    if (brk) {
+      add('breakup', OK, 'บั้งไฟหางแบบดั้งเดิมแตกที่จุดสูงสุดแล้วตีลังกาลง — เป็นเรื่องปกติ',
+        'ที่ ' + fmtAlt(brk.altitude) + ' หัวโหวดไหม้ทะลุ + โครงหัก · ' +
+        'เปลี่ยนไปใช้ "หัวจรวดเพรียวลม" + "ครีบ" แทน "หาง" แล้วมันจะร่อนลงนิ่ง ๆ ไม่แตก ' +
+        'และขึ้นได้สูงกว่าเดิมมาก');
+    }
+
     // --- 4b′ · lantern caught fire mid-air (blown over) -------------
     var mab = events.filter(function (e) { return e.type === 'MIDAIR_BURN'; })[0];
     if (mab) {
@@ -167,6 +176,7 @@
       var vImp = Math.abs(impact.velocity);
       var iDetail = 'ความเร็วแตะพื้น ' + vImp.toFixed(1) + ' m/s';
       if (loc) add('landing', WARN, 'ร่วงลงหลังเสียการควบคุม', iDetail);
+      else if (brk) add('landing', OK, 'ตีลังกาลงหลังแตกที่ยอด — ไม่พุ่งปักหัวเหมือนหอกทิ้ง', iDetail);
       else if (vImp <= 6) add('landing', OK, 'ลงแตะพื้นนุ่มนวล', iDetail);
       else if (vImp <= 15) add('landing', WARN, 'ลงแรง — โครงสร้างอาจเสียหาย', iDetail);
       else add('landing', FAIL, 'ตกกระแทก', iDetail);

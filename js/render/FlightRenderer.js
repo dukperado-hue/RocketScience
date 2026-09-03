@@ -155,6 +155,10 @@
       buoyancy: a.buoyancy || 0,
       tumbling: !!a.tumbling,
       burning: !!a.burning,
+      brokenUp: !!a.brokenUp,
+      crashed: !!a.crashed,
+      spinRate: a.spinRate || 0,
+      spinStiff: a.spinStiff || 0,
       padLocked: !!a.padLocked
     };
   };

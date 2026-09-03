@@ -111,7 +111,10 @@
     var aero = def.aerodynamics || {};
     this.aerodynamics = {
       dragCoefficient: num(aero.dragCoefficient, 0.5),
-      crossSectionArea: num(aero.crossSectionArea, 0.01)  // m^2
+      crossSectionArea: num(aero.crossSectionArea, 0.01),  // m^2
+      // canted fins deflect the airstream tangentially → a roll torque that
+      // spins the rocket up. >0 = this part induces spin (gyroscopic stiffness).
+      rollInduce: num(aero.rollInduce, 0)
     };
 
     if (def.propulsion) {

@@ -33,6 +33,7 @@
     PITCH_OVER: 'เลี้ยวโค้ง',
     MAX_Q:    'แรงดันอากาศสูงสุด',
     APOGEE:   'จุดสูงสุด',
+    APOGEE_BREAKUP: 'แตกที่จุดสูงสุด',
     BURNOUT:  'เชื้อเพลิงหมด',
     LOSS_OF_CONTROL: 'เสียการควบคุม',
     MIDAIR_BURN: 'โคมไฟไหม้กลางอากาศ',
@@ -40,8 +41,8 @@
   };
   var EVENT_COLOR = {
     IGNITION: '#e9f1ff', LIFTOFF: '#5fe0a8', PITCH_OVER: '#b98cff', MAX_Q: '#5bd6ff',
-    BURNOUT: '#ffb63a', APOGEE: '#ffce40', LOSS_OF_CONTROL: '#ff3b3b',
-    MIDAIR_BURN: '#ff7420', IMPACT: '#ff6a5a'
+    BURNOUT: '#ffb63a', APOGEE: '#ffce40', APOGEE_BREAKUP: '#ff8a3a',
+    LOSS_OF_CONTROL: '#ff3b3b', MIDAIR_BURN: '#ff7420', IMPACT: '#ff6a5a'
   };
   var UP = THREE ? new THREE.Vector3(0, 1, 0) : null;
   var RATES = [0.5, 1, 2, 4];
@@ -161,6 +162,7 @@
     this._autopsyShown = false;
     this._glow = null;
     this._glowPulse = 0;
+    this._debris = [];            // apogee-breakup falling bamboo bits
 
     if (this.available) this._bindControls();
   }
@@ -737,13 +739,17 @@
 
     if (this._exhaust) {
       if (bf) {
-        // a WALL of ground smoke that grows over the 5 s pressure build
+        // a WALL of ground smoke that grows over the 5 s pressure build,
+        // emitted from the real (rail-tilted) nozzle centre
+        var gnoz = this._nozzleWorld();
         this._exhaust.update(this._gate === 'prelaunch' ? 0 : dt, {
           x: 0, y: 0, v: 0,
           powered: this._gate !== 'prelaunch',
           padLocked: true, bigPlume: true, buoyant: false,
           buildFactor: s,
-          exhaustY: this._exhaustY
+          exhaustY: this._exhaustY,
+          nozzleX: gnoz && gnoz.x, nozzleY: gnoz && gnoz.y, nozzleZ: gnoz && gnoz.z,
+          exhaustDir: gnoz && gnoz.dir
         });
       } else {
         this._exhaust.update(this._gate === 'prelaunch' ? 0 : dt, {
@@ -846,6 +852,7 @@
 
     // ---- rebuild the fleet from scratch -------------------------------
     if (this._exhaust) this._exhaust.reset();
+    this._clearDebris();
     this._disposeFleet();
     this._focusIdx = 0;
     this._addVehicle(simResult, { t0: 0, primary: true });
@@ -963,6 +970,7 @@
     if (this.elHaiku) { this.elHaiku.hidden = true; this.elHaiku.classList.remove('show'); }
     this._haikuActive = this._haikuFading = false;
     this._haikuQueue.length = 0;
+    this._clearDebris();
     this.root.hidden = true;
   };
 
@@ -1047,7 +1055,13 @@
     this._vehicles.forEach(function (r) {
       r.flight.seek(0); r._igniteSfx = false;
       if (r._igniteVoice) { try { r._igniteVoice.pause(); } catch (e) {} r._igniteVoice = null; }
+      // un-break the vehicle: re-show the whistle nose, clear the flag
+      if (r.group && r.group.userData) {
+        r.group.userData.brokenUp = false;
+        r.group.traverse(function (m) { if (m.userData && m.userData.isNoseWhistle) m.visible = true; });
+      }
     });
+    this._clearDebris();
     if (this._sound) this._sound.stopAll();
     this._syncScrub();
     this.play();
@@ -1142,16 +1156,26 @@
     var powered = !!fRec && fRec.flight.time <= fRec._poweredUntil + 0.01 &&
       this._masterT >= fRec.t0;
 
+    // APOGEE BREAKUP — hide the whistle nose + spawn falling debris, once
+    if (st.brokenUp && this.vehicleGroup && !this.vehicleGroup.userData.brokenUp) {
+      this._doBreakup(st);
+    }
+    this._updateDebris(this._frameDt || 0.016);
+
     if (this._exhaust) {
+      var noz = this._nozzleWorld();
       this._exhaust.update(this._playing ? (this._frameDt || 0.016) : 0, {
         x: (st.position && st.position.x) || 0,
         y: (st.position && st.position.y) || 0,
         v: st.velocity,
         powered: powered && st.altitude < 45000,
         padLocked: !!st.padLocked,
+        crashed: !!st.crashed,
         buoyant: this.flight.buoyant,
         bigPlume: this._dirtyExhaust,
-        exhaustY: this._exhaustY
+        exhaustY: this._exhaustY,
+        nozzleX: noz && noz.x, nozzleY: noz && noz.y, nozzleZ: noz && noz.z,
+        exhaustDir: noz && noz.dir
       });
     }
 
@@ -1167,6 +1191,83 @@
     this._recomputePhase(this.flight.time);
     this._updateHud(st);
     this.scene.renderOnce();
+  };
+
+  // the WORLD position + outward direction of the focused vehicle's nozzle
+  // (rotated with the vehicle) — so exhaust never emits from the bounding-box
+  // axis / the side of the tail stick
+  FlightScreen.prototype._nozzleWorld = function () {
+    var g = this.vehicleGroup;
+    if (!g || !THREE) return null;
+    if (!this._nozL) {
+      this._nozL = new THREE.Vector3(); this._nozW = new THREE.Vector3();
+      this._nozD = new THREE.Vector3();
+    }
+    var lx = (g.userData && g.userData.exhaustX) || 0;
+    var lz = (g.userData && g.userData.exhaustZ) || 0;
+    this._nozL.set(lx, this._exhaustY, lz);
+    g.updateMatrixWorld();
+    this._nozW.copy(this._nozL).applyMatrix4(g.matrixWorld);
+    this._nozD.set(0, -1, 0).applyQuaternion(g.quaternion);
+    return {
+      x: this._nozW.x, y: this._nozW.y, z: this._nozW.z,
+      dir: { x: this._nozD.x, y: this._nozD.y }
+    };
+  };
+
+  // ---- APOGEE BREAKUP — hide the whistle + spawn tumbling debris ----------
+  FlightScreen.prototype._doBreakup = function (st) {
+    var where = RS.render.VehicleRenderer.breakup(this.vehicleGroup);
+    var px = where ? where.x : ((st.position && st.position.x) || 0);
+    var py = where ? where.y : ((st.position && st.position.y) || 0);
+    var pz = where ? where.z : 0;
+    var vx = st.vx || 0, vy = st.velocity || 0;
+    for (var i = 0; i < 5; i++) {
+      var m = new THREE.Mesh(
+        new THREE.BoxGeometry(0.12 + Math.random() * 0.22, 0.5 + Math.random() * 1.4, 0.12),
+        new THREE.MeshStandardMaterial({ color: i % 2 ? 0x9a7b45 : 0xc9b487, roughness: 0.9 })
+      );
+      m.position.set(px + (Math.random() - 0.5) * 1.2, py + (Math.random() - 0.5) * 1.2, pz);
+      m.rotation.set(Math.random() * 6, Math.random() * 6, Math.random() * 6);
+      this.scene.add(m);
+      this._debris.push({
+        mesh: m,
+        vx: vx + (Math.random() - 0.5) * 9,
+        vy: vy + (Math.random() - 0.5) * 9 + 2,
+        spin: new THREE.Vector3((Math.random() - 0.5) * 8, (Math.random() - 0.5) * 8, (Math.random() - 0.5) * 8)
+      });
+    }
+    this._showToast('แตกที่จุดสูงสุด! — หัวโหวดไหม้ทะลุ โครงหัก บั้งไฟตีลังกาลง');
+    this._phaseText = 'แตกที่จุดสูงสุด — ตีลังกาลง';
+  };
+
+  FlightScreen.prototype._updateDebris = function (dt) {
+    if (!this._debris || !this._debris.length) return;
+    for (var i = this._debris.length - 1; i >= 0; i--) {
+      var d = this._debris[i];
+      d.vy -= 9.8 * dt;
+      // a little air drag so the light bamboo bits flutter down, not plummet
+      d.vx *= (1 - 0.6 * dt); d.vy *= (1 - 0.25 * dt);
+      d.mesh.position.x += d.vx * dt;
+      d.mesh.position.y += d.vy * dt;
+      d.mesh.rotation.x += d.spin.x * dt;
+      d.mesh.rotation.y += d.spin.y * dt;
+      d.mesh.rotation.z += d.spin.z * dt;
+      if (d.mesh.position.y <= 0.1) {
+        this.scene.remove(d.mesh);
+        d.mesh.geometry.dispose(); d.mesh.material.dispose();
+        this._debris.splice(i, 1);
+      }
+    }
+  };
+
+  FlightScreen.prototype._clearDebris = function () {
+    var self = this;
+    (this._debris || []).forEach(function (d) {
+      if (self.scene) self.scene.remove(d.mesh);
+      d.mesh.geometry.dispose(); d.mesh.material.dispose();
+    });
+    this._debris = [];
   };
 
   FlightScreen.prototype._updateCamera = function (alt, st) {
