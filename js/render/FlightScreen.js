@@ -1052,15 +1052,21 @@
     g.visible = false;
   };
 
-  // the burst — an expanding shell of coloured sparks + a flash
-  FlightScreen.prototype._spawnFwBurst = function (x, y, z, hex, dud) {
+  // the burst — an expanding shell of coloured sparks + a flash.
+  //  `group`  — the specific shell mesh to consume (defaults to the focused one)
+  //  `seqIdx` — 0-based position in an M03 firing sequence (null = single shot);
+  //             the finale (idx 2) throws a bigger, brighter flower
+  FlightScreen.prototype._spawnFwBurst = function (x, y, z, hex, dud, group, seqIdx) {
     if (!THREE || !this.scene) return;
-    this._fwBursted = true;
+    var inSeq = seqIdx != null;
+    if (!inSeq) this._fwBursted = true;
     // consume the shell mesh
-    if (this.vehicleGroup) this.vehicleGroup.visible = false;
+    var consume = group || this.vehicleGroup;
+    if (consume) consume.visible = false;
 
     var col = new THREE.Color(hex || '#ffc247');
-    var N = dud ? 26 : 150;
+    var finale = seqIdx === 2;
+    var N = dud ? 26 : (finale ? 220 : 150);
     var pos = new Float32Array(N * 3), colr = new Float32Array(N * 3);
     var vel = [];
     for (var i = 0; i < N; i++) {
@@ -1084,18 +1090,39 @@
     pts.frustumCulled = false;
     this.scene.add(pts);
 
-    var flash = new THREE.PointLight(dud ? 0x9a9a9a : hex, dud ? 2 : 14, dud ? 40 : 220, 2);
+    var flash = new THREE.PointLight(dud ? 0x9a9a9a : hex,
+      dud ? 2 : (finale ? 20 : 14), dud ? 40 : (finale ? 300 : 220), 2);
     flash.position.set(x, y, z);
     this.scene.add(flash);
 
     this._fwBursts.push({ pts: pts, geo: geo, vel: vel, flash: flash, pos: pos,
-      t: 0, life: dud ? 1.0 : 2.2, dud: !!dud });
+      t: 0, life: dud ? 1.0 : (finale ? 2.6 : 2.2), dud: !!dud });
 
-    this._showToast(dud
-      ? '💨 ลูกพลุด้าน — ตกถึงพื้นก่อนชนวนจะไหม้'
-      : ('🎆 ดอกพลุบานที่ ' + Math.round(y) + ' ม.' +
-         (this._fwBox && y >= this._fwBox[0] && y <= this._fwBox[1] ? ' — ในกรอบเป้าหมาย! 🎯' : ' — นอกกรอบ')));
-    if (this._sound && !dud) this._sound.play('liftoff', { volume: 0.4, rate: 1.5 });
+    if (!inSeq) {
+      this._showToast(dud
+        ? '💨 ลูกพลุด้าน — ตกถึงพื้นก่อนชนวนจะไหม้'
+        : ('🎆 ดอกพลุบานที่ ' + Math.round(y) + ' ม.' +
+           (this._fwBox && y >= this._fwBox[0] && y <= this._fwBox[1] ? ' — ในกรอบเป้าหมาย! 🎯' : ' — นอกกรอบ')));
+    }
+    if (this._sound && !dud) {
+      // a sequence climbs in pitch shell-to-shell — pop · pop · POP
+      var rate = inSeq ? (1.15 + seqIdx * 0.3) : 1.5;
+      this._sound.play('liftoff', { volume: inSeq ? 0.5 : 0.4, rate: rate });
+    }
+  };
+
+  // ---- M03 · the running "🔴 → ⚪ → 🔵" ticker as each tube fires ----------
+  FlightScreen.prototype._fwSeqToast = function (idx) {
+    var GLYPH = { red: '🔴', white: '⚪', blue: '🔵', green: '🟢', gold: '🟡' };
+    var total = (this._fwSeq && this._fwSeq.length) || 3;
+    var strip = [];
+    for (var i = 0; i < total; i++) {
+      var r = this._fwSeqResult[i];
+      strip.push(r ? (GLYPH[r.color] || '⚫') : '·');
+    }
+    this._showToast('🎆 หลอดที่ ' + (idx + 1) + ' แตก! · ' + strip.join('  '));
+    this._phaseText = 'ชุดพลุลำดับ ' + strip.join(' ');
+    if (this._glowPulse != null) this._glowPulse = Math.max(this._glowPulse, 0.8);
   };
 
   FlightScreen.prototype._sparkTex = function () {
@@ -1448,6 +1475,12 @@
     this._fwRetry = opts.onRetry || null;
     this._fwBursted = false;
     this._lastVerdict = null;
+    // ---- M03 · the RED/WHITE/BLUE firing sequence (Phase 18) --------------
+    //  N shells, physically identical (colour has no trajectory effect), fired
+    //  one every `sequenceGap` seconds. ONE sim drives all of them.
+    this._fwSeq = (opts.firework && opts.firework.sequence) || null;
+    this._fwSeqGap = (opts.firework && +opts.firework.sequenceGap) || 1.0;
+    this._fwSeqResult = [];
     var wantDay = (!!opts.daylight || this._bangfai || this._v2) && !buoy;
     this._applySky(this._fw ? 'night' : buoy ? 'night' : (wantDay ? 'day' : 'dusk'));
 
@@ -1460,6 +1493,22 @@
     this._masterT = 0;
     this._masterDur = this._vehicles[0].flight.duration;
     this._canLaunchNext = this._bangfai || this._v2;
+
+    // ---- M03 · fan the sequence out into a staggered fleet ---------------
+    if (this._fwSeq && this._fwSeq.length) {
+      var v0 = this._vehicles[0];
+      v0.fwColor = this._fwSeq[0].color;
+      v0.fwColorHex = this._fwSeq[0].colorHex || this._fwColorHex;
+      v0._fwBursted = false;
+      for (var _si = 1; _si < this._fwSeq.length; _si++) {
+        var srec = this._addVehicle(simResult, { t0: _si * this._fwSeqGap });
+        srec.fwColor = this._fwSeq[_si].color;
+        srec.fwColorHex = this._fwSeq[_si].colorHex || this._fwColorHex;
+        srec._fwBursted = false;
+        this._masterDur = Math.max(this._masterDur, srec.t0 + srec.flight.duration);
+      }
+      this._canLaunchNext = false;
+    }
     this._playing = false;
     this._clearBlasts();
     if (this._sound) this._sound.stopAll();
@@ -1547,8 +1596,14 @@
       this._buildLanterns(this._fwOpts && this._fwOpts.lanterns);
       this._camIdx = CAM_MODES.indexOf('ground');
       this.btnCam.textContent = CAM_LABEL.ground;
-      this._phaseText = 'พร้อมจุดพลุ';
+      this._phaseText = this._fwSeq ? 'ชุดพลุลำดับ — พร้อมยิง' : 'พร้อมจุดพลุ';
     }
+    // reset the per-shell burst bookkeeping for a fresh sequence run
+    this._fwSeqResult = [];
+    this._vehicles.forEach(function (r) {
+      r._fwBursted = false;
+      if (r.group) r.group.visible = true;
+    });
 
     // ---- THE RELEASE — manual two-step ignition for a khom loy -----------
     this._haikuQueue.length = 0;
@@ -1633,6 +1688,8 @@
     this._clearBlasts();
     this._clearFwBursts();
     this._clearLanterns();
+    this._fwSeq = null;
+    this._fwSeqResult = [];
     if (this._fwTargetBox) this._fwTargetBox.visible = false;
     if (this.elLaunchSeq) this.elLaunchSeq.hidden = true;
     if (this.elCountdown) this.elCountdown.hidden = true;
@@ -1708,9 +1765,13 @@
     if (this._masterDur > 0 && this._masterT >= this._masterDur - 1e-3) {
       this._masterT = 0; this._vmax = 0;
       this._autopsyShown = false; this.autopsy.hidden = true;
+      this._fwSeqResult = [];
       this._vehicles.forEach(function (r) {
         r.flight.seek(0); r._igniteSfx = false; r._igniteVoice = null;
+        r._fwBursted = false;
+        if (r.group) r.group.visible = true;
       });
+      this._clearFwBursts();
     }
     this._playing = true;
     this._reflectPlay();
@@ -1744,6 +1805,12 @@
     this._clearFwBursts();
     if (this._fw) this._buildLanterns(this._fwOpts && this._fwOpts.lanterns);
     if (this.vehicleGroup) this.vehicleGroup.visible = true;
+    // M03 · reset every shell in the sequence for a clean replay
+    this._fwSeqResult = [];
+    this._vehicles.forEach(function (r) {
+      r._fwBursted = false;
+      if (r.group) r.group.visible = true;
+    });
     if (this._sound) this._sound.stopAll();
     this._syncScrub();
     this.play();
@@ -1820,6 +1887,12 @@
     // every vehicle: progressive trail + its own exhaust glow
     for (var i = 0; i < this._vehicles.length; i++) {
       var rec = this._vehicles[i];
+      // M03 · a queued shell stays out of sight (and off the pad) until its turn
+      if (this._fwSeq && rec.group && !rec._fwBursted) {
+        rec.group.visible = this._masterT >= rec.t0 - 0.08;
+        if (rec.trail) rec.trail.visible = this._masterT >= rec.t0 - 0.08;
+        if (rec.pathLine) rec.pathLine.visible = false;
+      }
       if (rec.trail && rec.trailN) {
         var dur = rec.flight.duration || 1;
         var idx = Math.round((rec.flight.time / dur) * (rec.trailN - 1));
@@ -1863,14 +1936,32 @@
     }
 
     // ---- SKY ATLAS · the firework burst -----------------------------
-    if (this._fwTargetBox) this._fwTargetBox.visible = this._fw;
-    if (this._fw && !this._fwBursted && this._summary && this._summary.burst) {
+    if (this._fwTargetBox) this._fwTargetBox.visible = this._fw && !this._fwSeq;
+    if (this._fw && this._summary && this._summary.burst) {
       var bu = this._summary.burst;
-      if ((bu.occurred || bu.dud) && this.flight.time >= (bu.time || 1e9) - 1e-3) {
-        var bx2 = (st.position && st.position.x) || 0;
-        var by2 = bu.dud ? 1.5 : (bu.altitude || st.altitude || 0);
-        var bz2 = (st.position && st.position.z) || 0;
-        this._spawnFwBurst(bx2, by2, bz2, this._fwColorHex, bu.dud);
+      if (this._fwSeq && this._fwSeq.length) {
+        // ---- M03 · fire each tube as its own fuse runs through ----------
+        for (var vqi = 0; vqi < this._vehicles.length; vqi++) {
+          var vqr = this._vehicles[vqi];
+          if (vqr._fwBursted || this._masterT < vqr.t0) continue;
+          if (!(bu.occurred || bu.dud) || vqr.flight.time < (bu.time || 1e9) - 1e-3) continue;
+          var vqs = vqr.flight.sampleAt(vqr.flight.time);
+          var qx = (vqs && vqs.position) ? vqs.position.x : 0;
+          var qy = bu.dud ? 1.5 : (bu.altitude || (vqs && vqs.altitude) || 0);
+          var qz = (vqs && vqs.position) ? vqs.position.z : 0;
+          vqr._fwBursted = true;
+          var qIdx = this._fwSeqResult.length;
+          this._fwSeqResult.push({ color: vqr.fwColor, t: this._masterT });
+          this._spawnFwBurst(qx, qy, qz, vqr.fwColorHex, bu.dud, vqr.group, qIdx);
+          this._fwSeqToast(qIdx);
+        }
+      } else if (!this._fwBursted) {
+        if ((bu.occurred || bu.dud) && this.flight.time >= (bu.time || 1e9) - 1e-3) {
+          var bx2 = (st.position && st.position.x) || 0;
+          var by2 = bu.dud ? 1.5 : (bu.altitude || st.altitude || 0);
+          var bz2 = (st.position && st.position.z) || 0;
+          this._spawnFwBurst(bx2, by2, bz2, this._fwColorHex, bu.dud);
+        }
       }
     }
     this._updateFwBursts(this._frameDt || 0.016);
@@ -2114,7 +2205,7 @@
         ? (this._fwXBox ? (this._fwXBox[0] + this._fwXBox[1]) / 2 * 0.6 : tx * 0.5)
         : tx;
       var lookY = this._fw
-        ? Math.max(vy, (this._fwBox ? (this._fwBox[0] + this._fwBox[1]) / 2 : 60))
+        ? Math.max(vy, (this._fwBox ? (this._fwBox[0] + this._fwBox[1]) / 2 : (this._fwSeq ? 95 : 60)))
         : Math.max(vy, focus);
       cam.position.set(lookX + gd * sth, this._fw ? 6 : 1.3, gd * cth);
       cam.lookAt(lookX, lookY, 0);
@@ -2287,7 +2378,26 @@
         ['MECO', s.mecoTime != null ? s.mecoTime.toFixed(1) + ' s' : 'ไม่ถึงระยะ']
       ];
     }
-    if (this._fw && s.burst) {
+    if (this._fw && this._fwSeq) {
+      // ---- M03 · the Red/White/Blue firing sequence ----
+      var GL = { red: '🔴', white: '⚪', blue: '🔵', green: '🟢', gold: '🟡' };
+      var NM = { red: 'แดง', white: 'ขาว', blue: 'น้ำเงิน', green: 'เขียว', gold: 'ทอง' };
+      var wantSeq = (this._mission && this._mission.objectives &&
+        this._mission.objectives.burstSequence) || [];
+      var gotSeq = this._fwSeqResult.map(function (r) { return r.color; });
+      var seqOk = wantSeq.length === gotSeq.length &&
+        wantSeq.every(function (c, i) { return c === gotSeq[i]; });
+      var glyphs = function (arr) { return arr.map(function (c) { return GL[c] || '⚫'; }).join(' → '); };
+      cells = [
+        ['ออกแบบ 3 หลอด', glyphs(this._fwSeq.map(function (t) { return t.color; }))],
+        ['ลำดับที่แตกจริง', gotSeq.length ? glyphs(gotSeq) : '—'],
+        ['ลำดับเป้าหมาย', glyphs(wantSeq) + '  (' + wantSeq.map(function (c) { return NM[c]; }).join('→') + ')'],
+        ['จังหวะแตก', this._fwSeqResult.length
+          ? this._fwSeqResult.map(function (r) { return r.t.toFixed(1) + ' ว'; }).join('  ·  ') : '—'],
+        ['เคมี', 'Sr→แดง · Mg→ขาว · Cu→น้ำเงิน'],
+        ['ผล', seqOk ? '🎯 ถูกลำดับ!' : '✕ ผิดลำดับ']
+      ];
+    } else if (this._fw && s.burst) {
       var bu = s.burst, bx = this._fwBox || bu.box;
       var col = s.collision || {};
       var angleTxt = (this._fwOpts && this._fwOpts.angle)
@@ -2311,7 +2421,7 @@
         : (bu.inBox && (!this._fwXBox || (bu.x >= this._fwXBox[0] && bu.x <= this._fwXBox[1])))
           ? '🎯 ในกรอบ' : '✕ นอกกรอบ']);
     }
-    if (this._vehicles.length > 1) {
+    if (this._vehicles.length > 1 && !this._fwSeq) {
       cells.unshift([this._v2 ? 'V-2 ที่ยิงทั้งหมด' : 'บั้งไฟที่ปล่อยทั้งหมด',
         this._vehicles.length + ' ลูก']);
     }
@@ -2349,7 +2459,9 @@
     btn.className = 'fs-ap-btn fs-why';
     btn.textContent = '🤔 ทำไมถึงพลาด?';
     btn.addEventListener('click', function () {
-      var card = RS.Diagnostics.scienceCard(self._mission, self._sim);
+      var card = RS.Diagnostics.scienceCard(self._mission, self._sim, {
+        gotSeq: (self._fwSeqResult || []).map(function (q) { return q.color; })
+      });
       RS.render.UI.openScienceCard(card, function () {
         self.close();
         if (self._fwRetry) self._fwRetry();
@@ -2365,7 +2477,11 @@
     var ME = RS.MissionEngine;
     if (!this._mission || !ME || !this._sim) { el.hidden = true; this._lastVerdict = null; return; }
 
-    var r = ME.evaluate(this._mission, this._sim, this._vehicle);
+    // M03 · the verdict re-scores off the ORDER the shells actually burst in
+    var evalCtx = this._fwSeq
+      ? { sequenceColors: this._fwSeqResult.map(function (q) { return q.color; }) }
+      : null;
+    var r = ME.evaluate(this._mission, this._sim, this._vehicle, evalCtx);
     this._lastVerdict = r;
     var rows = [];
     r.objectives.concat(r.constraints).forEach(function (o) {

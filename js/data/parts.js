@@ -606,8 +606,30 @@
 
   RS.PartsCatalog.registerAll(ERA4);
 
+  // ---------------------------------------------------------------------------
+  //  FIREWORK CHEMISTRY — the metal-salt colourants for THE SKY ATLAS Design
+  //  Desk (Phase 18). Colour in a firework is atomic emission: heat a specific
+  //  metal salt and its electrons fall back through fixed energy levels,
+  //  radiating one characteristic wavelength. PURE DATA — a shell's colour has
+  //  ZERO effect on its trajectory; js/render/UI.js reads this list to build
+  //  the "Effect Colour" menu. Order here = order shown in the desk.
+  // ---------------------------------------------------------------------------
+  var FIREWORK_COLORS = [
+    { id: 'red',   label: 'แดง',     sub: 'Strontium (Sr)',        hex: '#ff4d5a',
+      chem: 'สตรอนเชียม',           element: 'Sr',    emission: '605–682 nm' },
+    { id: 'white', label: 'ขาว',     sub: 'Magnesium / Aluminium', hex: '#eaf1ff',
+      chem: 'แมกนีเซียม / อะลูมิเนียม', element: 'Mg/Al', emission: 'สเปกตรัมต่อเนื่อง · ร้อนจัด' },
+    { id: 'blue',  label: 'น้ำเงิน', sub: 'Copper (Cu)',           hex: '#4d9bff',
+      chem: 'ทองแดง',               element: 'Cu',    emission: '420–460 nm · สีที่ยากที่สุด' },
+    { id: 'green', label: 'เขียว',   sub: 'Barium (Ba)',           hex: '#54e08a',
+      chem: 'แบเรียม',              element: 'Ba',    emission: '505–535 nm' },
+    { id: 'gold',  label: 'ทอง',     sub: 'Carbon / Iron',         hex: '#ffc247',
+      chem: 'คาร์บอน + เหล็ก',       element: 'C/Fe',  emission: 'ประกายไฟจากถ่าน/ผงเหล็ก' }
+  ];
+
   // handy for tools / data browsers
   RS.data = RS.data || {};
+  RS.data.fireworkColors = FIREWORK_COLORS;
   RS.data.parts = {
     '0-khomloy': ERA0, '1-bangfai': ERA1, '1p5-fireworks': ERA1_5,
     '3-v2': ERA3, '4-orbit': ERA4

@@ -191,6 +191,44 @@
       reward: { score: 700 }
     },
     {
+      id: 'sky-m03-independence',
+      era: '1p5-fireworks',
+      title: 'M03 · Independence Day',
+      description: 'วันชาติสหรัฐฯ 4 กรกฎาคม — จัดชุดพลุ "แดง–ขาว–น้ำเงิน" ยิงเรียงลำดับให้แตกทีละสีตามจังหวะ',
+      npc: 'pchang',
+      atlas: {
+        code: 'M03',
+        name: 'Independence Day',
+        subtitle: 'Independence Day · Chemistry & Sequencing',
+        stamp: '🎆',
+        accent: '#5c8cff',
+        lesson: 'chemistry-sequencing',
+        // M03 uses the SEQUENCER desk — three tubes, pick one Effect Colour each.
+        // Lift + fuse are locked to standard values; only the chemistry matters.
+        sequence: true,
+        sequenceColors: ['red', 'white', 'blue'],
+        culturalBrief: 'เฉลิมฉลองวันชาติสหรัฐฯ (4th of July) ด้วยชุดพลุคลาสสิก แดง–ขาว–น้ำเงิน แบบยิงเรียงลำดับ. ' +
+          'เป้าหมาย: ตั้งพลุ 3 หลอด ให้แตกตามลำดับเป๊ะ ๆ — แดงก่อน · ขาวที่สอง · น้ำเงินที่สาม.',
+        design: 'firework-sequencer',
+        science: {
+          tag: 'Chemistry Insight · Metal Salts & Emission Spectra (เกลือโลหะ · สเปกตรัมการเปล่งแสง)',
+          body: 'สีของพลุมาจาก "โลหะ" ที่เผาไหม้ที่อุณหภูมิสูง! เมื่ออิเล็กตรอนของโลหะแต่ละชนิด' +
+            'ถูกกระตุ้นแล้วตกกลับสู่ระดับพลังงานเดิม มันปล่อยแสงออกมาที่ความยาวคลื่นเฉพาะตัว: ' +
+            'สตรอนเทียม (Sr) = แดง · แมกนีเซียม (Mg) = ขาว · ทองแดง (Cu) = น้ำเงิน. ' +
+            'คุณต้องเลือกธาตุให้ถูก และเรียง "ลำดับการยิง" ให้ถูกต้องด้วย — แดง → ขาว → น้ำเงิน.'
+        }
+      },
+      npc_dialogue: [
+        'งานนี้เป็นชุดพลุ "sequential" — ยิงทีละหลอด ให้แตกไล่สีกันเป็นจังหวะ',
+        'เธอไม่ได้ออกแบบพลุลูกเดียวแล้ว — ตั้ง 3 หลอด: หลอด 1 · หลอด 2 · หลอด 3',
+        'แรงส่งกับชนวนล็อกไว้เป็นค่ามาตรฐานแล้ว — เธอแค่เลือก "สารให้สี" ของแต่ละหลอด',
+        'เคมี: สตรอนเทียม = แดง · แมกนีเซียม/อะลูมิเนียม = ขาว · ทองแดง = น้ำเงิน',
+        'เป้าหมาย: หลอด 1 แตกแดง → หลอด 2 แตกขาว → หลอด 3 แตกน้ำเงิน — เรียงให้เป๊ะ!'
+      ],
+      objectives: { burstSequence: ['red', 'white', 'blue'] },
+      reward: { score: 800 }
+    },
+    {
       id: 'e1p5-the-pop',
       era: '1p5-fireworks',
       title: 'แรงกระแทกเดียว',

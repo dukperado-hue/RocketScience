@@ -272,11 +272,26 @@
    * this specific flight is prepended so the lesson lands on what just happened.
    * @returns {{tag:string, context:string, body:string}}
    */
-  function scienceCard(mission, sim) {
+  function scienceCard(mission, sim, ctx) {
     var atl = (mission && mission.atlas) || {};
     var sum = (sim && sim.summary) || {};
     var br = sum.burst || {};
     var col = sum.collision || {};
+    ctx = ctx || {};
+
+    // ---- M03 · a wrong Red/White/Blue firing order gets the chemistry card ----
+    if (atl.sequence) {
+      var sci0 = atl.science || {};
+      var NM = { red: 'แดง', white: 'ขาว', blue: 'น้ำเงิน', green: 'เขียว', gold: 'ทอง' };
+      var want0 = (mission.objectives && mission.objectives.burstSequence) || [];
+      var got0 = ctx.gotSeq || [];
+      var nice0 = function (a) { return (a || []).map(function (c) { return NM[c] || c; }).join(' → '); };
+      var ctx0 = got0.length
+        ? ('รอบนี้: คุณยิงเป็นลำดับ ' + nice0(got0) + ' — ต้องเป็น ' + nice0(want0) + '. ' +
+           'สีมาจากธาตุโลหะ: สตรอนเทียม→แดง · แมกนีเซียม→ขาว · ทองแดง→น้ำเงิน.')
+        : '';
+      return { tag: sci0.tag, context: ctx0, body: sci0.body };
+    }
     // a collision fail gets the dedicated safety card
     var sci = (col.occurred && atl.scienceCollision) ? atl.scienceCollision
       : atl.science || {

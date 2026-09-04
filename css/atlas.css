@@ -230,8 +230,42 @@
 .fw-sci-body { margin: 0 0 22px; font-size: 15px; line-height: 1.8; color: #dde6f6; }
 .fw-sci-actions { justify-content: flex-end; }
 
+/* ---- M03 · THE SEQUENCER DESK — Tube 1 / Tube 2 / Tube 3 (Phase 18) ---- */
+.fwd-seq-lockbar {
+  margin: 0 0 14px; padding: 8px 12px; border-radius: 9px;
+  font-size: 11.5px; letter-spacing: 0.02em; color: #9db0d4; text-align: center;
+  background: rgba(10,16,32,0.6); border: 1px dashed rgba(150,180,240,0.22);
+}
+.fwd-tubes { display: flex; flex-direction: column; gap: 12px; }
+.fwd-tube {
+  padding: 12px 12px 12px; border-radius: 13px;
+  border: 1px solid rgba(150,180,240,0.2);
+  border-left: 3px solid var(--sa-accent, #5c8cff);
+  background: linear-gradient(180deg, rgba(14,22,44,0.7), rgba(10,15,30,0.55));
+}
+.fwd-tube-h { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 9px; }
+.fwd-tube-n { font-size: 14px; font-weight: 700; color: #eaf1ff; }
+.fwd-tube-tag {
+  font-family: "JetBrains Mono", monospace; font-size: 10.5px; letter-spacing: 0.14em;
+  color: #7fa8e6; text-transform: uppercase;
+}
+.fwd-opts-seq { grid-template-columns: repeat(5, 1fr); gap: 7px; }
+.fwd-opts-seq .fwd-opt { padding: 10px 5px 9px; gap: 2px; }
+.fwd-opts-seq .fwd-opt-swatch { width: 20px; height: 20px; }
+.fwd-opts-seq .fwd-opt-l { font-size: 13px; }
+.fwd-opts-seq .fwd-opt-s { font-size: 8.5px; line-height: 1.2; }
+.fwd-opts-seq .fwd-opt-h { display: none; }   /* keep the tube cards compact */
+
+.fwd-card:has(.fwd-tubes) { max-width: 760px; }
+
+@media (max-width: 620px) {
+  .fwd-opts-seq { grid-template-columns: repeat(3, 1fr); }
+}
+
 @media (max-width: 560px) {
   .fwd-opts { grid-template-columns: 1fr; }
   .fwd-opt { flex-direction: row; flex-wrap: wrap; justify-content: flex-start; text-align: left; gap: 8px; }
+  .fwd-opts-seq { grid-template-columns: repeat(3, 1fr); }
+  .fwd-opts-seq .fwd-opt { flex-direction: column; text-align: center; }
   .sa-stamp { width: calc(50% - 9px); }
 }

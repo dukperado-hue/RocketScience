@@ -363,7 +363,7 @@
         watchBtn.disabled = !cinematic;
 
         if (activeMission) {
-          var mres = RS.MissionEngine.evaluate(activeMission, result, vehicle);
+          var mres = RS.MissionEngine.evaluate(activeMission, result, vehicle, extra.evalContext);
           renderMissionResult(mres);
           if (mres.passed && !RS.MissionEngine.isDone(activeMission.id)) {
             RS.MissionEngine.markComplete(activeMission.id);
@@ -407,13 +407,21 @@
         // assemble the abstract firework: one lift charge + the shell
         builder.reset();
         var C = RS.PartsCatalog;
-        var ch = vehicle.addInstance(C.get(design.lift), 0, 1, []);
-        vehicle.addInstance(C.get('fw_shell_atlas'), 0, 0,
-          [{ node: 'bottom', toIid: ch.iid, toNode: 'top' }]);
-        builder._afterEdit('พลุ ' + design.color + ' · ชนวน ' + design.fuse + ' วิ');
-        setActiveMission(mission);
         var atl = mission.atlas || {};
         var obj = mission.objectives || {};
+        // M03 · SEQUENCER — three tubes, one Effect Colour each. Lift + fuse are
+        // locked to standard values; the physics of all three shells is identical
+        // (colour has zero trajectory effect) so ONE sim drives all three.
+        var seqMode = !!(atl.sequence && design.sequence && design.sequence.length);
+
+        var ch = vehicle.addInstance(C.get(design.lift || 'fw_lift_m'), 0, 1, []);
+        vehicle.addInstance(C.get('fw_shell_atlas'), 0, 0,
+          [{ node: 'bottom', toIid: ch.iid, toNode: 'top' }]);
+        builder._afterEdit(seqMode
+          ? ('พลุลำดับ 3 หลอด · ' + design.sequence.map(function (s) { return s.color; }).join(' → '))
+          : ('พลุ ' + design.color + ' · ชนวน ' + design.fuse + ' วิ'));
+        setActiveMission(mission);
+
         var box = obj.burstAltitudeBox || null;
         var xbox = obj.burstXBox || null;
         // M02+ : the rising khom loy stream — the SAME list feeds Physics
@@ -422,13 +430,19 @@
         var simOpts = { fuse: { time: design.fuse, box: box } };
         if (atl.angles && design.angle) simOpts.launchPitchDeg = design.angle;
         if (lanterns) simOpts.obstacles = lanterns;
+
         doLaunch({
           simOpts: simOpts,
+          evalContext: seqMode
+            ? { sequenceColors: design.sequence.map(function (s) { return s.color; }) }
+            : null,
           flightOpts: {
             firework: {
               color: design.color, colorHex: design.colorHex,
               box: box, xbox: xbox, lift: design.lift, fuse: design.fuse,
-              angle: design.angle, lanterns: lanterns
+              angle: design.angle, lanterns: lanterns,
+              sequence: seqMode ? design.sequence : null,
+              sequenceGap: 1.0
             },
             onRetry: function () { RS.render.UI.openDesignDesk(mission); }
           }

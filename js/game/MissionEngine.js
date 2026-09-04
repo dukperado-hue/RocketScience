@@ -76,10 +76,11 @@
      *   failReasons:string[]
      * }}
      */
-    evaluate: function (mission, sim, vehicle) {
+    evaluate: function (mission, sim, vehicle, ctx) {
       var res = { mission: mission || null, passed: false, score: 0,
         objectives: [], constraints: [], failReasons: [] };
       if (!mission || !sim) return res;
+      ctx = ctx || {};
 
       var sum = sim.summary || {};
       var events = sim.events || [];
@@ -186,6 +187,28 @@
         if (col.occurred) res.failReasons.push(col.byBurst
           ? ('ดอกพลุระเบิดโดนโคมลอย (ที่ ' + Math.round(col.altitude) + ' ม.) — เว้นระยะให้ห่างกว่านี้')
           : ('ลูกพลุพุ่งชนโคมลอยที่ ' + Math.round(col.altitude) + ' ม. — วิถีโค้งต้องอ้อมให้พ้นสายโคม'));
+      }
+
+      // ---- M03 · the Red/White/Blue firing sequence (chemistry + order) ----
+      if (o.burstSequence != null) {
+        var COLNAME = { red: 'แดง', white: 'ขาว', blue: 'น้ำเงิน', green: 'เขียว', gold: 'ทอง' };
+        var niceSeq = function (arr) {
+          return (arr || []).map(function (c) { return COLNAME[c] || c; }).join(' → ');
+        };
+        var wantSeq = o.burstSequence;
+        var gotSeq = ctx.sequenceColors || [];
+        var seqOk = wantSeq.length === gotSeq.length &&
+          wantSeq.every(function (c, i) { return c === gotSeq[i]; });
+        res.objectives.push({
+          label: 'พลุแตกตามลำดับ ' + niceSeq(wantSeq),
+          met: seqOk,
+          actual: gotSeq.length ? niceSeq(gotSeq) : '—'
+        });
+        if (!seqOk) {
+          res.failReasons.push('ลำดับสีไม่ถูกต้อง — ต้องเป็น ' + niceSeq(wantSeq) +
+            ' (สตรอนเทียม → แมกนีเซียม → ทองแดง). ที่ยิงจริง: ' +
+            (gotSeq.length ? niceSeq(gotSeq) : '—'));
+        }
       }
 
       if (o.flightTimeMin != null) {
