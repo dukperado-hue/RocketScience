@@ -65,7 +65,10 @@
   watchBtn.addEventListener('click', function () {
     if (lastSim && lastSim.ok && flightScreen && flightScreen.available) {
       ensureModels(vehicle).then(function () {
-        flightScreen.open(lastSim, vehicle, activeMission, { simOpts: lastSimOpts });  // re-watch: no cinematic
+        flightScreen.open(lastSim, vehicle, activeMission, {
+          simOpts: lastSimOpts,
+          daylight: !!(lastSimOpts && lastSimOpts.target)
+        });  // re-watch: no cinematic
       });
     }
   });
@@ -333,6 +336,10 @@
           var szr = activeMission.constraints && activeMission.constraints.safeZoneRadius;
           if (szr != null) simOpts.safeZoneRadius = szr;
         }
+        // ---- Era 3 · V-2 : a single-stage gyro-guided rocket flies a
+        //  ballistic program at a target in the sea east of Thailand
+        var isV2 = !!(model && model.gravityTurn && !model.staged);
+        if (isV2) simOpts.target = { range: 2500, gyroDrift: 0.5 };
         var result = RS.Physics.simulate(model, simOpts);
         lastSim = result;
         lastSimOpts = simOpts;
@@ -358,7 +365,9 @@
         console.log('[FIRE→ORBIT] SimulationResult v' + result.contractVersion, result);
 
         if (cinematic) {
-          flightScreen.open(lastSim, vehicle, activeMission, { cinematic: true, simOpts: simOpts });
+          flightScreen.open(lastSim, vehicle, activeMission, {
+            cinematic: true, simOpts: simOpts, daylight: isV2
+          });
         } else {
           document.querySelector('.bp-sim').scrollIntoView({ behavior: 'smooth', block: 'start' });
         }

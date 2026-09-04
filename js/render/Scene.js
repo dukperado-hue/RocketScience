@@ -268,6 +268,91 @@
   }
 
   // ---------------------------------------------------------------------------
+  //  THE V-2 FIRING TABLE — ฐานยิง V-2. A historically inspired launch stand:
+  //  a square steel base frame, a round burner ring the rocket sits on, four
+  //  angled blast-deflector wings that fling the exhaust sideways, and a
+  //  scorched concrete apron. Anchored at the origin (rocket sits at y≈0).
+  //  @returns {THREE.Group|null}
+  // ---------------------------------------------------------------------------
+  function makeV2FiringTable() {
+    if (!THREE) return null;
+    var g = new THREE.Group();
+    g.userData.isV2FiringTable = true;
+
+    var steel = new THREE.MeshStandardMaterial({ color: 0x3b4048, roughness: 0.55, metalness: 0.75 });
+    var steelDark = new THREE.MeshStandardMaterial({ color: 0x23262c, roughness: 0.6, metalness: 0.7 });
+    var scorched = new THREE.MeshStandardMaterial({ color: 0x141210, roughness: 1, metalness: 0 });
+    var concrete = new THREE.MeshStandardMaterial({ color: 0x8d8a82, roughness: 0.95 });
+
+    // --- the concrete apron ---
+    var apron = new THREE.Mesh(new THREE.CylinderGeometry(4.4, 4.6, 0.2, 32), concrete);
+    apron.position.y = -0.1;
+    apron.receiveShadow = true;
+    g.add(apron);
+    var scorch = new THREE.Mesh(new THREE.CircleGeometry(2.6, 28), scorched);
+    scorch.rotation.x = -Math.PI / 2;
+    scorch.position.y = 0.012;
+    g.add(scorch);
+
+    // --- the square steel base frame (four I-beams) ---
+    for (var s = 0; s < 4; s++) {
+      var beam = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.22, 0.34), steel);
+      var ang = s * Math.PI / 2;
+      beam.position.set(Math.cos(ang) * 1.6, 0.14, Math.sin(ang) * 1.6);
+      beam.rotation.y = ang;
+      beam.castShadow = beam.receiveShadow = true;
+      g.add(beam);
+    }
+    // corner feet
+    for (var c = 0; c < 4; c++) {
+      var a2 = Math.PI / 4 + c * Math.PI / 2;
+      var foot = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.28, 0.5), steelDark);
+      foot.position.set(Math.cos(a2) * 2.2, 0.14, Math.sin(a2) * 2.2);
+      foot.castShadow = true;
+      g.add(foot);
+    }
+
+    // --- the round burner ring the engine skirt drops into ---
+    var ring = new THREE.Mesh(new THREE.TorusGeometry(0.62, 0.12, 10, 28), steel);
+    ring.rotation.x = Math.PI / 2;
+    ring.position.y = 0.30;
+    ring.castShadow = true;
+    g.add(ring);
+    var ringInner = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.5, 20, 1, true), steelDark);
+    ringInner.position.y = 0.18;
+    g.add(ringInner);
+    // three short legs from the ring to the base frame
+    for (var l = 0; l < 3; l++) {
+      var la = l * (Math.PI * 2 / 3) + 0.5;
+      var strut = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.95, 6), steel);
+      strut.position.set(Math.cos(la) * 0.55, 0.02, Math.sin(la) * 0.55);
+      strut.rotation.z = Math.cos(la) * 0.5;
+      strut.rotation.x = -Math.sin(la) * 0.5;
+      g.add(strut);
+    }
+
+    // --- four angled blast-deflector wings under the ring ---
+    for (var d = 0; d < 4; d++) {
+      var da = d * Math.PI / 2 + Math.PI / 4;
+      var wing = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.06, 0.95), steelDark);
+      wing.position.set(Math.cos(da) * 0.95, 0.02, Math.sin(da) * 0.95);
+      wing.rotation.y = da;
+      wing.rotation.z = 0.62;            // flung down-and-out to throw the plume sideways
+      wing.castShadow = wing.receiveShadow = true;
+      g.add(wing);
+    }
+
+    // --- a stubby control cabinet + cabling off to one side ---
+    var cab = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.0, 0.5),
+      new THREE.MeshStandardMaterial({ color: 0x5a6b4a, roughness: 0.8 }));
+    cab.position.set(3.0, 0.5, 1.4);
+    cab.castShadow = true;
+    g.add(cab);
+
+    return g;
+  }
+
+  // ---------------------------------------------------------------------------
   //  A beautiful daytime gradient sky — a large inward-facing sphere with a
   //  vertical-gradient ShaderMaterial: a soft warm glow at the horizon melting
   //  up into a deep azure zenith. No sun geometry — the light does that. It is
@@ -432,6 +517,7 @@
   global.RS.render = global.RS.render || {};
   global.RS.render.Scene = Scene;
   global.RS.render.makeLaunchRig = makeLaunchRig;
+  global.RS.render.makeV2FiringTable = makeV2FiringTable;
   global.RS.render.makeGradientSky = makeGradientSky;
   global.RS.render.makeStudioBackdrop = makeStudioBackdrop;
   global.RS.render.makeBlueprintFloor = makeBlueprintFloor;

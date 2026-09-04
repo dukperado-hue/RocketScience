@@ -46,7 +46,12 @@
   //  `spinStiff`; new integrator event `APOGEE_BREAKUP`. Engine force is forced
   //  to 0 once a flown vehicle is back on the ground. Crosswind side-force +
   //  canted-fin gyroscopic spin. All existing fields unchanged.
-  var CONTRACT_VERSION = '1.8.0';
+  //  1.9.0 — ADDITIVE: `simulate(model, {target:{range,gyroDrift,seed}})` runs
+  //  V-2 ballistic gyro-guidance (PID pitch-over + analog drift + MECO); new
+  //  integrator event `MECO`; new summary fields `targeting`, `targetRange`,
+  //  `mecoTime`, `impactSpeed`, `impactVertSpeed`, `missDistance`, `damageRadius`.
+  //  Trajectory-sample shape UNCHANGED; every existing field untouched.
+  var CONTRACT_VERSION = '1.9.0';
 
   // --- gravity turn / pitch program -----------------------------------------
   //  Straight up until (alt > 500 m AND speed > 50 m/s). A short pitch KICK
@@ -67,6 +72,23 @@
   //  circularisation hauls periapsis up to just above ATMOS_TOP (70 km) so the
   //  orbit is genuinely drag-free and does not decay
   var ORBIT_PERI_TARGET = 82000;    // m
+
+  // --- V-2 BALLISTIC GYRO-GUIDANCE (Phase 15) --------------------------------
+  //  A gyro-guided vehicle carrying a `target` opts rolls to its azimuth then
+  //  runs a PID pitch-over program: the commanded pitch eases 90° → ~45° above
+  //  the local horizon, a real PID closes the loop, and a small procedural
+  //  "analog" drift (imperfect 1940s gyros) is injected so it never hits dead
+  //  centre. MECO (Main Engine Cut-Off) fires the instant the predicted
+  //  ballistic impact range reaches the target — then it coasts, unpowered, on
+  //  a pure parabola toward the sea.
+  var GYRO_PITCH_FLOOR = 45 * Math.PI / 180;  // rad — the program bottoms out here
+  var GYRO_TURN_BAND = 9000;                  // m — climb over which 90° → 45°
+  var GYRO_DRIFT_MAX = 2.4 * Math.PI / 180;   // rad — peak analog gyro error
+  var GYRO_KP = 3.0, GYRO_KI = 0.45, GYRO_KD = 0.02;  // PID gains (→ slew rate)
+  var GYRO_SLEW = 0.5;                        // rad/s — max gimbal slew rate
+  //  rough specific energy of the unburnt alcohol/LOX left in the tanks at
+  //  impact — folded into the post-flight Damage Radius alongside kinetic energy
+  var FUEL_SPECIFIC_ENERGY = 4.2e6;           // J/kg
 
   // --- dynamic aero-instability ("the tumble") ---------------------------------
   var TUMBLE_SPEED_MIN = 12;      // m/s — below this, too slow to weathercock
@@ -444,6 +466,40 @@
   // so the UPWARD cap is generous; the downward cap (drag / crash) stays tight.
   function clampA(a) { return a < -400 ? -400 : (a > 2500 ? 2500 : a); }
   function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
+  function fract(x) { return x - Math.floor(x); }
+
+  //  smooth, deterministic, seedable "analog" noise in [-1, 1] — three summed
+  //  sines. Stands in for the slow wander + bias of a 1940s free gyro.
+  function analogNoise(t, seed) {
+    return 0.58 * Math.sin(t * 0.63 + seed) +
+           0.30 * Math.sin(t * 1.77 + seed * 2.1) +
+           0.12 * Math.sin(t * 3.90 + seed * 0.7);
+  }
+
+  /**
+   * Cheap forward ballistic prediction: from the current state, integrate an
+   * UNPOWERED coast (radial gravity + atmospheric drag, no thrust, mass frozen)
+   * until it returns to the surface, and report the downrange distance. Used by
+   * the V-2 guidance to decide the MECO instant — cut when the predicted impact
+   * reaches the sea target. Coarse dt, drag included (the parabola-in-vacuum
+   * shortcut over-shoots badly through this thick low atmosphere).
+   */
+  function predictImpactRange(x, y, vx, vy, mass, dragArea, wind) {
+    var pdt = 0.15, n = 0;
+    while (n++ < 5000) {
+      var alt = altitudeOf(x, y);
+      if (alt <= 0 && n > 2) break;
+      var gv = gravityVec(x, y);
+      var rho = airDensity(alt);
+      var ux = vx - (wind || 0), uy = vy;
+      var spd = Math.sqrt(ux * ux + uy * uy);
+      var kA = 0.5 * rho * dragArea * spd;
+      vx += ((-kA * ux) / mass + gv.gx) * pdt;
+      vy += ((-kA * uy) / mass + gv.gy) * pdt;
+      x += vx * pdt; y += vy * pdt;
+    }
+    return Math.abs(RE * Math.atan2(x, y + RE));
+  }
 
   // ---------------------------------------------------------------------------
   //  Staging — the active vehicle is the CURRENT stage plus everything above it
@@ -553,6 +609,22 @@
     var canTumble = !!model.rocketDominant && isFinite(model.copAxisM) && !model.gravityTurn;
     var pitchCmd = PITCH_UP;                   // current commanded thrust attitude
 
+    // --- V-2 BALLISTIC GYRO-GUIDANCE (Phase 15) --------------------------
+    var target = opts.target || null;
+    var targeting = !!(model.gravityTurn && target && +target.range > 0);
+    var TGT_RANGE = targeting ? +target.range : 0;
+    var gyroDrift = targeting ? clamp(+target.gyroDrift || 0, 0, 1) : 0;
+    var driftSeed = targeting
+      ? (target.seed != null ? +target.seed
+         : (TGT_RANGE * 0.013 + (wind || 0) * 1.7 + 4.2))
+      : 0;
+    var driftBias = targeting
+      ? (fract(Math.sin(driftSeed * 12.9898) * 43758.5453) * 2 - 1) : 0;
+    var gyroInt = 0, gyroPrev = 0;             // PID accumulator + last error
+    var meco = false, mecoTime = null, mecoAlt = 0, mecoVel = 0;
+    var mecoPred = 0, mecoPredT = null;        // last ballistic range prediction
+    var lastAirSpeed = 0, lastVertSpeed = 0;   // speed on the tick before ground contact
+
     // --- UNGUIDED PITCH DYNAMICS (Bang Fai) --------------------------------
     //  An unguided rocket flies a passive weathercock — a 1-DOF pitch
     //  oscillator driven by the static margin, damped by the tail, ÷ I. It
@@ -630,7 +702,39 @@
           turnT0 = state.t;
           pitchOverTime = state.t; pitchOverAlt = curAlt; pitchOverVel = curSpeed;
         }
-        if (turnT0 !== null) {
+        if (turnT0 !== null && targeting) {
+          // ===== V-2 BALLISTIC GYRO-GUIDANCE ===========================
+          //  PID pitch-over 90° → 45°, analog gyro drift, and MECO the
+          //  instant the predicted ballistic impact reaches the target.
+          // re-predict the unpowered impact range a few times a second
+          if (!meco && (mecoPredT === null || state.t - mecoPredT >= 0.1)) {
+            mecoPredT = state.t;
+            mecoPred = predictImpactRange(state.x, state.y, state.vx, state.v,
+              eff.dryMass + state.propRemaining, eff.dragArea, wind);
+          }
+          if (!meco && mecoPred >= TGT_RANGE) {
+            meco = true; mecoTime = state.t; mecoAlt = curAlt; mecoVel = curSpeed;
+            cutoff = true; cutoffTime = state.t;
+          }
+          burnEnable = !meco;
+
+          if (meco) {
+            pitchCmd = Math.atan2(state.v, state.vx);   // coast prograde (ballistic)
+          } else {
+            var pfrac = clamp((curAlt - TURN_ALT) / GYRO_TURN_BAND, 0, 1);
+            var pitchTgtLocal = PITCH_UP -
+              (PITCH_UP - GYRO_PITCH_FLOOR) * Math.pow(pfrac, 0.7);
+            var driftRad = gyroDrift *
+              (0.8 * driftBias + analogNoise(state.t, driftSeed)) * GYRO_DRIFT_MAX;
+            var desired = horizonAng + pitchTgtLocal + driftRad;
+            var gErr = desired - pitchCmd;
+            gyroInt = clamp(gyroInt + gErr * dt, -0.4, 0.4);
+            var gDer = (gErr - gyroPrev) / Math.max(dt, 1e-6); gyroPrev = gErr;
+            var gRate = clamp(GYRO_KP * gErr + GYRO_KI * gyroInt + GYRO_KD * gDer,
+              -GYRO_SLEW, GYRO_SLEW);
+            pitchCmd += gRate * dt;
+          }
+        } else if (turnT0 !== null) {
           var oe = orbitElements(state.x, state.y, state.vx, state.v);
           var vEsc = Math.sqrt(2 * MU / rr);
 
@@ -809,6 +913,9 @@
       prevVv = d.v;
       if (spdNow > maxV) maxV = spdNow;
       if (d.q > maxQ) maxQ = d.q;
+      // remember the last airborne speed — the impact tick has its radial
+      // velocity killed by ground contact, so read the tick just before
+      if (!d.onPad && d.alt > 0.05) { lastAirSpeed = spdNow; lastVertSpeed = d.v; }
       finalX = d.x;
       if (Math.abs(d.x) > maxDrift) maxDrift = Math.abs(d.x);
 
@@ -851,7 +958,9 @@
       // --- BURNOUT + ORBIT --------------------------------------------
       //  For a guided vehicle burnout = the moment guidance is fully done;
       //  for everything else it is the first tick with no thrust after firing.
-      var spent = model.gravityTurn
+      var spent = targeting
+        ? (meco && force <= 1e-6)
+        : model.gravityTurn
         ? (guidePhase === 'done' && force <= 1e-6)
         : (everFired && force <= 1e-6 && stageIdx >= stages.length - 1);
       if (burnoutT === null && spent) {
@@ -949,14 +1058,42 @@
         eccentricity: round(orbit.e, 4),
         period: round(orbit.period, 1)
       } : { achieved: false, apoapsis: 0, periapsis: 0, eccentricity: 0, period: 0 },
+      // --- V-2 ballistic gyro-guidance (Phase 15) ---
+      targeting: !!targeting,
+      targetRange: round(TGT_RANGE, 1),
+      mecoTime: mecoTime != null ? round(mecoTime, 2) : null,
+      impactSpeed: round(lastAirSpeed, 2),
+      impactVertSpeed: round(lastVertSpeed, 2),
+      missDistance: 0,
+      damageRadius: 0,
       mode: motorMode
     };
+
+    // ---- Damage Radius (รัศมีความเสียหาย) — cube-root scaling of the total
+    //  energy released at impact: kinetic + the chemical energy of whatever
+    //  propellant never burned (a short MECO leaves a full warhead of fuel).
+    var _impMass = eff.dryMass + Math.max(0, state.propRemaining);
+    var _impKE = 0.5 * _impMass * lastAirSpeed * lastAirSpeed;
+    var _fuelE = Math.max(0, state.propRemaining) * FUEL_SPECIFIC_ENERGY;
+    if (liftedOff && (finalX !== 0 || apogee > 1)) {
+      summary.damageRadius = round(clamp(2.15 * Math.cbrt((_impKE + _fuelE) / 1000), 3, 400), 1);
+    }
+    if (targeting) {
+      summary.missDistance = round(Math.abs((summary.downrange || 0) - TGT_RANGE), 1);
+    }
 
     var physicsEvents = [];
     if (liftoffTime !== null) {
       physicsEvents.push({
         time: round(liftoffTime, 3), type: 'LIFTOFF', message: 'ทะยานพ้นพื้น',
         altitude: round(liftoffAlt, 2), velocity: round(liftoffVel, 2)
+      });
+    }
+    if (mecoTime !== null) {
+      physicsEvents.push({
+        time: round(mecoTime, 3), type: 'MECO',
+        message: 'ดับเครื่องยนต์ (MECO) — พุ่งตามวิถีกระสุนเข้าหาเป้ากลางทะเล',
+        altitude: round(mecoAlt, 2), velocity: round(mecoVel, 2)
       });
     }
     if (pitchOverTime !== null) {
@@ -1176,6 +1313,8 @@
       apogeeTime: 0, burnoutMass: 0, liftedOff: false, holdTime: null,
       impactX: 0, maxDrift: 0, downrange: 0, stagesFlown: 0,
       orbit: { achieved: false, apoapsis: 0, periapsis: 0, eccentricity: 0, period: 0 },
+      targeting: false, targetRange: 0, mecoTime: null,
+      impactSpeed: 0, impactVertSpeed: 0, missDistance: 0, damageRadius: 0,
       mode: 'none'
     };
   }

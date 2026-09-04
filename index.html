@@ -9,9 +9,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/blueprint.css?v=54">
-<link rel="stylesheet" href="css/flight.css?v=54">
-<link rel="stylesheet" href="css/mission.css?v=54">
+<link rel="stylesheet" href="css/blueprint.css?v=55">
+<link rel="stylesheet" href="css/flight.css?v=55">
+<link rel="stylesheet" href="css/mission.css?v=55">
 </head>
 <body class="bp-body">
 
@@ -119,6 +119,16 @@
   </div>
 
   <div class="fs-toast" id="fs-toast" hidden></div>
+
+  <!-- Era 3 · V-2 manual launch sequence: aim → ready → T-10 countdown -->
+  <div class="fs-launchseq" id="fs-launchseq" hidden>
+    <label class="fs-aim-row">
+      <span>ทิศยิง (Azimuth) <b id="fs-aim-val">090°</b></span>
+      <input type="range" id="fs-aim" min="30" max="150" step="1" value="90" aria-label="ตั้งทิศยิง">
+      <span class="fs-aim-hint" id="fs-aim-hint">เป้าหมายอยู่ทางทิศตะวันออก ~090°</span>
+    </label>
+  </div>
+  <div class="fs-countdown" id="fs-countdown" hidden>10</div>
 
   <!-- Era 0 · two-step manual release: 🔥 จุดไฟ → ปล่อยโคม -->
   <button type="button" class="fs-ignite" id="fs-ignite" hidden>🔥 จุดไฟ</button>
@@ -229,40 +239,41 @@
 </div>
 
 <!-- ═══ core/ — ZERO dependency on render/ or Three.js ═══ -->
-<script src="js/core/PartsCatalog.js?v=54"></script>
-<script src="js/core/Vehicle.js?v=54"></script>
-<script src="js/core/SimulationEvents.js?v=54"></script>
-<script src="js/core/Diagnostics.js?v=54"></script>
-<script src="js/core/Physics.js?v=54"></script>
-<script src="js/core/Blueprint2D.js?v=54"></script>
+<script src="js/core/PartsCatalog.js?v=55"></script>
+<script src="js/core/Vehicle.js?v=55"></script>
+<script src="js/core/SimulationEvents.js?v=55"></script>
+<script src="js/core/Diagnostics.js?v=55"></script>
+<script src="js/core/Physics.js?v=55"></script>
+<script src="js/core/Blueprint2D.js?v=55"></script>
 
 <!-- ═══ data/ — pure content ═══ -->
-<script src="js/data/parts.js?v=54"></script>
-<script src="js/data/eras.js?v=54"></script>
-<script src="js/data/missions.js?v=54"></script>
+<script src="js/data/parts.js?v=55"></script>
+<script src="js/data/eras.js?v=55"></script>
+<script src="js/data/missions.js?v=55"></script>
 
 <!-- ═══ game/ — rules, consumes the contract ═══ -->
-<script src="js/game/EraManager.js?v=54"></script>
-<script src="js/game/MissionEngine.js?v=54"></script>
-<script src="js/game/MissionBriefing.js?v=54"></script>
+<script src="js/game/EraManager.js?v=55"></script>
+<script src="js/game/MissionEngine.js?v=55"></script>
+<script src="js/game/MissionBriefing.js?v=55"></script>
 
 <!-- ═══ vendor ═══ -->
-<script src="vendor/three/three.min.js?v=54"></script>
-<script src="vendor/three/loaders/GLTFLoader.js?v=54"></script>
+<script src="vendor/three/three.min.js?v=55"></script>
+<script src="vendor/three/loaders/GLTFLoader.js?v=55"></script>
 <!-- GSAP — smooth camera tweens for the orbital-map POI raycaster (graceful if blocked) -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
 
 <!-- ═══ render/ — consumes data, needs Three.js ═══ -->
-<script src="js/render/Scene.js?v=54"></script>
-<script src="js/render/EarthGlobe.js?v=54"></script>
-<script src="js/render/CameraController.js?v=54"></script>
-<script src="js/render/VehicleRenderer.js?v=54"></script>
-<script src="js/render/ExhaustFX.js?v=54"></script>
-<script src="js/render/SoundFX.js?v=54"></script>
-<script src="js/render/FlightRenderer.js?v=54"></script>
-<script src="js/render/FestivalEnv.js?v=54"></script>
-<script src="js/render/FlightScreen.js?v=54"></script>
+<script src="js/render/Scene.js?v=55"></script>
+<script src="js/render/EarthGlobe.js?v=55"></script>
+<script src="js/render/OrbitalEnv.js?v=55"></script>
+<script src="js/render/CameraController.js?v=55"></script>
+<script src="js/render/VehicleRenderer.js?v=55"></script>
+<script src="js/render/ExhaustFX.js?v=55"></script>
+<script src="js/render/SoundFX.js?v=55"></script>
+<script src="js/render/FlightRenderer.js?v=55"></script>
+<script src="js/render/FestivalEnv.js?v=55"></script>
+<script src="js/render/FlightScreen.js?v=55"></script>
 
-<script src="js/app.js?v=54"></script>
+<script src="js/app.js?v=55"></script>
 </body>
 </html>

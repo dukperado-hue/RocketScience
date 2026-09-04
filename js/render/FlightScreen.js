@@ -31,6 +31,7 @@
     IGNITION: 'จุดไฟ',
     LIFTOFF:  'ทะยานพ้นพื้น',
     PITCH_OVER: 'เลี้ยวโค้ง',
+    MECO:     'ดับเครื่องยนต์ (MECO)',
     MAX_Q:    'แรงดันอากาศสูงสุด',
     APOGEE:   'จุดสูงสุด',
     APOGEE_BREAKUP: 'แตกที่จุดสูงสุด',
@@ -41,6 +42,7 @@
   };
   var EVENT_COLOR = {
     IGNITION: '#e9f1ff', LIFTOFF: '#5fe0a8', PITCH_OVER: '#b98cff', MAX_Q: '#5bd6ff',
+    MECO: '#ff9a5a',
     BURNOUT: '#ffb63a', APOGEE: '#ffce40', APOGEE_BREAKUP: '#ff8a3a',
     LOSS_OF_CONTROL: '#ff3b3b', MIDAIR_BURN: '#ff7420', IMPACT: '#ff6a5a'
   };
@@ -125,6 +127,25 @@
     this.btnLaunchNext = $('fs-launch-next'); // Era-1: จุดบั้งต่อไป (multi-vehicle)
     this.btnFocus = $('fs-focus');          // Era-1: cycle camera focus between rockets
     this.elHaiku = $('fs-haiku');           // the poetry overlay
+    this.elLaunchSeq = $('fs-launchseq');   // Era-3: azimuth aim panel
+    this.elAim = $('fs-aim');
+    this.elAimVal = $('fs-aim-val');
+    this.elAimHint = $('fs-aim-hint');
+    this.elCountdown = $('fs-countdown');   // Era-3: T-10 countdown numerals
+
+    // ---- Era 3 · V-2 ballistic launch --------------------------------
+    this._v2 = false;
+    this._azimuth = 90;            // deg — player-set heading; 90 = due east = target
+    this._targetBearing = 90;      // deg — where the sea target actually is
+    this._cd = 0;                  // seconds left on the countdown
+    this._cdShown = null;          // last whole-second numeral rendered
+    this._blastFX = [];            // live impact-explosion effects
+    this._blasted = {};            // vehicle id → already detonated
+    this._actx = null;             // lazy WebAudio context for countdown beeps
+    this._targetZone = null;
+    this._aimMarker = null;
+    this._impactMarker = null;
+    this._firingTable = null;
 
     // ---- sound (pooled sfx — ignite bed + liftoff whoosh) ---------------
     this._sound = RS.render.SoundFX ? new RS.render.SoundFX() : null;
@@ -210,6 +231,12 @@
     }
     if (this.btnFocus) {
       this.btnFocus.addEventListener('click', function () { self._cycleFocus(); });
+    }
+    if (this.elAim) {
+      this.elAim.addEventListener('input', function () {
+        self._azimuth = +self.elAim.value || 90;
+        self._syncAim();
+      });
     }
 
     var reveal = function () { self._revealChrome(); };
@@ -570,6 +597,18 @@
     this._mapLook = null;        // world point the map camera orbits (null = planet centre)
     this._mapEase = null;        // no-GSAP fallback tween target
 
+    // ---- ERA 3 · V-2 — the Eastern-Sea target zone + aim / impact pins ----
+    if (RS.render.OrbitalEnv) {
+      var OE = RS.render.OrbitalEnv;
+      this._targetZone = OE.makeTargetZone(RE);
+      if (this._targetZone) { this._targetZone.visible = false; sc.add(this._targetZone); }
+      var mkS = 34;
+      this._aimMarker = OE.makeAimMarker(mkS);
+      if (this._aimMarker) { this._aimMarker.visible = false; sc.add(this._aimMarker); }
+      this._impactMarker = OE.makeImpactMarker(mkS);
+      if (this._impactMarker) { this._impactMarker.visible = false; sc.add(this._impactMarker); }
+    }
+
     // a dedicated "sun" for the Blue Marble — only lit in the orbital-map view
     // so it never over-brightens the near-pad scenes. Gives a clean terminator.
     this._earthSun = new THREE.DirectionalLight(0xfff4e8, 0);
@@ -751,12 +790,213 @@
   };
 
   // ======================================================================
+  //  ERA 3 · V-2 — the manual launch sequence: aim → ready → T-10 → liftoff
+  // ======================================================================
+
+  // deg compass bearing → world Y-yaw (bearing 90° / east == flight +x axis)
+  function bearingToYaw(bDeg) { return (bDeg - 90) * Math.PI / 180; }
+
+  FlightScreen.prototype._syncAim = function () {
+    var az = this._azimuth;
+    if (this.elAim && +this.elAim.value !== az) this.elAim.value = String(az);
+    if (this.elAimVal) this.elAimVal.textContent = (az < 100 ? '0' : '') + az + '°';
+    if (this.elAimHint) {
+      var off = az - this._targetBearing;
+      this.elAimHint.textContent = Math.abs(off) <= 3
+        ? '🎯 เล็งตรงเป้ากลางทะเลแล้ว'
+        : (off > 0 ? 'เอียงไปทางใต้ ' : 'เอียงไปทางเหนือ ') + Math.abs(off) + '° จากเป้า';
+    }
+    this._positionTargetZone();
+  };
+
+  FlightScreen.prototype._positionTargetZone = function () {
+    var RE = this._RE || 600000, OE = RS.render.OrbitalEnv;
+    if (!OE) return;
+    var tgtRange = (this._summary && this._summary.targetRange) || 2500;
+    if (this._targetZone) OE.placeAtRange(this._targetZone, RE, tgtRange, 0);
+    var yaw = bearingToYaw(this._azimuth);
+    if (this._aimMarker) {
+      OE.placeAtRange(this._aimMarker, RE, tgtRange, yaw);
+      this._aimMarker.visible = Math.abs(this._azimuth - this._targetBearing) > 2;
+    }
+    if (this._impactMarker && this._summary) {
+      var ix = Math.abs(this._summary.downrange || this._summary.impactX || 0);
+      OE.placeAtRange(this._impactMarker, RE, ix, yaw);
+    }
+  };
+
+  // a short WebAudio blip for the countdown (SoundFX only carries mp3 beds)
+  FlightScreen.prototype._beep = function (freq, dur, kind) {
+    try {
+      var AC = global.AudioContext || global.webkitAudioContext;
+      if (!AC) return;
+      if (!this._actx) this._actx = new AC();
+      var ac = this._actx, t0 = ac.currentTime;
+      var o = ac.createOscillator(), g = ac.createGain();
+      o.type = kind === 'go' ? 'sawtooth' : 'sine';
+      o.frequency.setValueAtTime(freq, t0);
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(kind === 'go' ? 0.28 : 0.16, t0 + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + (dur || 0.12));
+      o.connect(g); g.connect(ac.destination);
+      o.start(t0); o.stop(t0 + (dur || 0.12) + 0.02);
+    } catch (e) {}
+  };
+
+  FlightScreen.prototype._startCountdown = function () {
+    this._gate = 'countdown';
+    this._cd = 10.0;
+    this._cdShown = null;
+    if (this.elLaunchSeq) this.elLaunchSeq.hidden = true;
+    if (this.btnIgnite) this.btnIgnite.hidden = true;
+    if (this.elCountdown) { this.elCountdown.hidden = false; this.elCountdown.classList.remove('go'); }
+    this._phaseText = 'นับถอยหลัง — T-10';
+    this._showToast('ตั้งทิศยิง ' + this._azimuth + '° · เริ่มนับถอยหลัง T-10');
+    this._camIdx = CAM_MODES.indexOf('observer');
+    this.btnCam.textContent = CAM_LABEL.observer;
+  };
+
+  FlightScreen.prototype._countdownFrame = function (dt) {
+    this._cd -= dt;
+    var whole = Math.max(0, Math.ceil(this._cd));
+    if (whole !== this._cdShown) {
+      this._cdShown = whole;
+      if (this.elCountdown) {
+        this.elCountdown.textContent = whole > 0 ? String(whole) : 'IGNITION';
+        this.elCountdown.classList.toggle('go', whole === 0);
+        // retrigger the CSS pulse
+        void this.elCountdown.offsetWidth;
+        this.elCountdown.style.animation = 'none';
+        void this.elCountdown.offsetWidth;
+        this.elCountdown.style.animation = '';
+      }
+      if (whole > 0) this._beep(whole <= 3 ? 880 : 660, 0.12);
+      else this._beep(180, 0.5, 'go');
+    }
+    // hold the rocket dead still on the table at t=0 during the count
+    this.flight.seek(0);
+    var st = this.flight.sampleAt(0);
+    this._masterT = 0;
+    if (this._exhaust) this._exhaust.reset();
+    this._updateCamera(0, st);
+    this._updateHud(st);
+    this.scene.renderOnce();
+    if (this._cd <= 0) this._releaseV2();
+  };
+
+  FlightScreen.prototype._releaseV2 = function () {
+    this._gate = null;
+    if (this.elCountdown) {
+      var el = this.elCountdown;
+      global.setTimeout(function () { el.hidden = true; }, 550);
+    }
+    this.flight.seek(this._liftoffTime || 0);
+    this._masterT = this._liftoffTime || 0;
+    this._camTX = this._camTY = null;
+    this._camIdx = CAM_MODES.indexOf('chase');
+    this.btnCam.textContent = CAM_LABEL.chase;
+    this._phaseText = 'จุดเครื่องยนต์ — ทะยานขึ้น!';
+    this._showToast('IGNITION — V-2 ทะยานพ้นฐานยิง');
+    if (this._sound) this._sound.play('liftoff', { volume: 0.7, rate: 0.9 });
+    this._beep(120, 0.7, 'go');
+    this._revealChrome();
+    this._last = perfNow();
+    this.play();
+  };
+
+  // ---- IMPACT EXPLOSION ------------------------------------------------
+  FlightScreen.prototype._spawnBlast = function (x, y, z, dmgR) {
+    if (!THREE || !this.scene) return;
+    var g = new THREE.Group();
+    var fireMat = new THREE.MeshBasicMaterial({
+      color: 0xffb257, transparent: true, opacity: 0.95,
+      blending: THREE.AdditiveBlending, depthWrite: false });
+    var ball = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 2), fireMat);
+    g.add(ball);
+    var coreMat = new THREE.MeshBasicMaterial({
+      color: 0xfff2c8, transparent: true, opacity: 1,
+      blending: THREE.AdditiveBlending, depthWrite: false });
+    var core = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 1), coreMat);
+    g.add(core);
+    var ringMat = new THREE.MeshBasicMaterial({
+      color: 0xdcc7a0, transparent: true, opacity: 0.6,
+      side: THREE.DoubleSide, depthWrite: false });
+    var ring = new THREE.Mesh(new THREE.RingGeometry(0.6, 1, 40), ringMat);
+    ring.rotation.x = -Math.PI / 2;
+    g.add(ring);
+    // the persistent damage-radius footprint
+    var scarMat = new THREE.MeshBasicMaterial({
+      color: 0xff5a3a, transparent: true, opacity: 0.34,
+      side: THREE.DoubleSide, depthWrite: false });
+    var scar = new THREE.Mesh(new THREE.RingGeometry(Math.max(2, dmgR * 0.94), dmgR, 56), scarMat);
+    scar.rotation.x = -Math.PI / 2;
+    scar.position.set(x, 0.4, z);
+    this.scene.add(scar);
+    var flash = new THREE.PointLight(0xffd9a0, 8, Math.max(60, dmgR * 6), 2);
+    flash.position.set(x, y + 2, z);
+    this.scene.add(flash);
+    g.position.set(x, Math.max(y, 1.5), z);
+    this.scene.add(g);
+    this._blastFX.push({
+      grp: g, ball: ball, core: core, ring: ring, flash: flash, scar: scar,
+      dmgR: dmgR, t: 0, life: 2.2
+    });
+    this._showToast('💥 กระทบเป้า! รัศมีความเสียหาย ~' + Math.round(dmgR) + ' ม.');
+  };
+
+  FlightScreen.prototype._updateBlast = function (dt) {
+    if (!this._blastFX.length) return;
+    for (var i = this._blastFX.length - 1; i >= 0; i--) {
+      var b = this._blastFX[i];
+      b.t += dt;
+      var k = b.t / b.life;
+      var ease = 1 - Math.pow(1 - Math.min(k, 1), 3);
+      var R = b.dmgR;
+      var fireR = Math.min(R * 0.2, 8);        // keep the fireball readable at chase range
+      b.ball.scale.setScalar(2 + ease * fireR);
+      b.ball.material.opacity = Math.max(0, 0.9 * (1 - k));
+      b.core.scale.setScalar(1.2 + ease * Math.min(R * 0.09, 4));
+      b.core.material.opacity = Math.max(0, 1 - k * 2.2);
+      var rr = 2 + ease * Math.min(R * 1.1, 46);
+      b.ring.scale.setScalar(rr);
+      b.ring.material.opacity = Math.max(0, 0.6 * (1 - k));
+      b.grp.position.y += dt * 6 * (1 - k);
+      if (b.flash) b.flash.intensity = Math.max(0, 8 * (1 - k * 3));
+      if (b.scar) b.scar.material.opacity = 0.34 * clamp(1 - (b.t - b.life) / 6, 0, 1);
+      if (b.t >= b.life) {
+        this.scene.remove(b.grp);
+        b.grp.traverse(function (o) { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
+        if (b.flash) this.scene.remove(b.flash);
+        // leave the scar a few seconds, then clear
+        var scar = b.scar, sc = this.scene;
+        if (scar) global.setTimeout(function () {
+          sc.remove(scar); scar.geometry.dispose(); scar.material.dispose();
+        }, 6000);
+        this._blastFX.splice(i, 1);
+      }
+    }
+  };
+
+  FlightScreen.prototype._clearBlasts = function () {
+    var sc = this.scene;
+    (this._blastFX || []).forEach(function (b) {
+      if (sc) { sc.remove(b.grp); if (b.flash) sc.remove(b.flash); if (b.scar) sc.remove(b.scar); }
+    });
+    this._blastFX = [];
+    this._blasted = {};
+  };
+
+  // ======================================================================
   //  THE RELEASE — manual two-step ignition
   //    · Era 0 (khom loy)  : light the wick → heat builds → let go the string
   //    · Era 1 (Bang Fai)  : จุดชนวน → ~5 s packed-bore pressure build (a wall
   //      of ground smoke) → ปล่อยบั้งไฟ; it creeps off the rail, then roars up
   // ======================================================================
   FlightScreen.prototype._onIgnite = function () {
+    if (this._v2) {
+      if (this._gate === 'aim') this._startCountdown();
+      return;
+    }
     var bf = this._bangfai;
     if (this._gate === 'prelaunch') {
       this._gate = 'igniting';
@@ -816,6 +1056,19 @@
   };
 
   FlightScreen.prototype._gateFrame = function (dt) {
+    // ---- Era 3 · V-2 : "aim" — hold on the firing table until Ready ----
+    if (this._gate === 'aim') {
+      this.flight.seek(0);
+      var s0 = this.flight.sampleAt(0);
+      this._masterT = 0;
+      this._phaseText = 'ตั้งทิศยิง แล้วกด "พร้อมยิง"';
+      if (this._exhaust) this._exhaust.reset();
+      if (RS.render.OrbitalEnv && this._targetZone) RS.render.OrbitalEnv.update(this._targetZone, dt);
+      this._updateCamera(0, s0);
+      this._updateHud(s0);
+      this.scene.renderOnce();
+      return;
+    }
     var bf = this._bangfai;
     var lt = this._liftoffTime || 0;
     if (this._gate === 'prelaunch') {
@@ -954,7 +1207,9 @@
     //  plume); a khom loy is released after dark; every other rocket = dusk.
     var buoy = (simResult && simResult.mode) === 'buoyancy';
     this._bangfai = !!(meta.launchAngleDeg && +meta.launchAngleDeg > 0);
-    var wantDay = (!!opts.daylight || this._bangfai) && !buoy;
+    // a V-2 flies a ballistic gyro-guidance program at a sea target
+    this._v2 = !!(simResult && simResult.summary && simResult.summary.targeting);
+    var wantDay = (!!opts.daylight || this._bangfai || this._v2) && !buoy;
     this._applySky(buoy ? 'night' : (wantDay ? 'day' : 'dusk'));
 
     // ---- rebuild the fleet from scratch -------------------------------
@@ -965,8 +1220,9 @@
     this._addVehicle(simResult, { t0: 0, primary: true });
     this._masterT = 0;
     this._masterDur = this._vehicles[0].flight.duration;
-    this._canLaunchNext = this._bangfai;
+    this._canLaunchNext = this._bangfai || this._v2;
     this._playing = false;
+    this._clearBlasts();
     if (this._sound) this._sound.stopAll();
 
     // ---- launch structure — angled scaffold for a Bang Fai, else the pad ----
@@ -986,8 +1242,24 @@
       }
       if (this._launchRig) this._launchRig.visible = true;
       if (this._pad) this._pad.visible = false;
+      if (this._firingTable) this._firingTable.visible = false;
+    } else if (this._v2 && RS.render.makeV2FiringTable) {
+      // ---- a historically inspired V-2 firing table ----
+      if (!this._firingTable) {
+        this._firingTable = RS.render.makeV2FiringTable();
+        if (this._firingTable) {
+          this._firingTable.traverse(function (m) {
+            if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; }
+          });
+          this.scene.add(this._firingTable);
+        }
+      }
+      if (this._firingTable) this._firingTable.visible = true;
+      if (this._launchRig) this._launchRig.visible = false;
+      if (this._pad) this._pad.visible = false;
     } else {
       if (this._launchRig) this._launchRig.visible = false;
+      if (this._firingTable) this._firingTable.visible = false;
       if (this._pad) this._pad.visible = true;
     }
 
@@ -999,9 +1271,15 @@
     this.autopsy.hidden = true;
     if (this.elVerdict) this.elVerdict.hidden = true;
     this._rateIdx = 1; this.flight.setRate(1); this.btnRate.textContent = '1×';
-    this._camIdx = buoy ? CAM_MODES.indexOf('observer') : CAM_MODES.indexOf('chase');
+    this._camIdx = buoy ? CAM_MODES.indexOf('observer')
+      : this._v2 ? CAM_MODES.indexOf('observer') : CAM_MODES.indexOf('chase');
     this.btnCam.textContent = CAM_LABEL[CAM_MODES[this._camIdx]];
-    this._theta = 0.7; this._phi = 1.12; this._zoom = 1; this._camX = 0;
+    // a cinematic slightly-elevated 3/4 wide shot of the pad — not craned
+    // straight up at the rocket (the raised observer eye does the "across")
+    this._theta = this._v2 ? 0.62 : 0.7;
+    this._phi = 1.12;
+    this._zoom = 1; this._camX = 0;
+    if (THREE) this._obsEye.set(this._v2 ? -16 : -8, this._v2 ? 5.5 : 1.7, this._v2 ? 44 : 33);
     this._mapLook = null; this._mapEase = null;
     if (global.gsap) global.gsap.killTweensOf(this);
     this._obsYaw = 0; this._obsPitch = 0;
@@ -1009,9 +1287,17 @@
     this._hideToast();
     this._buildMarkers(this._collectEvents(), this._masterDur);
 
-    // Era-1 fleet controls
-    if (this.btnLaunchNext) this.btnLaunchNext.hidden = !this._bangfai;
+    // Era-1 / Era-3 fleet controls
+    if (this.btnLaunchNext) {
+      this.btnLaunchNext.hidden = !(this._bangfai || this._v2);
+      this.btnLaunchNext.textContent = this._v2 ? '🚀 ยิง V-2 ลูกต่อไป' : '🚀 จุดบั้งต่อไป';
+    }
     this._refreshFocusBtn();
+
+    // Era-3 · position the sea target from the sim's target range
+    if (this._v2) { this._targetBearing = 90; this._azimuth = 90; this._syncAim(); }
+    if (this.elLaunchSeq) this.elLaunchSeq.hidden = true;
+    if (this.elCountdown) this.elCountdown.hidden = true;
 
     // ---- THE RELEASE — manual two-step ignition for a khom loy -----------
     this._haikuQueue.length = 0;
@@ -1026,7 +1312,20 @@
     var canGate = !!(opts.cinematic && this.btnIgnite && (buoy || this._bangfai) &&
       holdT != null && holdT > 0.02);
 
-    if (canGate) {
+    if (this._v2 && opts.cinematic && this.btnIgnite) {
+      // ---- Era 3 · V-2 manual launch sequence : aim → Ready → T-10 ----
+      this._gate = 'aim';
+      this._liftoffTime = (holdT != null && holdT > 0) ? holdT : 0.02;
+      this.flight.seek(0);
+      if (this.elLaunchSeq) this.elLaunchSeq.hidden = false;
+      this.btnIgnite.hidden = false;
+      this.btnIgnite.disabled = false;
+      this.btnIgnite.classList.add('ready');
+      this.btnIgnite.textContent = '🚀 พร้อมยิง (Ready)';
+      this._phaseText = 'ตั้งทิศยิง แล้วกด "พร้อมยิง"';
+      this._camIdx = CAM_MODES.indexOf('observer');
+      this.btnCam.textContent = CAM_LABEL.observer;
+    } else if (canGate) {
       this._gate = 'prelaunch';
       this._liftoffTime = holdT;
       // the Bang Fai needs a FULL ~5 s of packed-bore pressure build (huge
@@ -1080,6 +1379,13 @@
     this._haikuActive = this._haikuFading = false;
     this._haikuQueue.length = 0;
     this._clearDebris();
+    this._clearBlasts();
+    if (this.elLaunchSeq) this.elLaunchSeq.hidden = true;
+    if (this.elCountdown) this.elCountdown.hidden = true;
+    if (this._firingTable) this._firingTable.visible = false;
+    if (this._targetZone) this._targetZone.visible = false;
+    if (this._aimMarker) this._aimMarker.visible = false;
+    if (this._impactMarker) this._impactMarker.visible = false;
     this.root.hidden = true;
   };
 
@@ -1108,17 +1414,24 @@
     return t;
   }
 
-  // ---- LAUNCH NEXT — a fresh Bang Fai on the rail, mid-flight ----------
+  // ---- LAUNCH NEXT — a fresh rocket on the pad / rail, mid-flight ------
   FlightScreen.prototype._launchNext = function () {
     if (!this._canLaunchNext || !this.scene || !this.scene.available || this._gate) return;
     if (this._vehicles.length >= 8) {
-      this._showToast('บั้งไฟบนฟ้าเยอะพอแล้ว! (สูงสุด 8 ลูก)');
+      this._showToast('บนฟ้าเยอะพอแล้ว! (สูงสุด 8 ลูก)');
       return;
     }
     if (!this._vehicle) return;
     var model = this._vehicle.toPhysicsModel();
     if (!model || !model.valid) return;
-    var sim = RS.Physics.simulate(model, this._simOpts || {});
+    // give each fresh V-2 its own analog-gyro drift so the dispersion varies
+    var op = this._simOpts || {};
+    if (op.target) {
+      op = { dt: op.dt, sampleEvery: op.sampleEvery, wind: op.wind, safeZoneRadius: op.safeZoneRadius,
+        target: { range: op.target.range, gyroDrift: op.target.gyroDrift,
+          seed: (op.target.seed || 3.1) + this._vehicles.length * 17.3 } };
+    }
+    var sim = RS.Physics.simulate(model, op);
     var rec = this._addVehicle(sim, { t0: this._masterT });
     this._masterDur = Math.max(this._masterDur, rec.t0 + rec.flight.duration);
     this._focusIdx = this._vehicles.length - 1;
@@ -1130,8 +1443,10 @@
     this.autopsy.hidden = true;
     this._revealChrome();
     if (!this._playing) this.play();
-    this._phaseText = 'จุดบั้งต่อไป';
-    this._showToast('🚀 จุดบั้งไฟลูกที่ ' + this._vehicles.length + ' — ยิงจากราง!');
+    this._phaseText = this._v2 ? 'ยิง V-2 ลูกต่อไป' : 'จุดบั้งต่อไป';
+    this._showToast(this._v2
+      ? ('🚀 ยิง V-2 ลูกที่ ' + this._vehicles.length + ' จากฐานยิง!')
+      : ('🚀 จุดบั้งไฟลูกที่ ' + this._vehicles.length + ' — ยิงจากราง!'));
   };
 
   // ---- transport -------------------------------------------------------
@@ -1171,6 +1486,7 @@
       }
     });
     this._clearDebris();
+    this._clearBlasts();
     if (this._sound) this._sound.stopAll();
     this._syncScrub();
     this.play();
@@ -1208,6 +1524,7 @@
     this._last = t;
     this._frameDt = dt;
 
+    if (this._gate === 'countdown') { this._countdownFrame(dt); return; }
     if (this._gate) { this._gateFrame(dt); return; }
 
     var rate = RATES[this._rateIdx] || 1;
@@ -1265,6 +1582,28 @@
     var fRec = this._focusedRec();
     var powered = !!fRec && fRec.flight.time <= fRec._poweredUntil + 0.01 &&
       this._masterT >= fRec.t0;
+
+    // ---- EXTINGUISH — the instant it hits the ground, kill every engine FX
+    if (st.crashed) {
+      powered = false;
+      if (this._glow) this._glow.intensity = 0;
+      if (RS.render.VehicleRenderer && this.vehicleGroup) {
+        RS.render.VehicleRenderer.flicker(this.vehicleGroup, false, false);
+      }
+      // ---- THE BOOM — one massive fireball + dust ring on impact --------
+      if (fRec && !this._blasted[fRec.id]) {
+        var s = this._summary || {};
+        if ((s.impactSpeed || st.speed || 0) > 18 || (s.damageRadius || 0) > 6) {
+          this._blasted[fRec.id] = true;
+          this._spawnBlast((st.position && st.position.x) || 0, 0,
+            (st.position && st.position.z) || 0, s.damageRadius || 12);
+        }
+      }
+    }
+    this._updateBlast(this._frameDt || 0.016);
+    if (this._v2 && RS.render.OrbitalEnv && this._targetZone) {
+      RS.render.OrbitalEnv.update(this._targetZone, this._frameDt || 0.016);
+    }
 
     // APOGEE BREAKUP — hide the whistle nose + spawn falling debris, once
     if (st.brokenUp && this.vehicleGroup && !this.vehicleGroup.userData.brokenUp) {
@@ -1415,6 +1754,14 @@
     if (this._earthSun) this._earthSun.intensity = (inMap || alt > 120000) ? 2.6 : 0;
     if (this._launchMarker) this._launchMarker.visible = inMap;
     if (this._launchHalo) this._launchHalo.visible = inMap;
+
+    // ---- Era 3 · the sea target zone (near + map) + aim / impact pins (map) ----
+    if (this._targetZone) this._targetZone.visible = this._v2 && (inMap || alt < 20000);
+    if (this._aimMarker) {
+      this._aimMarker.visible = this._v2 && inMap &&
+        Math.abs(this._azimuth - this._targetBearing) > 2 && !this._autopsyShown;
+    }
+    if (this._impactMarker) this._impactMarker.visible = this._v2 && inMap && this._autopsyShown;
     var vpz = (st && st.position) ? st.position.z : 0;
     if (this._vehMarker) {
       var showVeh = inMap && (vy > RE * 0.0008);   // hide it while still on the pad
@@ -1477,7 +1824,10 @@
 
     } else {
       var cr = clamp((14 + alt * 0.06) * this._zoom, 6, RE * 2);
-      cam.position.set(tx + cr * sp * sth, vy + cr * cp, cr * sp * cth);
+      // on impact, pull back + lift so the fireball + dust ring read as a whole
+      var crashLift = 0;
+      if (st && st.crashed) { cr = Math.max(cr, 62); crashLift = 12; }
+      cam.position.set(tx + cr * sp * sth, vy + cr * cp + crashLift, cr * sp * cth);
       cam.lookAt(tx, vy, 0);
     }
   };
@@ -1568,6 +1918,10 @@
       var orb = this._summary && this._summary.orbit;
       if (orb && orb.achieved && this.flight.time > (this._orbitEventTime || 1e9) - 1) {
         this.elDrift.textContent = fmtAlt(orb.periapsis) + ' × ' + fmtAlt(orb.apoapsis);
+      } else if (this._v2 && this._summary && this._summary.targeting) {
+        this.elDrift.textContent = this._autopsyShown
+          ? 'พลาด ' + fmtAlt(this._missTotal())
+          : 'เป้า ' + fmtAlt(this._summary.targetRange) + ' · ทิศ ' + this._azimuth + '°';
       } else if (this._bangfai && this._vehicles.length > 1) {
         this.elDrift.textContent = 'บั้งไฟ ' + this._vehicles.length + ' ลูก';
       } else {
@@ -1586,6 +1940,16 @@
       if (evs[i].time <= t) label = LABEL_TH[evs[i].type] || evs[i].type;
     }
     this._phaseText = label;
+  };
+
+  // total miss = physics range error ⊕ the cross-range from an azimuth that
+  // wasn't pointed straight at the sea target (Phase 15)
+  FlightScreen.prototype._missTotal = function () {
+    var s = this._summary || {};
+    var rangeMiss = s.missDistance || 0;
+    var azErr = Math.abs((this._azimuth || 90) - (this._targetBearing || 90));
+    var crossMiss = (s.targetRange || 0) * Math.sin(azErr * Math.PI / 180);
+    return Math.sqrt(rangeMiss * rangeMiss + crossMiss * crossMiss);
   };
 
   // ---- Physics Autopsy report ------------------------------------
@@ -1610,8 +1974,19 @@
       ['เวลาบินรวม', (s.flightTime || 0).toFixed(1) + ' s'],
       ['มวลเมื่อเชื้อเพลิงหมด', fmtMass(s.burnoutMass || 0)]
     ];
+    if (this._v2 && s.targeting) {
+      cells = [
+        ['ระยะยิงเป้า (กลางทะเล)', fmtAlt(s.targetRange || 0)],
+        ['ตกจริง (Downrange)', fmtAlt(Math.abs(s.downrange || s.impactX || 0))],
+        ['พลาดจากเป้า', fmtAlt(this._missTotal())],
+        ['ความเร็วกระทบ', (s.impactSpeed || 0).toFixed(0) + ' m/s'],
+        ['รัศมีความเสียหาย', fmtAlt(s.damageRadius || 0)],
+        ['MECO', s.mecoTime != null ? s.mecoTime.toFixed(1) + ' s' : 'ไม่ถึงระยะ']
+      ];
+    }
     if (this._vehicles.length > 1) {
-      cells.unshift(['บั้งไฟที่ปล่อยทั้งหมด', this._vehicles.length + ' ลูก']);
+      cells.unshift([this._v2 ? 'V-2 ที่ยิงทั้งหมด' : 'บั้งไฟที่ปล่อยทั้งหมด',
+        this._vehicles.length + ' ลูก']);
     }
     $('fs-autopsy-stats').innerHTML = cells.map(function (c) {
       return '<div class="fs-ap-stat"><span>' + c[0] + '</span><b>' + c[1] + '</b></div>';

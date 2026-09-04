@@ -198,6 +198,42 @@
   text-align: right; line-height: 1.5; pointer-events: none;
 }
 
+/* ---- Era 3 · V-2 launch sequence — azimuth aim + T-10 countdown ------- */
+.fs-launchseq {
+  position: absolute; left: 50%; bottom: calc(15% + 74px); transform: translateX(-50%);
+  z-index: 4; width: min(420px, 82vw);
+  padding: 14px 20px 16px; border-radius: 14px;
+  color: #dce8ff;
+  border: 1px solid rgba(120,180,255,0.4);
+  background: linear-gradient(180deg, rgba(12,22,42,0.92), rgba(8,14,28,0.9));
+  box-shadow: 0 12px 44px rgba(0,0,0,0.5), inset 0 0 22px rgba(90,150,240,0.08);
+  font-family: var(--bp-font, "Sarabun", system-ui, sans-serif);
+  transition: opacity .45s ease, transform .45s ease;
+}
+.fs-launchseq[hidden] { display: none; }
+.fs-aim-row { display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+.fs-aim-row > span:first-child { font-weight: 700; letter-spacing: 0.02em; }
+.fs-aim-row b { color: #8fd0ff; font-variant-numeric: tabular-nums; }
+.fs-aim-hint { font-size: 11px; color: #90a6c8; }
+#fs-aim { width: 100%; accent-color: #ff6a4a; cursor: pointer; }
+
+.fs-countdown {
+  position: absolute; left: 50%; top: 38%; transform: translate(-50%, -50%);
+  z-index: 6; pointer-events: none;
+  font-family: "Barlow Condensed", var(--bp-font, system-ui), sans-serif;
+  font-size: clamp(90px, 20vw, 230px); font-weight: 800; line-height: 1;
+  color: #fff2e2; letter-spacing: 0.02em;
+  text-shadow: 0 0 44px rgba(255,140,60,0.6), 0 0 14px rgba(255,90,50,0.7);
+  animation: fs-cd-pulse 1s ease-out;
+}
+.fs-countdown[hidden] { display: none; }
+.fs-countdown.go { color: #7bffb0; text-shadow: 0 0 54px rgba(90,255,170,0.7); }
+@keyframes fs-cd-pulse {
+  0%   { opacity: 0; transform: translate(-50%, -50%) scale(1.6); }
+  18%  { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0.55; transform: translate(-50%, -50%) scale(0.92); }
+}
+
 /* ---- Era 0 · manual two-step ignition button (centre-lower) ----------- */
 .fs-ignite {
   position: absolute; left: 50%; bottom: 15%; transform: translateX(-50%);

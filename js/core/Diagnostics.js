@@ -130,7 +130,20 @@
     }
 
     // --- 4c · gravity turn + orbit (guided vehicles) --------------
-    if (model && model.gravityTurn) {
+    if (model && model.gravityTurn && sum.targeting) {
+      // --- V-2 ballistic gyro-guidance : how close to the sea target? ---
+      var meco = events.filter(function (e) { return e.type === 'MECO'; })[0];
+      var miss = Math.abs(sum.missDistance || 0);
+      var dmg = sum.damageRadius || 0;
+      var st = miss <= Math.max(120, dmg * 0.6) ? OK : (miss <= 400 ? WARN : FAIL);
+      add('guidance', st,
+        meco ? ('ยิงเข้าเป้า — พลาดระยะ ' + fmtAlt(miss))
+             : 'เชื้อเพลิงหมดก่อนถึงระยะยิง — ตกสั้นกว่าเป้า',
+        'ระยะยิงเป้า ' + fmtAlt(sum.targetRange || 0) +
+        ' · ตกจริง ' + fmtAlt(Math.abs(sum.downrange || sum.impactX || 0)) +
+        (meco ? ' · MECO ที่ ' + (meco.time || 0).toFixed(1) + ' วิ / ' + fmtAlt(meco.altitude || 0) : '') +
+        ' · รัศมีความเสียหาย ' + fmtAlt(dmg));
+    } else if (model && model.gravityTurn) {
       var pv = events.filter(function (e) { return e.type === 'PITCH_OVER'; })[0];
       var orb = sum.orbit || {};
       var staged = (sum.stagesFlown || 1) > 1;
