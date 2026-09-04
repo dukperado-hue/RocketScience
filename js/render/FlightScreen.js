@@ -37,6 +37,7 @@
     APOGEE_BREAKUP: 'แตกที่จุดสูงสุด',
     BURST:    'ลูกพลุแตก',
     DUD:      'ลูกพลุด้าน',
+    COLLISION: 'ชนโคมลอย!',
     BURNOUT:  'เชื้อเพลิงหมด',
     LOSS_OF_CONTROL: 'เสียการควบคุม',
     MIDAIR_BURN: 'โคมไฟไหม้กลางอากาศ',
@@ -44,7 +45,7 @@
   };
   var EVENT_COLOR = {
     IGNITION: '#e9f1ff', LIFTOFF: '#5fe0a8', PITCH_OVER: '#b98cff', MAX_Q: '#5bd6ff',
-    MECO: '#ff9a5a', BURST: '#ffd24a', DUD: '#8891a5',
+    MECO: '#ff9a5a', BURST: '#ffd24a', DUD: '#8891a5', COLLISION: '#ff3b3b',
     BURNOUT: '#ffb63a', APOGEE: '#ffce40', APOGEE_BREAKUP: '#ff8a3a',
     LOSS_OF_CONTROL: '#ff3b3b', MIDAIR_BURN: '#ff7420', IMPACT: '#ff6a5a'
   };
@@ -157,6 +158,10 @@
     this._fwBursted = false;
     this._fwRetry = null;
     this._lastVerdict = null;
+    // ---- M02 · the khom loy obstacle stream (Phase 17) --------------
+    this._fwXBox = null;
+    this._lanterns = [];           // [{mesh, light, x, z, y0, vy, hit}]
+    this._collisionShown = false;
 
     // ---- sound (pooled sfx — ignite bed + liftoff whoosh) ---------------
     this._sound = RS.render.SoundFX ? new RS.render.SoundFX() : null;
@@ -1007,8 +1012,14 @@
     if (this._fwTargetBox) { this.scene.remove(this._fwTargetBox); this._fwTargetBox = null; }
     if (!this._fwBox) return;
     var lo = this._fwBox[0], hi = this._fwBox[1];
-    var W = 64, D = 64, H = hi - lo, midY = (lo + hi) / 2;
+    // an x-window (M02) makes the box a real 2-D target offset to one side;
+    // otherwise it's a wide altitude band centred on the pad
+    var xb = this._fwXBox;
+    var W = xb ? Math.max(24, (xb[1] - xb[0])) : 64;
+    var midX = xb ? (xb[0] + xb[1]) / 2 : 0;
+    var D = 64, H = hi - lo, midY = (lo + hi) / 2;
     var g = new THREE.Group();
+    g.position.x = midX;
     g.userData.isFwTargetBox = true;
 
     var fill = new THREE.Mesh(
@@ -1133,6 +1144,76 @@
     });
     this._fwBursts = [];
     this._fwBursted = false;
+  };
+
+  // ---- M02 · the drifting khom loy obstacle stream --------------------
+  FlightScreen.prototype._buildLanterns = function (list) {
+    this._clearLanterns();
+    if (!THREE || !this.scene || !list || !list.length) return;
+    var self = this;
+    list.forEach(function (L) {
+      var g = new THREE.Group();
+      // a small glowing paper lantern: warm translucent body + a flame point
+      var body = new THREE.Mesh(
+        new THREE.CylinderGeometry(1.6, 1.1, 3.4, 12, 1, true),
+        new THREE.MeshBasicMaterial({ color: 0xffcaa0, transparent: true, opacity: 0.5,
+          side: THREE.DoubleSide, depthWrite: false }));
+      g.add(body);
+      var lid = new THREE.Mesh(new THREE.CircleGeometry(1.55, 12),
+        new THREE.MeshBasicMaterial({ color: 0xffe6c8, transparent: true, opacity: 0.6 }));
+      lid.rotation.x = -Math.PI / 2; lid.position.y = 1.7; g.add(lid);
+      var flame = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 6),
+        new THREE.MeshBasicMaterial({ color: 0xffd070, transparent: true, opacity: 0.95,
+          blending: THREE.AdditiveBlending, depthWrite: false }));
+      flame.position.y = -0.7; g.add(flame);
+      var light = new THREE.PointLight(0xffb060, 6, 26, 2);
+      light.position.y = -0.4; g.add(light);
+      g.position.set(L.x || 0, L.y0 || 20, -(L.z || 0));
+      self.scene.add(g);
+      self._lanterns.push({ mesh: g, body: body, flame: flame, light: light,
+        x: L.x || 0, z: L.z || 0, y0: L.y0 || 20, vy: L.vy || 1.1, r: L.r || 5.5,
+        hit: false, dropVy: 0, _t: Math.random() * 6 });
+    });
+  };
+
+  FlightScreen.prototype._updateLanterns = function (dt, masterT) {
+    if (!this._lanterns.length) return;
+    for (var i = 0; i < this._lanterns.length; i++) {
+      var L = this._lanterns[i];
+      L._t += dt;
+      if (L.hit) {
+        // struck — flash red, lose lift, tumble out of the sky
+        L.dropVy -= 9.8 * dt * 0.6;
+        L.mesh.position.y += L.dropVy * dt;
+        L.mesh.rotation.z += dt * 3;
+        L.mesh.rotation.x += dt * 2;
+        var f = clamp(1 - (masterT - (L.hitT || masterT)) / 1.2, 0, 1);
+        L.body.material.color.setHex(0xff3b3b);
+        L.body.material.opacity = 0.5 * f + 0.05;
+        L.flame.material.opacity = f;
+        if (L.light) L.light.color.setHex(0xff2a2a), L.light.intensity = 10 * f;
+        L.mesh.visible = L.mesh.position.y > -4;
+      } else {
+        L.mesh.position.y = L.y0 + L.vy * masterT;
+        L.mesh.position.x = L.x;
+        var fl = 0.8 + Math.sin(L._t * 6) * 0.2 + Math.random() * 0.15;
+        if (L.light) L.light.intensity = 5 * fl;
+        L.flame.scale.setScalar(0.85 + Math.sin(L._t * 9) * 0.2);
+      }
+    }
+  };
+
+  FlightScreen.prototype._clearLanterns = function () {
+    var sc = this.scene;
+    (this._lanterns || []).forEach(function (L) {
+      if (sc) sc.remove(L.mesh);
+      L.mesh.traverse(function (o) {
+        if (o.geometry) o.geometry.dispose();
+        if (o.material) o.material.dispose();
+      });
+    });
+    this._lanterns = [];
+    this._collisionShown = false;
   };
 
   // ======================================================================
@@ -1363,6 +1444,7 @@
     this._fwOpts = opts.firework || null;
     this._fwBox = (opts.firework && opts.firework.box) || null;
     this._fwColorHex = (opts.firework && opts.firework.colorHex) || '#ffc247';
+    this._fwXBox = (opts.firework && opts.firework.xbox) || null;
     this._fwRetry = opts.onRetry || null;
     this._fwBursted = false;
     this._lastVerdict = null;
@@ -1458,9 +1540,11 @@
 
     // Sky Atlas · fireworks — the glowing target box + a spectator camera
     this._clearFwBursts();
+    this._clearLanterns();
     if (this.vehicleGroup) this.vehicleGroup.visible = true;
     this._buildFwTargetBox();
     if (this._fw) {
+      this._buildLanterns(this._fwOpts && this._fwOpts.lanterns);
       this._camIdx = CAM_MODES.indexOf('ground');
       this.btnCam.textContent = CAM_LABEL.ground;
       this._phaseText = 'พร้อมจุดพลุ';
@@ -1548,6 +1632,7 @@
     this._clearDebris();
     this._clearBlasts();
     this._clearFwBursts();
+    this._clearLanterns();
     if (this._fwTargetBox) this._fwTargetBox.visible = false;
     if (this.elLaunchSeq) this.elLaunchSeq.hidden = true;
     if (this.elCountdown) this.elCountdown.hidden = true;
@@ -1657,6 +1742,7 @@
     this._clearDebris();
     this._clearBlasts();
     this._clearFwBursts();
+    if (this._fw) this._buildLanterns(this._fwOpts && this._fwOpts.lanterns);
     if (this.vehicleGroup) this.vehicleGroup.visible = true;
     if (this._sound) this._sound.stopAll();
     this._syncScrub();
@@ -1788,6 +1874,28 @@
       }
     }
     this._updateFwBursts(this._frameDt || 0.016);
+
+    // ---- M02 · the khom loy stream + collision ----------------------
+    if (this._lanterns.length) {
+      this._updateLanterns(this._frameDt || 0.016, this._masterT);
+      var cl = this._summary && this._summary.collision;
+      if (cl && cl.occurred && !this._collisionShown &&
+          this.flight.time >= (cl.time || 1e9) - 1e-3) {
+        this._collisionShown = true;
+        var L = this._lanterns[cl.index];
+        if (L && !L.hit) { L.hit = true; L.hitT = this._masterT; L.dropVy = -2; }
+        // a red flash light where it hit
+        if (THREE) {
+          var fl = new THREE.PointLight(0xff2a2a, 24, 90, 2);
+          fl.position.set(cl.x || 0, cl.altitude || 40, 0);
+          this.scene.add(fl);
+          var scn = this.scene;
+          global.setTimeout(function () { scn.remove(fl); }, 500);
+        }
+        this._showToast('💥 ชนโคมลอย! — ผิดกฎระยะปลอดภัย (กด "ทำไมถึงพลาด?" ในรายงาน)');
+        this._phaseText = 'ชนโคมลอย — อันตราย!';
+      }
+    }
 
     // APOGEE BREAKUP — hide the whistle nose + spawn falling debris, once
     if (st.brokenUp && this.vehicleGroup && !this.vehicleGroup.userData.brokenUp) {
@@ -1998,11 +2106,18 @@
     if (mode === 'ground') {
       // a firework spectator sits well back so the whole arc + target box frame up
       var gd = (this._fw
-        ? clamp(70 + alt * 0.55, 70, 220)
+        ? clamp(90 + alt * 0.6, 90, 240)
         : clamp(10 + alt * 0.02, 10, 400)) * clamp(this._zoom, 0.5, 3);
-      cam.position.set(gd * sth, this._fw ? 6 : 1.3, gd * cth);
-      cam.lookAt(tx, this._fw ? Math.max(vy, (this._fwBox ? (this._fwBox[0] + this._fwBox[1]) / 2 : 60))
-        : Math.max(vy, focus), 0);
+      // frame the midpoint between the pad and the target box (so an angled
+      // arc + the offset box both stay in view)
+      var lookX = this._fw
+        ? (this._fwXBox ? (this._fwXBox[0] + this._fwXBox[1]) / 2 * 0.6 : tx * 0.5)
+        : tx;
+      var lookY = this._fw
+        ? Math.max(vy, (this._fwBox ? (this._fwBox[0] + this._fwBox[1]) / 2 : 60))
+        : Math.max(vy, focus);
+      cam.position.set(lookX + gd * sth, this._fw ? 6 : 1.3, gd * cth);
+      cam.lookAt(lookX, lookY, 0);
 
     } else if (mode === 'free') {
       var fr = clamp(40 * this._zoom, 2.5, RE * 3);
@@ -2174,13 +2289,27 @@
     }
     if (this._fw && s.burst) {
       var bu = s.burst, bx = this._fwBox || bu.box;
+      var col = s.collision || {};
+      var angleTxt = (this._fwOpts && this._fwOpts.angle)
+        ? (this._fwOpts.angle === 90 ? 'ตรง 90°'
+           : this._fwOpts.angle < 90 ? 'ขวา ' + this._fwOpts.angle + '°'
+           : 'ซ้าย ' + (180 - this._fwOpts.angle) + '°') : null;
       cells = [
         ['ดอกพลุบานที่', bu.dud ? 'ด้าน (พื้น)' : fmtAlt(bu.altitude || 0)],
         ['กรอบเป้าหมาย', bx ? (bx[0] + '–' + bx[1] + ' ม.') : '—'],
         ['จุดสูงสุด (Apogee)', fmtAlt(s.apogee || 0) + ' @ ' + (s.apogeeTime || 0).toFixed(1) + ' s'],
-        ['ชนวนหน่วงเวลา', (this._fwOpts ? this._fwOpts.fuse.toFixed(1) : (bu.time || 0).toFixed(1)) + ' s'],
-        ['ผล', bu.dud ? '💨 ด้าน' : bu.inBox ? '🎯 ในกรอบ' : '✕ นอกกรอบ']
+        ['ชนวนหน่วงเวลา', (this._fwOpts ? this._fwOpts.fuse.toFixed(1) : (bu.time || 0).toFixed(1)) + ' s']
       ];
+      if (this._fwXBox) cells.push(['แนวการบิน (X)',
+        (bu.dud ? '—' : Math.round(bu.x || 0) + ' ม.') +
+        ' / กรอบ ' + this._fwXBox[0] + '–' + this._fwXBox[1]]);
+      if (angleTxt) cells.push(['มุมยิง', angleTxt]);
+      if (this._lanterns.length) cells.push(['ระยะปลอดภัย',
+        col.occurred ? '💥 ชนโคมลอย!' : '✓ ผ่าน (ไม่ชนโคม)']);
+      cells.push(['ผล', col.occurred ? '💥 ชนโคมลอย'
+        : bu.dud ? '💨 ด้าน'
+        : (bu.inBox && (!this._fwXBox || (bu.x >= this._fwXBox[0] && bu.x <= this._fwXBox[1])))
+          ? '🎯 ในกรอบ' : '✕ นอกกรอบ']);
     }
     if (this._vehicles.length > 1) {
       cells.unshift([this._v2 ? 'V-2 ที่ยิงทั้งหมด' : 'บั้งไฟที่ปล่อยทั้งหมด',

@@ -412,13 +412,23 @@
           [{ node: 'bottom', toIid: ch.iid, toNode: 'top' }]);
         builder._afterEdit('พลุ ' + design.color + ' · ชนวน ' + design.fuse + ' วิ');
         setActiveMission(mission);
-        var box = (mission.objectives && mission.objectives.burstAltitudeBox) || null;
+        var atl = mission.atlas || {};
+        var obj = mission.objectives || {};
+        var box = obj.burstAltitudeBox || null;
+        var xbox = obj.burstXBox || null;
+        // M02+ : the rising khom loy stream — the SAME list feeds Physics
+        // (collision check) and the flight scene (rendered lanterns)
+        var lanterns = atl.lanterns || null;
+        var simOpts = { fuse: { time: design.fuse, box: box } };
+        if (atl.angles && design.angle) simOpts.launchPitchDeg = design.angle;
+        if (lanterns) simOpts.obstacles = lanterns;
         doLaunch({
-          simOpts: { fuse: { time: design.fuse, box: box } },
+          simOpts: simOpts,
           flightOpts: {
             firework: {
               color: design.color, colorHex: design.colorHex,
-              box: box, lift: design.lift, fuse: design.fuse
+              box: box, xbox: xbox, lift: design.lift, fuse: design.fuse,
+              angle: design.angle, lanterns: lanterns
             },
             onRetry: function () { RS.render.UI.openDesignDesk(mission); }
           }

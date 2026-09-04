@@ -54,8 +54,12 @@
   //  time-delay FUSE; the shell BURSTs wherever it is when the fuse runs
   //  through (or is a DUD if it lands first). New events `BURST` / `DUD`; new
   //  summary field `burst {occurred,dud,altitude,velocity,time,inBox,box}`.
+  //  1.11.0 — ADDITIVE: `{launchPitchDeg}` fires a Sky-Atlas firework as a
+  //  plain 2-D ballistic projectile along that pitch (no weathercock/tumble);
+  //  `{obstacles:[{x,z,y0,vy,r}]}` runs a per-step proximity check → new event
+  //  `COLLISION` + summary field `collision {occurred,time,altitude,x,index}`.
   //  Trajectory-sample shape UNCHANGED; every existing field untouched.
-  var CONTRACT_VERSION = '1.10.0';
+  var CONTRACT_VERSION = '1.11.0';
 
   // --- gravity turn / pitch program -----------------------------------------
   //  Straight up until (alt > 500 m AND speed > 50 m/s). A short pitch KICK
@@ -618,9 +622,23 @@
     var burstBox = (opts.fuse && opts.fuse.box && opts.fuse.box.length === 2)
       ? [+opts.fuse.box[0], +opts.fuse.box[1]] : null;
     var burst = null;                          // {time,alt,vel,dud,inBox}
+
+    // --- SKY-ATLAS FIREWORK — a pure 2-D ballistic projectile. `launchPitchDeg`
+    //  (π/2 = straight up, <90 = arc right / +x, >90 = arc left / −x) sets the
+    //  fixed thrust direction; no weathercock, no tumble, it just coasts.
+    var skyFirework = !!opts.fuse;
+    var fwPitch = (isFinite(opts.launchPitchDeg) && opts.launchPitchDeg > 0)
+      ? clamp(opts.launchPitchDeg * Math.PI / 180, Math.PI / 6, Math.PI - Math.PI / 6)
+      : PITCH_UP;
+
+    // --- OBSTACLES (M02 · the khom loy stream) — per-step proximity check ---
+    var obstacles = (opts.obstacles && opts.obstacles.length) ? opts.obstacles : null;
+    var collision = null;                      // {time,alt,x,index,byBurst}
+
     // a guided vehicle follows a pitch program and never passively tumbles
-    var canTumble = !!model.rocketDominant && isFinite(model.copAxisM) && !model.gravityTurn;
-    var pitchCmd = PITCH_UP;                   // current commanded thrust attitude
+    var canTumble = !!model.rocketDominant && isFinite(model.copAxisM) &&
+      !model.gravityTurn && !skyFirework;
+    var pitchCmd = skyFirework ? fwPitch : PITCH_UP;   // commanded thrust attitude
 
     // --- V-2 BALLISTIC GYRO-GUIDANCE (Phase 15) --------------------------
     var target = opts.target || null;
@@ -645,7 +663,8 @@
     var launchAngle = (isFinite(model.launchAngleDeg) && model.launchAngleDeg > 0)
       ? clamp(model.launchAngleDeg * Math.PI / 180, Math.PI / 6, Math.PI / 2)
       : PITCH_UP;
-    var weathercock = !model.gravityTurn && !!model.rocketDominant && isFinite(model.copAxisM);
+    var weathercock = !model.gravityTurn && !!model.rocketDominant &&
+      isFinite(model.copAxisM) && !skyFirework;
     var Ipitch = (model.momentOfInertia > 0)
       ? model.momentOfInertia : Math.max(0.05, (model.totalMass || 1) * 0.25);
     var pitchDampArm = (model.aftArmM > 0) ? model.aftArmM : 0.5;
@@ -915,11 +934,12 @@
       // --- FUSE BURST ------------------------------------------------------
       if (fuseTime > 0 && burst === null && liftedOff) {
         if (d.onPad && d.t < fuseTime - 1e-6) {
-          burst = { time: round(d.t, 3), alt: 0, vel: round(spdNow, 2), dud: true };
+          burst = { time: round(d.t, 3), alt: 0, vel: round(spdNow, 2),
+            dud: true, x: round(d.x, 2) };
         } else if (d.t >= fuseTime) {
           // a burst at ~ground level is a dud too (it goes off in the dirt)
           burst = { time: round(fuseTime, 3), alt: round(d.alt, 2),
-            vel: round(spdNow, 2), dud: d.alt < 3 };
+            vel: round(spdNow, 2), dud: d.alt < 3, x: round(d.x, 2) };
         }
         if (burst) {
           burst.inBox = !!burstBox && !burst.dud &&
@@ -927,7 +947,41 @@
           // an airborne burst ends the shell — coast a beat so the trail
           // settles, then stop. A dud keeps falling / finishes normally.
           if (!burst.dud) softLimit = Math.min(softLimit, d.t + 0.35);
+          // a burst near a lantern engulfs it — the expanding fireball reaches
+          // ~10 m further than the shell itself
+          if (obstacles && !burst.dud && collision === null) {
+            for (var bi = 0; bi < obstacles.length; bi++) {
+              var bo = obstacles[bi];
+              var boy = (bo.y0 || 0) + (bo.vy || 0) * burst.time;
+              var box2 = (bo.x || 0) + (bo.vx || 0) * burst.time;
+              var bdx = d.x - box2, bdy = burst.alt - boy, bdz = 0 - (bo.z || 0);
+              var bR = (bo.r || 5) + 10;
+              if (bdx * bdx + bdy * bdy + bdz * bdz < bR * bR) {
+                collision = { time: burst.time, alt: burst.alt, x: round(d.x, 2),
+                  index: bi, byBurst: true };
+                break;
+              }
+            }
+          }
           trajectory.push(toState(d, tumbleT, burnT));
+        }
+      }
+
+      // --- OBSTACLE PROXIMITY (M02 · khom loy stream) --------------------
+      //  The lanterns drift straight up at `vy` from `y0`. A hit while the
+      //  shell is flying — or a burst that engulfs a lantern — fails the run.
+      if (obstacles && collision === null && liftedOff) {
+        for (var oi = 0; oi < obstacles.length; oi++) {
+          var ob = obstacles[oi];
+          var oy = (ob.y0 || 0) + (ob.vy || 0) * d.t + (ob.drift ? 0 : 0);
+          var ox = (ob.x || 0) + (ob.vx || 0) * d.t;
+          var ddx = d.x - ox, ddy = d.alt - oy, ddz = 0 - (ob.z || 0);
+          var rr2 = (ob.r || 5);
+          if (ddx * ddx + ddy * ddy + ddz * ddz < rr2 * rr2) {
+            collision = { time: round(d.t, 3), alt: round(d.alt, 2),
+              x: round(d.x, 2), index: oi, byBurst: false };
+            break;
+          }
         }
       }
 
@@ -1066,6 +1120,7 @@
     }
     if (state.t >= softLimit && softLimit >= maxTime) reason = 'ถึงเวลาจำกัดการจำลอง';
     else if (orbit && state.t >= softLimit) reason = 'เข้าสู่วงโคจรเสถียร';
+    else if (collision) reason = 'ลูกพลุชนโคมลอย — ผิดกฎความปลอดภัย';
     else if (burst && !burst.dud) reason = burst.inBox
       ? 'ลูกพลุแตกในกรอบเป้าหมาย 🎯' : 'ลูกพลุแตกกลางฟ้า';
     else if (burst && burst.dud) reason = 'ลูกพลุด้าน — ตกถึงพื้นก่อนชนวนจะไหม้';
@@ -1105,9 +1160,16 @@
       burst: burst ? {
         occurred: !burst.dud, dud: !!burst.dud,
         altitude: burst.alt, velocity: burst.vel, time: burst.time,
-        inBox: !!burst.inBox, box: burstBox || null
+        inBox: !!burst.inBox, box: burstBox || null,
+        x: burst.x != null ? burst.x : round(finalX, 2)
       } : { occurred: false, dud: false, altitude: 0, velocity: 0, time: 0,
-            inBox: false, box: burstBox || null },
+            inBox: false, box: burstBox || null, x: 0 },
+      // --- obstacle collision (M02 · Phase 17) ---
+      collision: collision ? {
+        occurred: true, time: collision.time, altitude: collision.alt,
+        x: collision.x, index: collision.index, byBurst: !!collision.byBurst
+      } : { occurred: false, time: 0, altitude: 0, x: 0, index: -1, byBurst: false },
+      launchPitchDeg: skyFirework ? round(fwPitch * 180 / Math.PI, 1) : 0,
       mode: motorMode
     };
 
@@ -1140,6 +1202,15 @@
           : ('ลูกพลุแตกที่ ' + fmtKm(burst.alt) +
              (burst.inBox ? ' — ในกรอบเป้าหมาย 🎯' : ' — นอกกรอบเป้าหมาย')),
         altitude: burst.alt, velocity: burst.vel
+      });
+    }
+    if (collision) {
+      physicsEvents.push({
+        time: collision.time, type: 'COLLISION',
+        message: collision.byBurst
+          ? 'ดอกพลุระเบิดโดนโคมลอย — อันตราย! (ควรเว้นระยะให้ห่างกว่านี้)'
+          : 'ลูกพลุพุ่งชนโคมลอยกลางอากาศ — เสียการควบคุมด้านความปลอดภัย',
+        altitude: collision.alt, velocity: 0
       });
     }
     if (mecoTime !== null) {
@@ -1368,7 +1439,9 @@
       orbit: { achieved: false, apoapsis: 0, periapsis: 0, eccentricity: 0, period: 0 },
       targeting: false, targetRange: 0, mecoTime: null,
       impactSpeed: 0, impactVertSpeed: 0, missDistance: 0, damageRadius: 0,
-      burst: { occurred: false, dud: false, altitude: 0, velocity: 0, time: 0, inBox: false, box: null },
+      burst: { occurred: false, dud: false, altitude: 0, velocity: 0, time: 0, inBox: false, box: null, x: 0 },
+      collision: { occurred: false, time: 0, altitude: 0, x: 0, index: -1, byBurst: false },
+      launchPitchDeg: 0,
       mode: 'none'
     };
   }

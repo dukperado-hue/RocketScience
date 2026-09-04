@@ -44,12 +44,19 @@
     { id: 3.0, label: '3.0 วิ', sub: 'กลาง',  hint: 'แตกใกล้จุดสูงสุด' },
     { id: 4.5, label: '4.5 วิ', sub: 'ยาว',   hint: 'แตกที่ยอด/ตอนร่วงลง' }
   ];
+  // launch angle (M02+): pitch in the 2-D sim. 90 = straight up, <90 arcs
+  // right (+x), >90 arcs left (−x)
+  var ANGLE_OPTS = [
+    { id: 105, label: 'ซ้าย 75°', sub: 'Left',     hint: 'โค้งไปทางซ้าย', glyph: '↖' },
+    { id: 90,  label: 'ตรง 90°',  sub: 'Straight', hint: 'พุ่งขึ้นตรง',    glyph: '↑' },
+    { id: 75,  label: 'ขวา 75°',  sub: 'Right',    hint: 'โค้งไปทางขวา',   glyph: '↗' }
+  ];
 
   function UI() {
     this._opts = null;
     this._mission = null;
     // last design the player chose — remembered across a fail→retry loop
-    this._design = { lift: 'fw_lift_m', color: 'gold', fuse: 3.0 };
+    this._design = { lift: 'fw_lift_m', color: 'gold', fuse: 3.0, angle: 90 };
     this._built = false;
   }
 
@@ -146,10 +153,10 @@
   // future missions the campaign will add — shown greyed so the player sees the map
   UI.prototype._lockedPlaceholders = function (haveN) {
     var soon = [
-      { code: 'M02', name: 'ลอยกระทง', ic: '🪷' },
-      { code: 'M03', name: 'ตรุษจีน', ic: '🐉' },
-      { code: 'M04', name: 'ปีใหม่', ic: '🎉' }
-    ].slice(Math.max(0, haveN - 1));
+      { code: 'M03', name: 'ลอยกระทง', ic: '🪷' },
+      { code: 'M04', name: 'ตรุษจีน', ic: '🐉' },
+      { code: 'M05', name: 'ปีใหม่', ic: '🎉' }
+    ].slice(Math.max(0, haveN - 2));
     return soon.map(function (s) {
       return '<button type="button" class="sa-stamp locked" disabled>' +
         '<span class="sa-stamp-ic">🔒</span>' +
@@ -207,9 +214,11 @@
         '<div class="fwd-opts">' + opts.map(function (o) {
           return render(o, o.id === cur);
         }).join('') + '</div>';
+      wrap.hidden = false;
       Array.prototype.forEach.call(wrap.querySelectorAll('.fwd-opt'), function (b) {
         b.addEventListener('click', function () {
-          self._design[key] = (key === 'fuse') ? parseFloat(b.dataset.val) : b.dataset.val;
+          self._design[key] = (key === 'fuse' || key === 'angle')
+            ? parseFloat(b.dataset.val) : b.dataset.val;
           self.openDesignDesk(self._mission);   // re-render to reflect selection
         });
       });
@@ -241,14 +250,32 @@
           '<span class="fwd-opt-h">' + esc(o.hint) + '</span></button>';
       });
 
+    // 4th row — Launch Angle — only for missions that flag it (M02+)
+    var angleRow = $('fwd-row-angle');
+    if (this._mission.atlas && this._mission.atlas.angles) {
+      mkRow('fwd-row-angle', '4 · องศาการยิง', 'Launch Angle', ANGLE_OPTS, this._design.angle, 'angle',
+        function (o, on) {
+          return '<button type="button" class="fwd-opt' + (on ? ' on' : '') + '" data-val="' + o.id + '">' +
+            '<span class="fwd-opt-big">' + o.glyph + '</span>' +
+            '<span class="fwd-opt-l">' + esc(o.label) + '</span>' +
+            '<span class="fwd-opt-s">' + esc(o.sub) + '</span>' +
+            '<span class="fwd-opt-h">' + esc(o.hint) + '</span></button>';
+        });
+    } else if (angleRow) {
+      angleRow.hidden = true; angleRow.innerHTML = '';
+    }
+
     var prev = $('fw-desk-preview');
     if (prev) {
       var L = LIFT_OPTS.filter(function (o) { return o.id === self._design.lift; })[0];
       var Cc = COLOR_OPTS.filter(function (o) { return o.id === self._design.color; })[0];
       prev.style.setProperty('--fwd-c', (Cc && Cc.hex) || '#ffc247');
+      var angleTxt = (this._mission.atlas && this._mission.atlas.angles)
+        ? (' · มุม <b>' + (ANGLE_OPTS.filter(function (o) { return o.id === self._design.angle; })[0] || {}).label + '</b>')
+        : '';
       prev.innerHTML = '<span class="fwd-preview-shell">🎆</span>' +
         '<span>แรงขับ <b>' + esc(L ? L.label : '') + '</b> · สี <b>' + esc(Cc ? Cc.label : '') +
-        '</b> · ชนวน <b>' + self._design.fuse.toFixed(1) + ' วิ</b></span>';
+        '</b> · ชนวน <b>' + self._design.fuse.toFixed(1) + ' วิ</b>' + angleTxt + '</span>';
     }
 
     this._show('desk');
@@ -258,7 +285,8 @@
     var m = this._mission, d = this._design;
     this.close();
     if (this._opts.onLaunchFirework) this._opts.onLaunchFirework(m, {
-      lift: d.lift, color: d.color, colorHex: this.colorHex(d.color), fuse: d.fuse
+      lift: d.lift, color: d.color, colorHex: this.colorHex(d.color), fuse: d.fuse,
+      angle: (m.atlas && m.atlas.angles) ? d.angle : 90
     });
   };
 
@@ -289,7 +317,8 @@
           if (self._opts.onLaunchFirework) {
             self._opts.onLaunchFirework(self._mission, {
               lift: self._design.lift, color: self._design.color,
-              colorHex: self.colorHex(self._design.color), fuse: self._design.fuse
+              colorHex: self.colorHex(self._design.color), fuse: self._design.fuse,
+              angle: (self._mission.atlas && self._mission.atlas.angles) ? self._design.angle : 90
             });
           }
         }

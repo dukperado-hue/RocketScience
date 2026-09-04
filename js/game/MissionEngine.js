@@ -157,6 +157,37 @@
         }
       }
 
+      if (o.burstXBox != null) {
+        var xb = o.burstXBox;
+        var bx = sum.burst || {};
+        var bX = bx.x || 0;
+        var inX = !!bx.occurred && !bx.dud && bX >= xb[0] && bX <= xb[1];
+        res.objectives.push({
+          label: 'ดอกพลุบานตรงแนวกรอบ (แกน X ' + xb[0] + '–' + xb[1] + ' ม.)',
+          met: inX,
+          actual: bx.occurred && !bx.dud ? ('แตกที่แนว ' + Math.round(bX) + ' ม.') : '—'
+        });
+        if (!inX && bx.occurred && !bx.dud) {
+          res.failReasons.push(bX < xb[0]
+            ? ('ดอกพลุบานเยื้องไปทางซ้ายของกรอบ (แนว ' + Math.round(bX) + ' ม.) — เอียงยิงไปทางขวามากขึ้น')
+            : ('ดอกพลุบานเลยกรอบไปทางขวา (แนว ' + Math.round(bX) + ' ม.) — ลดมุมเอียง หรือแรงส่ง'));
+        }
+      }
+
+      if (o.noCollision) {
+        var col = sum.collision || {};
+        res.objectives.push({
+          label: 'ไม่ชนโคมลอย (Safety Clearance)',
+          met: !col.occurred,
+          actual: col.occurred
+            ? (col.byBurst ? 'ดอกพลุระเบิดโดนโคม' : 'พุ่งชนโคมกลางอากาศ')
+            : 'เว้นระยะปลอดภัยได้'
+        });
+        if (col.occurred) res.failReasons.push(col.byBurst
+          ? ('ดอกพลุระเบิดโดนโคมลอย (ที่ ' + Math.round(col.altitude) + ' ม.) — เว้นระยะให้ห่างกว่านี้')
+          : ('ลูกพลุพุ่งชนโคมลอยที่ ' + Math.round(col.altitude) + ' ม. — วิถีโค้งต้องอ้อมให้พ้นสายโคม'));
+      }
+
       if (o.flightTimeMin != null) {
         var ft = sum.flightTime || 0;
         var metFt = ft >= o.flightTimeMin;

@@ -194,6 +194,17 @@
       }
     }
 
+    // --- 4e · OBSTACLE COLLISION (M02 · khom loy stream) -----------------
+    var col = sum.collision;
+    if (col && col.occurred) {
+      add('safety', FAIL,
+        col.byBurst ? 'ดอกพลุระเบิดโดนโคมลอย — ผิดกฎระยะปลอดภัย'
+                    : 'ลูกพลุพุ่งชนโคมลอยกลางอากาศ',
+        'ชนที่ ' + fmtAlt(col.altitude) + ' (แนว X ' + Math.round(col.x || 0) + ' ม.) ที่ ' +
+        (col.time || 0).toFixed(1) + ' วิ — วิถีโค้งของลูกพลุต้องมี "อากาศว่าง" ตลอดเส้นทาง ' +
+        '(ปรับมุมเอียง / แรงส่ง / ชนวน ให้ส่วนโค้งอ้อมพ้นสายโคม)');
+    }
+
     // --- 5 · flight outcome ------------------------------------------
     if (!sim || !sim.ok) {
       add('outcome', FAIL, 'การจำลองไม่สำเร็จ', (sim && sim.reason) || '');
@@ -262,14 +273,25 @@
    * @returns {{tag:string, context:string, body:string}}
    */
   function scienceCard(mission, sim) {
-    var sci = (mission && mission.atlas && mission.atlas.science) || {
-      tag: 'Physics Insight · Projectile Motion',
-      body: 'จังหวะแตกต้องตรงกับจุดสูงสุด (apogee) ของแรงส่ง — ' +
-        'ถ้าชนวนยาวเกินไป แรงโน้มถ่วงจะดึงลูกพลุตกลงมาก่อนแตก!'
-    };
+    var atl = (mission && mission.atlas) || {};
     var sum = (sim && sim.summary) || {};
     var br = sum.burst || {};
+    var col = sum.collision || {};
+    // a collision fail gets the dedicated safety card
+    var sci = (col.occurred && atl.scienceCollision) ? atl.scienceCollision
+      : atl.science || {
+        tag: 'Physics Insight · Projectile Motion',
+        body: 'จังหวะแตกต้องตรงกับจุดสูงสุด (apogee) ของแรงส่ง — ' +
+          'ถ้าชนวนยาวเกินไป แรงโน้มถ่วงจะดึงลูกพลุตกลงมาก่อนแตก!'
+      };
     var bx = br.box, ctx = '';
+    if (col.occurred) {
+      ctx = 'รอบนี้: ' + (col.byBurst ? 'ดอกพลุระเบิด' : 'ลูกพลุพุ่ง') + 'ชนโคมลอยที่ ' +
+        fmtAlt(col.altitude) + ' (แนว X ' + Math.round(col.x || 0) + ' ม.) — ' +
+        'มุมยิง ' + Math.round(sum.launchPitchDeg || 90) + '° พาส่วนโค้งไปทับสายโคมพอดี. ' +
+        'ลองเปลี่ยนมุม/แรงส่ง/ชนวน ให้วิถีโค้งอ้อมพ้น.';
+      return { tag: sci.tag, context: ctx, body: sci.body };
+    }
     if (br.dud) {
       ctx = 'รอบนี้: ชนวนไหม้ไม่ทัน ลูกพลุตกถึงพื้นก่อนแตก — แรงส่งพาลูกขึ้นได้แค่ ' +
         fmtAlt(sum.apogee || 0) + ' แล้วร่วงลงภายใน ' + (br.time || 0).toFixed(1) + ' วิ.';
