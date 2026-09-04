@@ -1052,63 +1052,145 @@
     g.visible = false;
   };
 
-  // the burst — an expanding shell of coloured sparks + a flash.
+  // the burst — an expanding shell of coloured sparks + a flash (+ trails).
   //  `group`  — the specific shell mesh to consume (defaults to the focused one)
-  //  `seqIdx` — 0-based position in an M03 firing sequence (null = single shot);
-  //             the finale (idx 2) throws a bigger, brighter flower
-  FlightScreen.prototype._spawnFwBurst = function (x, y, z, hex, dud, group, seqIdx) {
+  //  `seqIdx` — 0-based position in an M03/M04 sequence (null = single shot)
+  //  `fx`     — HANABI params {shape:'peony'|'chrysanthemum'|'ring',
+  //                            decay:'none'|'sparkle'|'sakura'}
+  FlightScreen.prototype._spawnFwBurst = function (x, y, z, hex, dud, group, seqIdx, fx) {
     if (!THREE || !this.scene) return;
+    fx = fx || {};
+    var shape = fx.shape || 'peony';
+    var decay = fx.decay || 'none';
     var inSeq = seqIdx != null;
     if (!inSeq) this._fwBursted = true;
-    // consume the shell mesh
     var consume = group || this.vehicleGroup;
     if (consume) consume.visible = false;
 
     var col = new THREE.Color(hex || '#ffc247');
-    // the show builds — the 3rd shell onward throws a bigger, brighter flower
     var finale = seqIdx != null && seqIdx >= 2;
-    var N = dud ? 26 : (finale ? 220 : 150);
+    var hanabi = shape !== 'peony' || decay !== 'none';
+    // a Hanabi shell is MASSIVE — a dense, wide, symmetric flower
+    var N = dud ? 26
+      : shape === 'chrysanthemum' ? 420
+      : shape === 'ring' ? 260
+      : hanabi ? 240
+      : (finale ? 220 : 150);
+
+    // ring stars sit in ONE tilted plane; every other shape is a uniform sphere
+    var ringTilt = 0.34, ct = Math.cos(ringTilt), stlt = Math.sin(ringTilt);
+
     var pos = new Float32Array(N * 3), colr = new Float32Array(N * 3);
+    var baseCol = new Float32Array(N * 3);   // kept for per-frame recolour (sakura twinkle)
     var vel = [];
     for (var i = 0; i < N; i++) {
-      // random point on a sphere
-      var u = Math.random() * 2 - 1, th = Math.random() * Math.PI * 2;
-      var r = Math.sqrt(1 - u * u);
-      var dx = r * Math.cos(th), dy = u, dz = r * Math.sin(th);
-      var sp = dud ? (3 + Math.random() * 4) : (16 + Math.random() * 18);
-      vel.push({ x: dx * sp, y: dy * sp * (dud ? 0.5 : 1) + (dud ? 1 : 3), z: dz * sp, life: dud ? 0.7 : 1.4 + Math.random() * 0.6 });
+      var dx, dy, dz;
+      if (shape === 'ring') {
+        var rth = Math.random() * Math.PI * 2;
+        var jx = Math.cos(rth), jy = (Math.random() - 0.5) * 0.14, jz = Math.sin(rth);
+        dx = jx; dy = jy * ct - jz * stlt; dz = jy * stlt + jz * ct;
+      } else {
+        var u = Math.random() * 2 - 1, th = Math.random() * Math.PI * 2;
+        var rr = Math.sqrt(1 - u * u);
+        dx = rr * Math.cos(th); dy = u; dz = rr * Math.sin(th);
+      }
+      // chrysanthemum = a STRICT shell (tight speed spread → perfect sphere),
+      // fired HARD so a massive shell opens wide before Sakura Rain freezes it;
+      // peony = looser; dud = a weak cough
+      var sp = dud ? (3 + Math.random() * 4)
+        : shape === 'chrysanthemum' ? (30 + Math.random() * 4)
+        : shape === 'ring' ? (24 + Math.random() * 3)
+        : (15 + Math.random() * 16);
+      var upBias = dud ? 1 : (shape === 'ring' ? 0.6 : 3);
+      var life = dud ? 0.7
+        : decay === 'sakura' ? (4.4 + Math.random() * 1.6)
+        : decay === 'sparkle' ? (1.7 + Math.random() * 0.6)
+        : shape === 'chrysanthemum' ? (2.1 + Math.random() * 0.8)
+        : (1.4 + Math.random() * 0.6);
+      vel.push({ x: dx * sp, y: dy * sp * (dud ? 0.5 : 1) + upBias, z: dz * sp,
+        life: life, seed: Math.random() * 6.283, sparkT: 0, drag: 0 });
       pos[i * 3] = x; pos[i * 3 + 1] = y; pos[i * 3 + 2] = z;
-      var tint = 0.7 + Math.random() * 0.5;
-      colr[i * 3] = col.r * tint; colr[i * 3 + 1] = col.g * tint; colr[i * 3 + 2] = col.b * tint;
+      var tint = shape === 'chrysanthemum' ? (0.85 + Math.random() * 0.35) : (0.7 + Math.random() * 0.5);
+      colr[i * 3] = baseCol[i * 3] = col.r * tint;
+      colr[i * 3 + 1] = baseCol[i * 3 + 1] = col.g * tint;
+      colr[i * 3 + 2] = baseCol[i * 3 + 2] = col.b * tint;
     }
     var geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     geo.setAttribute('color', new THREE.BufferAttribute(colr, 3));
     var pts = new THREE.Points(geo, new THREE.PointsMaterial({
-      size: dud ? 1.4 : 2.6, vertexColors: true, transparent: true, opacity: 1,
+      size: dud ? 1.4 : shape === 'chrysanthemum' ? 3.0 : hanabi ? 2.8 : 2.6,
+      vertexColors: true, transparent: true, opacity: 1,
       depthWrite: false, blending: dud ? THREE.NormalBlending : THREE.AdditiveBlending,
       map: this._sparkTex(), toneMapped: false }));
     pts.frustumCulled = false;
     this.scene.add(pts);
 
-    var flash = new THREE.PointLight(dud ? 0x9a9a9a : hex,
-      dud ? 2 : (finale ? 20 : 14), dud ? 40 : (finale ? 300 : 220), 2);
+    // ---- TRAILS — chrysanthemum's long glowing tails; a hint on the others ---
+    var trailChase = shape === 'chrysanthemum' ? 0.085
+      : shape === 'ring' ? 0.16
+      : decay === 'sakura' ? 0.14
+      : hanabi ? 0.30 : 0;
+    var trailGeo = null, trailLine = null;
+    if (!dud && trailChase > 0) {
+      var tp = new Float32Array(N * 6);
+      for (var g0 = 0; g0 < N; g0++) {
+        tp[g0 * 6] = tp[g0 * 6 + 3] = x;
+        tp[g0 * 6 + 1] = tp[g0 * 6 + 4] = y;
+        tp[g0 * 6 + 2] = tp[g0 * 6 + 5] = z;
+      }
+      trailGeo = new THREE.BufferGeometry();
+      trailGeo.setAttribute('position', new THREE.BufferAttribute(tp, 3));
+      trailLine = new THREE.LineSegments(trailGeo, new THREE.LineBasicMaterial({
+        color: new THREE.Color(hex || '#ffc247'), transparent: true,
+        opacity: shape === 'chrysanthemum' ? 0.6 : 0.4,
+        blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+      trailLine.frustumCulled = false;
+      this.scene.add(trailLine);
+    }
+
+    var flashHi = dud ? 2 : shape === 'chrysanthemum' ? 24 : finale ? 20 : 16;
+    var flash = new THREE.PointLight(dud ? 0x9a9a9a : hex, flashHi,
+      dud ? 40 : shape === 'chrysanthemum' ? 340 : 240, 2);
     flash.position.set(x, y, z);
     this.scene.add(flash);
 
+    // ---- the CORE FLASH — a bright pistil that punches out + fades fast ---
+    var core = null;
+    if (hanabi && !dud) {
+      core = new THREE.Mesh(
+        new THREE.IcosahedronGeometry(1, 2),
+        new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95,
+          blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }));
+      core.position.set(x, y, z);
+      this.scene.add(core);
+    }
+
+    var maxLife = dud ? 1.0
+      : decay === 'sakura' ? 6.2
+      : decay === 'sparkle' ? 2.4
+      : shape === 'chrysanthemum' ? 2.9
+      : (finale ? 2.6 : 2.2);
+
     this._fwBursts.push({ pts: pts, geo: geo, vel: vel, flash: flash, pos: pos,
-      t: 0, life: dud ? 1.0 : (finale ? 2.6 : 2.2), dud: !!dud });
+      baseCol: baseCol, hex: hex, t: 0, life: maxLife, dud: !!dud,
+      shape: shape, decay: decay, flashHi: flashHi, core: core,
+      trailGeo: trailGeo, trailLine: trailLine, trailChase: trailChase });
 
     if (!inSeq) {
+      var shapeTh = { peony: 'พีโอนี', chrysanthemum: 'ดอกเบญจมาศ', ring: 'วงแหวน' };
       this._showToast(dud
         ? '💨 ลูกพลุด้าน — ตกถึงพื้นก่อนชนวนจะไหม้'
-        : ('🎆 ดอกพลุบานที่ ' + Math.round(y) + ' ม.' +
-           (this._fwBox && y >= this._fwBox[0] && y <= this._fwBox[1] ? ' — ในกรอบเป้าหมาย! 🎯' : ' — นอกกรอบ')));
+        : hanabi
+          ? ('🎆 ' + (shapeTh[shape] || 'ดอกพลุ') + ' บานที่ ' + Math.round(y) + ' ม.' +
+             (decay === 'sakura' ? ' — ฝนซากุระกำลังร่วง 🌸' : ''))
+          : ('🎆 ดอกพลุบานที่ ' + Math.round(y) + ' ม.' +
+             (this._fwBox && y >= this._fwBox[0] && y <= this._fwBox[1] ? ' — ในกรอบเป้าหมาย! 🎯' : ' — นอกกรอบ')));
     }
     if (this._sound && !dud) {
-      // a sequence climbs in pitch shell-to-shell — pop · pop · POP
-      var rate = inSeq ? Math.min(1.15 + seqIdx * 0.3, 2.15) : 1.5;
-      this._sound.play('liftoff', { volume: inSeq ? 0.5 : 0.4, rate: rate });
+      var rate = inSeq ? Math.min(1.15 + seqIdx * 0.3, 2.15)
+        : shape === 'chrysanthemum' ? 1.15 : 1.5;
+      this._sound.play('liftoff', { volume: inSeq ? 0.5 : hanabi ? 0.55 : 0.4, rate: rate });
     }
   };
 
@@ -1148,18 +1230,102 @@
       b.t += dt;
       var k = b.t / b.life;
       var p = b.pos;
+      var sakura = b.decay === 'sakura';
+      var sparkle = b.decay === 'sparkle';
+      var chrys = b.shape === 'chrysanthemum';
+      var gMul = b.shape === 'ring' ? 0.5 : 0.6;
+      var airK = chrys ? 0.75 : b.shape === 'ring' ? 0.9 : 1.1;
+
+      // Sakura Rain: let the flower OPEN fully (~0.9 s) then a huge Cd ramps
+      //  in over ~0.5 s — horizontal velocity bleeds away and the stars ease
+      //  to a slow terminal drift, swaying like falling petals
+      var sakOn = sakura && b.t > 0.9;
+      var sakRamp = sakOn ? clamp((b.t - 0.9) / 0.5, 0, 1) : 0;
       for (var j = 0; j < b.vel.length; j++) {
         var v = b.vel[j];
-        v.y -= 9.8 * dt * 0.6;                 // gravity on the sparks
-        v.x *= (1 - 1.1 * dt); v.z *= (1 - 1.1 * dt);   // air drag
+        if (sakOn) {
+          var kd = Math.min(1, (2 + 7 * sakRamp) * dt);        // Cd ramps up
+          v.x *= (1 - kd); v.z *= (1 - kd);
+          v.y += (-2.6 - v.y) * Math.min(1, (0.8 + 1.8 * sakRamp) * dt);
+          v.x += Math.sin(b.t * 1.7 + v.seed) * 0.9 * dt * sakRamp;   // petal sway
+          v.z += Math.cos(b.t * 1.35 + v.seed * 1.4) * 0.85 * dt * sakRamp;
+        } else {
+          v.y -= 9.8 * dt * gMul;
+          v.x *= (1 - airK * dt); v.z *= (1 - airK * dt);
+        }
         p[j * 3] += v.x * dt; p[j * 3 + 1] += v.y * dt; p[j * 3 + 2] += v.z * dt;
       }
       b.geo.attributes.position.needsUpdate = true;
-      b.pts.material.opacity = Math.max(0, 1 - k * (b.dud ? 1.6 : 1.05));
-      if (b.flash) b.flash.intensity = Math.max(0, (b.dud ? 2 : 14) * (1 - k * 2.5));
+
+      // ---- per-frame recolour: sakura twinkles + cools toward soft white ---
+      if ((sakura || sparkle) && b.baseCol) {
+        var cc = b.geo.attributes.color.array, bc = b.baseCol;
+        for (var m = 0; m < b.vel.length; m++) {
+          var vv = b.vel[m];
+          var tw;
+          if (sparkle) {
+            vv.sparkT -= dt;
+            if (vv.sparkT <= 0 && Math.random() < 0.06) vv.sparkT = 0.09 + Math.random() * 0.05;
+            tw = vv.sparkT > 0 ? 2.4 : (0.35 + 0.3 * Math.sin(b.t * 20 + vv.seed));
+          } else {
+            tw = 0.72 + 0.5 * Math.sin(b.t * 6.5 + vv.seed * 2.3);   // gentle shimmer
+          }
+          var warm = sakura ? Math.min(0.55, b.t * 0.06) : 0;        // fade toward white
+          cc[m * 3]     = bc[m * 3]     * tw + warm;
+          cc[m * 3 + 1] = bc[m * 3 + 1] * tw + warm * 0.85;
+          cc[m * 3 + 2] = bc[m * 3 + 2] * tw + warm * 0.9;
+        }
+        b.geo.attributes.color.needsUpdate = true;
+      }
+
+      // ---- trails chase the heads (long lag = long tail) ------------------
+      if (b.trailGeo) {
+        var tp = b.trailGeo.attributes.position.array, ch = b.trailChase;
+        for (var q = 0; q < b.vel.length; q++) {
+          var hx = p[q * 3], hy = p[q * 3 + 1], hz = p[q * 3 + 2];
+          tp[q * 6] = hx; tp[q * 6 + 1] = hy; tp[q * 6 + 2] = hz;
+          tp[q * 6 + 3] += (hx - tp[q * 6 + 3]) * ch;
+          tp[q * 6 + 4] += (hy - tp[q * 6 + 4]) * ch;
+          tp[q * 6 + 5] += (hz - tp[q * 6 + 5]) * ch;
+        }
+        b.trailGeo.attributes.position.needsUpdate = true;
+        var tfade = chrys ? 1.0 : sakura ? 0.7 : 1.4;
+        b.trailLine.material.opacity = Math.max(0,
+          (chrys ? 0.6 : 0.4) * (1 - k * tfade));
+      }
+
+      // ---- head opacity: sakura HANGS (slow fade), everything else decays --
+      var headFade = b.dud ? 1.6 : sakura ? 0.72 : sparkle ? 1.15 : chrys ? 0.95 : 1.05;
+      b.pts.material.opacity = Math.max(0, 1 - Math.pow(k, sakura ? 1.7 : 1) * headFade);
+      if (b.flash) {
+        b.flash.intensity = Math.max(0, (b.flashHi || 14) * (1 - k * (sakura ? 3.2 : 2.5)));
+      }
+
+      // ---- the core pistil: a fast punch-out, gone in ~0.35 s -------------
+      if (b.core) {
+        var ck = b.t / 0.35;
+        if (ck >= 1) {
+          this.scene.remove(b.core);
+          b.core.geometry.dispose(); b.core.material.dispose();
+          b.core = null;
+        } else {
+          var e = 1 - Math.pow(1 - ck, 2);
+          b.core.scale.setScalar(1 + e * (chrys ? 14 : 9));
+          b.core.material.opacity = 0.95 * (1 - ck) * (1 - ck);
+        }
+      }
+
       if (b.t >= b.life) {
         this.scene.remove(b.pts); this.scene.remove(b.flash);
         b.geo.dispose(); b.pts.material.dispose();
+        if (b.trailLine) {
+          this.scene.remove(b.trailLine);
+          b.trailGeo.dispose(); b.trailLine.material.dispose();
+        }
+        if (b.core) {
+          this.scene.remove(b.core);
+          b.core.geometry.dispose(); b.core.material.dispose();
+        }
         this._fwBursts.splice(i, 1);
       }
     }
@@ -1168,9 +1334,16 @@
   FlightScreen.prototype._clearFwBursts = function () {
     var sc = this.scene;
     (this._fwBursts || []).forEach(function (b) {
-      if (sc) { sc.remove(b.pts); sc.remove(b.flash); }
+      if (sc) {
+        sc.remove(b.pts); sc.remove(b.flash);
+        if (b.trailLine) sc.remove(b.trailLine);
+        if (b.core) sc.remove(b.core);
+      }
       if (b.geo) b.geo.dispose();
       if (b.pts && b.pts.material) b.pts.material.dispose();
+      if (b.trailGeo) b.trailGeo.dispose();
+      if (b.trailLine && b.trailLine.material) b.trailLine.material.dispose();
+      if (b.core) { b.core.geometry.dispose(); b.core.material.dispose(); }
     });
     this._fwBursts = [];
     this._fwBursted = false;
@@ -1478,6 +1651,9 @@
     this._fwRetry = opts.onRetry || null;
     this._fwBursted = false;
     this._lastVerdict = null;
+    // ---- M05 · Hanabi burst shape + decay (Phase 20) --------------------
+    this._fwShape = (opts.firework && opts.firework.shape) || null;
+    this._fwDecay = (opts.firework && opts.firework.decay) || null;
     // ---- THE SEQUENCER — M03 (staggered gap>0) / M04 CARNIVAL (gap 0, all
     //  fire together, rhythm from per-tube FUSES). Tube spec = {color,colorHex,
     //  fuse,pitch}. When a tube's fuse+pitch match the primary sim it reuses it,
@@ -1724,6 +1900,8 @@
     this._clearLanterns();
     this._fwSeq = null;
     this._fwSeqResult = [];
+    this._fwShape = null;
+    this._fwDecay = null;
     if (this._fwTargetBox) this._fwTargetBox.visible = false;
     if (this.elLaunchSeq) this.elLaunchSeq.hidden = true;
     if (this.elCountdown) this.elCountdown.hidden = true;
@@ -1902,7 +2080,9 @@
     this._reflectPlay();
 
     if (!this._scrubbing && !this._autopsyShown && this._masterDur > 0 &&
-        this._masterT >= this._masterDur - 1e-3) {
+        this._masterT >= this._masterDur - 1e-3 &&
+        // a Hanabi shell keeps blooming past the sim end — let Sakura Rain finish
+        !(this._fw && this._fwShape && this._fwBursts.length)) {
       this._showAutopsy();
     }
   };
@@ -1996,7 +2176,8 @@
         var bx2 = (st.position && st.position.x) || 0;
         var by2 = bu.dud ? 1.5 : (bu.altitude || st.altitude || 0);
         var bz2 = (st.position && st.position.z) || 0;
-        this._spawnFwBurst(bx2, by2, bz2, this._fwColorHex, bu.dud);
+        this._spawnFwBurst(bx2, by2, bz2, this._fwColorHex, bu.dud, null, null,
+          (this._fwShape || this._fwDecay) ? { shape: this._fwShape, decay: this._fwDecay } : null);
       }
     }
     this._updateFwBursts(this._frameDt || 0.016);
@@ -2231,21 +2412,30 @@
 
     if (mode === 'ground') {
       // a firework spectator sits well back so the whole arc + target box frame up;
-      // a wide simultaneous barrage (M04, 4+ fanned shells) needs to sit further out
+      // a wide simultaneous barrage (M04, 4+ fanned shells) needs to sit further out;
+      // a MASSIVE Hanabi shell (M05) needs the most room of all
       var wideBarrage = this._fwSeq && this._fwSeqGap === 0 && this._fwSeq.length >= 4;
+      var hanabi = !!this._fwShape;
       var gd = (this._fw
-        ? (wideBarrage ? clamp(160 + alt * 0.8, 150, 340) : clamp(90 + alt * 0.6, 90, 240))
+        ? (hanabi ? clamp(120 + alt * 0.7, 120, 300)
+           : wideBarrage ? clamp(160 + alt * 0.8, 150, 340)
+           : clamp(90 + alt * 0.6, 90, 240))
         : clamp(10 + alt * 0.02, 10, 400)) * clamp(this._zoom, 0.5, 3);
       // frame the midpoint between the pad and the target box (so an angled
-      // arc + the offset box both stay in view); a symmetric fan looks at x=0
+      // arc + the offset box both stay in view); a symmetric fan / a single
+      // centred Hanabi shell looks straight at x=0
       var lookX = this._fw
-        ? (wideBarrage ? 0
+        ? ((wideBarrage || hanabi) ? 0
            : this._fwXBox ? (this._fwXBox[0] + this._fwXBox[1]) / 2 * 0.6 : tx * 0.5)
         : tx;
+      // Hanabi: once it has burst, hold the look on the burst height so
+      // Sakura Rain drifts DOWN through frame (don't chase the vanished shell)
       var lookY = this._fw
-        ? Math.max(vy, (this._fwBox ? (this._fwBox[0] + this._fwBox[1]) / 2 : (this._fwSeq ? 90 : 60)))
+        ? (hanabi && this._fwBursted
+           ? Math.max(60, ((this._summary && this._summary.burst && this._summary.burst.altitude) || vy) - 12)
+           : Math.max(vy, (this._fwBox ? (this._fwBox[0] + this._fwBox[1]) / 2 : (this._fwSeq ? 90 : hanabi ? 80 : 60))))
         : Math.max(vy, focus);
-      cam.position.set(lookX + gd * sth, this._fw ? (wideBarrage ? 9 : 6) : 1.3, gd * cth);
+      cam.position.set(lookX + gd * sth, this._fw ? ((wideBarrage || hanabi) ? 9 : 6) : 1.3, gd * cth);
       cam.lookAt(lookX, lookY, 0);
 
     } else if (mode === 'free') {
@@ -2456,6 +2646,26 @@
         ['เคมี', 'Sr→แดง · Mg→ขาว · Cu→น้ำเงิน'],
         ['ผล', seqOk ? '🎯 ถูกลำดับ!' : '✕ ผิดลำดับ']
       ];
+    } else if (this._fw && (this._fwShape || _mObj.burstShape)) {
+      // ---- M05 · Hanabi — burst shape + decay ----
+      var SHm = { peony: 'พีโอนี (Peony)', chrysanthemum: 'ดอกเบญจมาศ (Chrysanthemum)', ring: 'วงแหวน (Ring)' };
+      var DEm = { none: 'ไม่มี', sparkle: 'แตกประกาย (Sparkle)', sakura: 'ฝนซากุระ (Sakura Rain)' };
+      var gotSh = this._fwShape, gotDe = this._fwDecay;
+      var wantSh = _mObj.burstShape, wantDe = _mObj.decayEffect;
+      var hanabiOk = (!wantSh || gotSh === wantSh) && (!wantDe || gotDe === wantDe);
+      cells = [
+        ['ดอกพลุบานที่', fmtAlt((s.burst && s.burst.altitude) || 0) +
+          ' @ ' + (((s.burst && s.burst.time) || 0)).toFixed(1) + ' s'],
+        ['จุดสูงสุด (Apogee)', fmtAlt(s.apogee || 0)],
+        ['รูปทรง (Burst Shape)', (SHm[gotSh] || gotSh || '—') +
+          (wantSh ? (gotSh === wantSh ? '  ✓' : '  ✕ (ต้องเป็น ' + SHm[wantSh] + ')') : '')],
+        ['เอฟเฟกต์หาง (Decay)', (DEm[gotDe] || gotDe || '—') +
+          (wantDe ? (gotDe === wantDe ? '  ✓' : '  ✕ (ต้องเป็น ' + DEm[wantDe] + ')') : '')],
+        ['ดาวไฟ (particles)', gotSh === 'chrysanthemum' ? '~420 · สมมาตรทรงกลม + หางยาว'
+          : gotSh === 'ring' ? '~260 · ระนาบเดียว'
+          : '~240'],
+        ['ผล', hanabiOk ? '🎆 ฮานาบิสมบูรณ์แบบ!' : '✕ ยังไม่ใช่ฮานาบิ']
+      ];
     } else if (this._fw && s.burst) {
       var bu = s.burst, bx = this._fwBox || bu.box;
       var col = s.collision || {};
@@ -2522,7 +2732,8 @@
       var card = RS.Diagnostics.scienceCard(self._mission, self._sim, {
         gotSeq: _qr.map(function (q) { return q.color; }),
         gotColors: _qr.map(function (q) { return q.color; }),
-        gotFuses: _qr.map(function (q) { return q.fuse; })
+        gotFuses: _qr.map(function (q) { return q.fuse; }),
+        burstShape: self._fwShape, decayEffect: self._fwDecay
       });
       RS.render.UI.openScienceCard(card, function () {
         self.close();
@@ -2539,11 +2750,14 @@
     var ME = RS.MissionEngine;
     if (!this._mission || !ME || !this._sim) { el.hidden = true; this._lastVerdict = null; return; }
 
-    // M03/M04 · the verdict re-scores off what the shells ACTUALLY did
+    // M03/M04 · re-scores off what the shells actually did; M05 · off the
+    // shape + decay the burst was built with
     var evalCtx = this._fwSeq
       ? { sequenceColors: this._fwSeqResult.map(function (q) { return q.color; }),
           sequenceFuses: this._fwSeqResult.map(function (q) { return q.fuse; }) }
-      : null;
+      : (this._fwShape || this._fwDecay)
+        ? { burstShape: this._fwShape, decayEffect: this._fwDecay }
+        : null;
     var r = ME.evaluate(this._mission, this._sim, this._vehicle, evalCtx);
     this._lastVerdict = r;
     var rows = [];

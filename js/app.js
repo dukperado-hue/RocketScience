@@ -415,6 +415,7 @@
         // FlightScreen re-sims per tube.
         var seqMode = !!(atl.sequence && design.sequence && design.sequence.length);
         var simultaneous = !!atl.simultaneous;
+        var burstDesk = !!(atl.burstDesk && design.shape);   // M05 · Hanabi
 
         if (seqMode) {
           var nT = design.sequence.length;
@@ -431,7 +432,9 @@
         builder._afterEdit(seqMode
           ? ('พลุ ' + design.sequence.length + ' หลอด · ' +
              design.sequence.map(function (s) { return s.color; }).join(simultaneous ? ' + ' : ' → '))
-          : ('พลุ ' + design.color + ' · ชนวน ' + design.fuse + ' วิ'));
+          : burstDesk
+            ? ('ฮานาบิ · ' + design.shape + ' + ' + design.decay)
+            : ('พลุ ' + design.color + ' · ชนวน ' + design.fuse + ' วิ'));
         setActiveMission(mission);
 
         var box = obj.burstAltitudeBox || null;
@@ -453,14 +456,18 @@
           evalContext: seqMode
             ? { sequenceColors: design.sequence.map(function (s) { return s.color; }),
                 sequenceFuses: design.sequence.map(function (s) { return s.fuse; }) }
-            : null,
+            : burstDesk
+              ? { burstShape: design.shape, decayEffect: design.decay }
+              : null,
           flightOpts: {
             firework: {
               color: design.color, colorHex: design.colorHex,
               box: box, xbox: xbox, lift: design.lift, fuse: design.fuse,
               angle: design.angle, lanterns: lanterns,
               sequence: seqMode ? design.sequence : null,
-              sequenceGap: simultaneous ? 0 : 1.0
+              sequenceGap: simultaneous ? 0 : 1.0,
+              shape: burstDesk ? design.shape : null,
+              decay: burstDesk ? design.decay : null
             },
             onRetry: function () { RS.render.UI.openDesignDesk(mission); }
           }

@@ -617,6 +617,8 @@
   var FIREWORK_COLORS = [
     { id: 'red',   label: 'แดง',     sub: 'Strontium (Sr)',        hex: '#ff4d5a',
       chem: 'สตรอนเชียม',           element: 'Sr',    emission: '605–682 nm' },
+    { id: 'pink',  label: 'ชมพู',    sub: 'Strontium + Chlorine',  hex: '#ff8fc7',
+      chem: 'สตรอนเทียม (เจือจาง) + คลอรีน', element: 'Sr·Cl', emission: 'แดงอ่อน — โทนซากุระ' },
     { id: 'white', label: 'ขาว',     sub: 'Magnesium / Aluminium', hex: '#eaf1ff',
       chem: 'แมกนีเซียม / อะลูมิเนียม', element: 'Mg/Al', emission: 'สเปกตรัมต่อเนื่อง · ร้อนจัด' },
     { id: 'blue',  label: 'น้ำเงิน', sub: 'Copper (Cu)',           hex: '#4d9bff',
@@ -627,9 +629,33 @@
       chem: 'คาร์บอน + เหล็ก',       element: 'C/Fe',  emission: 'ประกายไฟจากถ่าน/ผงเหล็ก' }
   ];
 
+  // ---- HANABI (M05) · burst SHAPE + DECAY tables --------------------------
+  //  Shape = how the "stars" are packed inside the shell → the velocity
+  //  distribution of the burst. Decay = what each star does after the flash:
+  //  its aerodynamic-drag / burn-time character. PURE DATA — js/render/
+  //  FlightScreen._spawnFwBurst reads these ids to drive the particle sim.
+  var FIREWORK_SHAPES = [
+    { id: 'peony',         label: 'พีโอนี',  sub: 'Peony',
+      glyph: '🌐', hint: 'ทรงกลมมาตรฐาน — ดาวไฟกระจายเท่ากันทุกทิศ ไม่มีหาง' },
+    { id: 'chrysanthemum', label: 'เบญจมาศ', sub: 'Chrysanthemum',
+      glyph: '❋',  hint: 'ดาวไฟหนาแน่น กระจายเป็นทรงกลมสมมาตรเป๊ะ + หางเรืองแสงยาว' },
+    { id: 'ring',          label: 'วงแหวน',  sub: 'Ring',
+      glyph: '◯',  hint: 'ดาวไฟเรียงในระนาบเดียว — วงแหวน 2 มิติ (ทอรัส)' }
+  ];
+  var FIREWORK_DECAYS = [
+    { id: 'none',    label: 'ไม่มี',      sub: 'None',
+      glyph: '·',  hint: 'ดาวไฟดับทันทีหลังพุ่งสุดแรง' },
+    { id: 'sparkle', label: 'แตกประกาย',  sub: 'Sparkle',
+      glyph: '✦',  hint: 'ดาวไฟกะพริบแตกประกายเป็นเสี้ยววินาทีก่อนดับ (crackle)' },
+    { id: 'sakura',  label: 'ฝนซากุระ',   sub: 'Sakura Rain',
+      glyph: '🌸', hint: 'ดาวไฟแรงต้านอากาศสูง เผาไหม้นาน — หยุดนิ่งกลางอากาศแล้วร่วงช้า ๆ' }
+  ];
+
   // handy for tools / data browsers
   RS.data = RS.data || {};
   RS.data.fireworkColors = FIREWORK_COLORS;
+  RS.data.fireworkShapes = FIREWORK_SHAPES;
+  RS.data.fireworkDecays = FIREWORK_DECAYS;
   RS.data.parts = {
     '0-khomloy': ERA0, '1-bangfai': ERA1, '1p5-fireworks': ERA1_5,
     '3-v2': ERA3, '4-orbit': ERA4

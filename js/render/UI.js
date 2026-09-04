@@ -52,6 +52,25 @@
     { id: 3.0, label: '3.0 วิ', sub: 'กลาง',  hint: 'แตกใกล้จุดสูงสุด' },
     { id: 4.5, label: '4.5 วิ', sub: 'ยาว',   hint: 'แตกที่ยอด/ตอนร่วงลง' }
   ];
+  // ---- HANABI (M05) · burst shape + decay menus (data-driven, parts.js) ----
+  var SHAPE_FALLBACK = [
+    { id: 'peony',         label: 'พีโอนี',  sub: 'Peony',         glyph: '🌐', hint: 'ทรงกลมมาตรฐาน' },
+    { id: 'chrysanthemum', label: 'เบญจมาศ', sub: 'Chrysanthemum', glyph: '❋',  hint: 'ดาวไฟหนาแน่น + หางยาว' },
+    { id: 'ring',          label: 'วงแหวน',  sub: 'Ring',          glyph: '◯',  hint: 'วงแหวน 2 มิติ' }
+  ];
+  var DECAY_FALLBACK = [
+    { id: 'none',    label: 'ไม่มี',     sub: 'None',        glyph: '·',  hint: 'ดับทันที' },
+    { id: 'sparkle', label: 'แตกประกาย', sub: 'Sparkle',     glyph: '✦',  hint: 'กะพริบก่อนดับ' },
+    { id: 'sakura',  label: 'ฝนซากุระ',  sub: 'Sakura Rain', glyph: '🌸', hint: 'แรงต้านสูง ร่วงช้า' }
+  ];
+  function SHAPE_OPTS() {
+    var d = RS.data && RS.data.fireworkShapes;
+    return (d && d.length) ? d : SHAPE_FALLBACK;
+  }
+  function DECAY_OPTS() {
+    var d = RS.data && RS.data.fireworkDecays;
+    return (d && d.length) ? d : DECAY_FALLBACK;
+  }
   // launch angle (M02+): pitch in the 2-D sim. 90 = straight up, <90 arcs
   // right (+x), >90 arcs left (−x)
   var ANGLE_OPTS = [
@@ -64,9 +83,10 @@
     this._opts = null;
     this._mission = null;
     // last design the player chose — remembered across a fail→retry loop
-    // `seq` = the 3-tube Effect-Colour picks for a SEQUENCER mission (M03)
+    // `seq` = per-tube picks for a SEQUENCER mission (M03/M04);
+    // `shape`/`decay` = the HANABI burst-desk picks (M05)
     this._design = { lift: 'fw_lift_m', color: 'gold', fuse: 3.0, angle: 90,
-      seq: ['gold', 'gold', 'gold'] };
+      seq: ['gold', 'gold', 'gold'], shape: 'peony', decay: 'none' };
     this._built = false;
   }
 
@@ -232,6 +252,11 @@
     //  M04 CARNIVAL (5 tubes, colour + fuse, all fire at t0=0).
     if (atl.sequence) {
       this._renderSequencerDesk();
+      return;
+    }
+    // ---- THE HANABI BURST DESK — M05 (1 massive shell, shape + decay) ----
+    if (atl.burstDesk) {
+      this._renderBurstDesk();
       return;
     }
     if (goal) goal.textContent = box ? ('🎯 กรอบเป้าหมาย ' + box[0] + '–' + box[1] + ' ม.') : '';
@@ -434,12 +459,92 @@
     this._show('desk');
   };
 
+  // ---- 3c · THE HANABI BURST DESK (M05) — 1 massive shell -----------------
+  //  Lift + colour + fuse are locked; the player designs the burst SHAPE
+  //  (star packing → velocity distribution) and the DECAY effect (star
+  //  aerodynamics → Sakura Rain hang-and-fall). See FlightScreen._spawnFwBurst.
+  UI.prototype._renderBurstDesk = function () {
+    var self = this;
+    var d = this._design;
+    var atl = this._mission.atlas || {};
+    d.lift = atl.lockLift || 'fw_lift_l';
+    d.color = atl.lockColor || 'pink';
+    if (!d.shape) d.shape = 'peony';
+    if (!d.decay) d.decay = 'none';
+
+    var goal = $('fw-desk-goal');
+    if (goal) goal.textContent = atl.deskGoal || '🎯 ออกแบบพลุลูกใหญ่ 1 ลูก';
+
+    ['fwd-row-seq'].forEach(function (id) {
+      var el = $(id); if (el) { el.hidden = true; el.innerHTML = ''; }
+    });
+
+    var lockChip = function (rowId, num, title, thai, label, sub) {
+      var wrap = $(rowId); if (!wrap) return;
+      wrap.hidden = false;
+      wrap.innerHTML =
+        '<div class="fwd-row-h"><b>' + num + ' · ' + esc(title) + '</b><span>' + esc(thai) + '</span></div>' +
+        '<div class="fwd-locked"><span class="fwd-locked-ic">🔒</span>' +
+        '<span class="fwd-locked-l">' + esc(label) + '</span>' +
+        '<span class="fwd-locked-s">' + esc(sub) + ' · ล็อกไว้</span></div>';
+    };
+    var LIFTMAP = { fw_lift_s: 'เล็ก', fw_lift_m: 'กลาง', fw_lift_l: 'ใหญ่ (Large)' };
+    lockChip('fwd-row-lift', '1', 'แรงขับ', 'Lift Charge', LIFTMAP[d.lift] || d.lift, 'ขึ้นสูงสุด');
+    lockChip('fwd-row-color', '2', 'สารให้สี', 'Effect Colour', self.colorLabel(d.color), 'โทนซากุระ');
+
+    var mkPick = function (rowId, num, title, thai, opts, cur, key) {
+      var wrap = $(rowId); if (!wrap) return;
+      wrap.hidden = false;
+      wrap.innerHTML =
+        '<div class="fwd-row-h"><b>' + num + ' · ' + esc(title) + '</b><span>' + esc(thai) + '</span></div>' +
+        '<div class="fwd-opts fwd-opts-3">' + opts.map(function (o) {
+          return '<button type="button" class="fwd-opt' + (o.id === cur ? ' on' : '') +
+            '" data-key="' + key + '" data-val="' + o.id + '">' +
+            '<span class="fwd-opt-big">' + (o.glyph || '•') + '</span>' +
+            '<span class="fwd-opt-l">' + esc(o.label) + '</span>' +
+            '<span class="fwd-opt-s">' + esc(o.sub) + '</span>' +
+            '<span class="fwd-opt-h">' + esc(o.hint) + '</span></button>';
+        }).join('') + '</div>';
+      Array.prototype.forEach.call(wrap.querySelectorAll('.fwd-opt'), function (b) {
+        b.addEventListener('click', function () {
+          self._design[b.dataset.key] = b.dataset.val;
+          self._renderBurstDesk();
+        });
+      });
+    };
+    mkPick('fwd-row-fuse', '3', 'รูปทรงการแตก', 'Burst Shape', SHAPE_OPTS(), d.shape, 'shape');
+    mkPick('fwd-row-angle', '4', 'เอฟเฟกต์หาง', 'Decay Effect', DECAY_OPTS(), d.decay, 'decay');
+
+    var prev = $('fw-desk-preview');
+    if (prev) {
+      var sh = SHAPE_OPTS().filter(function (o) { return o.id === d.shape; })[0] || {};
+      var de = DECAY_OPTS().filter(function (o) { return o.id === d.decay; })[0] || {};
+      prev.style.setProperty('--fwd-c', self.colorHex(d.color));
+      prev.innerHTML = '<span class="fwd-preview-shell">🎆</span>' +
+        '<span>พลุใหญ่ · สี <b>' + esc(self.colorLabel(d.color)) + '</b> · ทรง <b>' +
+        (sh.glyph || '') + ' ' + esc(sh.label || d.shape) + '</b> · หาง <b>' +
+        (de.glyph || '') + ' ' + esc(de.label || d.decay) + '</b></span>';
+    }
+
+    this._show('desk');
+  };
+
   UI.prototype._launch = function () {
     var self = this;
     var m = this._mission, d = this._design;
     var atl = m.atlas || {};
     this.close();
     if (!this._opts.onLaunchFirework) return;
+
+    if (atl.burstDesk) {
+      this._opts.onLaunchFirework(m, {
+        lift: atl.lockLift || 'fw_lift_l',
+        color: atl.lockColor || 'pink', colorHex: self.colorHex(atl.lockColor || 'pink'),
+        fuse: +atl.lockFuse || 3.6, angle: 90,
+        shape: d.shape, decay: d.decay
+      });
+      return;
+    }
 
     if (atl.sequence) {
       var tc = atl.tubeCount || 3;

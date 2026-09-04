@@ -310,6 +310,26 @@
         : '';
       return { tag: sci0.tag, context: ctx0, body: sci0.body };
     }
+
+    // ---- M05 · Hanabi — particle kinetics & aerodynamic drag ----
+    if (atl.burstDesk || (mission && mission.objectives &&
+        (mission.objectives.burstShape || mission.objectives.decayEffect))) {
+      var sciH = atl.science || {};
+      var moH = (mission && mission.objectives) || {};
+      var SHH = { peony: 'พีโอนี', chrysanthemum: 'เบญจมาศ', ring: 'วงแหวน' };
+      var DEH = { none: 'ไม่มี', sparkle: 'แตกประกาย', sakura: 'ฝนซากุระ' };
+      var gS = ctx.burstShape, gD = ctx.decayEffect;
+      var wS = moH.burstShape, wD = moH.decayEffect;
+      var ctxH = '';
+      if (gS || gD) {
+        ctxH = 'รอบนี้: เลือกทรง "' + (SHH[gS] || gS || '—') + '" + หาง "' + (DEH[gD] || gD || '—') + '" — ' +
+          'ต้องเป็นทรง "' + (SHH[wS] || wS) + '" + หาง "' + (DEH[wD] || wD) + '". ';
+        if (gS !== wS) ctxH += 'เบญจมาศต้องการดาวไฟที่กระจายด้วยความเร็วเท่ากันทุกทิศ (สมมาตรทรงกลม). ';
+        if (gD !== wD) ctxH += 'ฝนซากุระต้องใช้ดาวไฟ C_d สูง + เผาไหม้นาน จึงลอยค้างแล้วร่วงช้า.';
+      }
+      return { tag: sciH.tag, context: ctxH, body: sciH.body };
+    }
+
     // a collision fail gets the dedicated safety card
     var sci = (col.occurred && atl.scienceCollision) ? atl.scienceCollision
       : atl.science || {

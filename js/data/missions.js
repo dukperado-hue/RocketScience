@@ -272,6 +272,49 @@
       reward: { score: 1000 }
     },
     {
+      id: 'sky-m05-japan',
+      era: '1p5-fireworks',
+      title: 'M05 · Japan',
+      description: 'ฮานาบิญี่ปุ่น — ออกแบบพลุลูกใหญ่ 1 ลูก ให้แตกเป็น "ดอกเบญจมาศ" สมมาตรงดงาม ตามด้วย "ฝนซากุระ" ที่ร่วงช้า ๆ',
+      npc: 'pchang',
+      atlas: {
+        code: 'M05',
+        name: 'Japan',
+        subtitle: 'Hanabi · Particle Physics',
+        stamp: '🎏',
+        accent: '#ff9ec7',
+        lesson: 'particle-kinetics',
+        // M05 = the BURST-SHAPE desk: 1 massive shell, lift + colour locked,
+        // player designs the burst SHAPE + the DECAY effect.
+        burstDesk: true,
+        lockLift: 'fw_lift_l',
+        lockColor: 'pink',
+        lockFuse: 3.6,
+        deskGoal: '🎯 พลุใหญ่ 1 ลูก — เบญจมาศ (Chrysanthemum) + ฝนซากุระ (Sakura Rain)',
+        culturalBrief: 'ฮานาบิ (花火) ของญี่ปุ่นคือศิลปะแห่งความสมมาตรและความสง่างาม. ' +
+          'เป้าหมาย: ออกแบบพลุลูกใหญ่หนึ่งลูก ให้แตกเป็นทรง "ดอกเบญจมาศ" (Chrysanthemum) ' +
+          'ที่สมบูรณ์แบบ ตามด้วยเอฟเฟกต์ "ฝนซากุระ" (Sakura Rain) ที่ดาวไฟค่อย ๆ ร่วงลงอย่างอ่อนช้อย.',
+        design: 'firework-hanabi',
+        science: {
+          tag: 'Physics Insight · Particle Kinetics & Aerodynamic Drag (จลนศาสตร์อนุภาค · แรงต้านอากาศ)',
+          body: 'รูปทรงของพลุถูกกำหนดโดย "การจัดเรียงดาวไฟ" (stars) ภายในลูกพลุอย่างแม่นยำ — ' +
+            'ดอกเบญจมาศต้องการดาวไฟที่กระจายด้วยความเร็วเท่ากันทุกทิศ (การกระจายเชิงทรงกลมที่เข้มงวด) ' +
+            'จึงได้ทรงกลมสมมาตร. ส่วนเอฟเฟกต์อย่าง "ฝนซากุระ" อาศัยวัสดุที่มีแรงต้านอากาศสูง (C_d มาก) ' +
+            'และเผาไหม้นาน — ดาวไฟจึงเสียความเร็วแนวราบอย่างรวดเร็ว แล้วลอยค้างอยู่ในอากาศ ' +
+            'ก่อนร่วงลงช้า ๆ ด้วยแรงโน้มถ่วง เหมือนกลีบซากุระที่ปลิว.'
+        }
+      },
+      npc_dialogue: [
+        'ฮานาบิของญี่ปุ่นเน้น "ความสมมาตรที่สมบูรณ์แบบ" — ดอกพลุต้องกลมเป๊ะ ไม่เบี้ยว',
+        'ลูกนี้เธอออกแบบลูกเดียว แต่ใหญ่มาก — ล็อกดินส่ง "ใหญ่" ไว้แล้ว เพื่อให้ขึ้นสูงสุด',
+        'สีล็อกเป็น "ชมพู" — โทนซากุระ',
+        'เลือก 2 อย่าง: รูปทรงการแตก (Burst Shape) · เอฟเฟกต์หาง (Decay Effect)',
+        'คำตอบที่ถูก: เบญจมาศ (ดาวไฟหนาแน่น มีหางยาว) + ฝนซากุระ (แรงต้านสูง ร่วงช้า)'
+      ],
+      objectives: { burstShape: 'chrysanthemum', decayEffect: 'sakura' },
+      reward: { score: 1400 }
+    },
+    {
       id: 'e1p5-the-pop',
       era: '1p5-fireworks',
       title: 'แรงกระแทกเดียว',

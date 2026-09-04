@@ -232,6 +232,30 @@
           'ให้ต่างกันอย่างน้อย ' + minF + ' แบบ เพื่อสร้างจังหวะ');
       }
 
+      // ---- M05 · Hanabi — burst shape + decay effect (particle design) ----
+      if (o.burstShape != null || o.decayEffect != null) {
+        var SHN = { peony: 'พีโอนี (Peony)', chrysanthemum: 'เบญจมาศ (Chrysanthemum)', ring: 'วงแหวน (Ring)' };
+        var DEN = { none: 'ไม่มี', sparkle: 'แตกประกาย (Sparkle)', sakura: 'ฝนซากุระ (Sakura Rain)' };
+        var shOk = true, deOk = true;
+        if (o.burstShape != null) {
+          shOk = ctx.burstShape === o.burstShape;
+          res.objectives.push({ label: 'รูปทรงการแตก: ' + (SHN[o.burstShape] || o.burstShape),
+            met: shOk, actual: SHN[ctx.burstShape] || ctx.burstShape || '—' });
+        }
+        if (o.decayEffect != null) {
+          deOk = ctx.decayEffect === o.decayEffect;
+          res.objectives.push({ label: 'เอฟเฟกต์หาง: ' + (DEN[o.decayEffect] || o.decayEffect),
+            met: deOk, actual: DEN[ctx.decayEffect] || ctx.decayEffect || '—' });
+        }
+        if (!shOk || !deOk) {
+          res.failReasons.push('Hanabi Failed: ขาดความสมมาตรที่แม่นยำ หรือเอฟเฟกต์การร่วงที่งดงาม');
+          if (!shOk) res.failReasons.push('รูปทรงไม่ถูก — ต้องเป็น ' + (SHN[o.burstShape] || o.burstShape) +
+            ' (ดาวไฟหนาแน่น กระจายเท่ากันทุกทิศ + หางยาว)');
+          if (!deOk) res.failReasons.push('เอฟเฟกต์หางไม่ถูก — ต้องเป็น ' + (DEN[o.decayEffect] || o.decayEffect) +
+            ' (ดาวไฟแรงต้านอากาศสูง เผาไหม้นาน ร่วงช้า ๆ)');
+        }
+      }
+
       if (o.flightTimeMin != null) {
         var ft = sum.flightTime || 0;
         var metFt = ft >= o.flightTimeMin;

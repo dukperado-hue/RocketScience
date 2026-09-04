@@ -294,6 +294,21 @@
   background: rgba(95,224,168,0.14); border-color: rgba(95,224,168,0.34); color: #7de8b6;
 }
 
+/* ---- M05 · HANABI BURST DESK — locked-value chips (Phase 20) ---- */
+.fwd-locked {
+  display: flex; align-items: center; gap: 10px;
+  padding: 11px 14px; border-radius: 11px;
+  border: 1px solid rgba(150,180,240,0.18);
+  background: repeating-linear-gradient(45deg,
+    rgba(14,22,44,0.6) 0 10px, rgba(18,26,50,0.6) 10px 20px);
+}
+.fwd-locked-ic { font-size: 15px; opacity: 0.8; }
+.fwd-locked-l { font-size: 14px; font-weight: 700; color: #eaf1ff; }
+.fwd-locked-s {
+  font-size: 11px; color: #8296bb; font-family: "JetBrains Mono", monospace;
+  letter-spacing: 0.06em; margin-left: auto;
+}
+
 @media (max-width: 780px) {
   .fwd-tubes.five { grid-template-columns: 1fr; }
   .fwd-tubes.five .fwd-tube:nth-child(5) { grid-column: auto; }
