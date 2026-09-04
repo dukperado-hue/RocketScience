@@ -409,16 +409,28 @@
         var C = RS.PartsCatalog;
         var atl = mission.atlas || {};
         var obj = mission.objectives || {};
-        // M03 · SEQUENCER — three tubes, one Effect Colour each. Lift + fuse are
-        // locked to standard values; the physics of all three shells is identical
-        // (colour has zero trajectory effect) so ONE sim drives all three.
+        // THE SEQUENCER — M03 (3 tubes, colour only, staggered) / M04 CARNIVAL
+        // (5 tubes, colour + fuse, all fire at t0=0). Colour has zero trajectory
+        // effect; when the fuses/pitches match, ONE sim drives every shell, else
+        // FlightScreen re-sims per tube.
         var seqMode = !!(atl.sequence && design.sequence && design.sequence.length);
+        var simultaneous = !!atl.simultaneous;
+
+        if (seqMode) {
+          var nT = design.sequence.length;
+          var spread = +atl.fanSpreadDeg || 0;   // a gentle peacock fan for M04
+          design.sequence.forEach(function (t, i) {
+            t.fuse = +t.fuse || 3.0;
+            t.pitch = spread ? Math.round(90 + (i - (nT - 1) / 2) * spread) : 90;
+          });
+        }
 
         var ch = vehicle.addInstance(C.get(design.lift || 'fw_lift_m'), 0, 1, []);
         vehicle.addInstance(C.get('fw_shell_atlas'), 0, 0,
           [{ node: 'bottom', toIid: ch.iid, toNode: 'top' }]);
         builder._afterEdit(seqMode
-          ? ('พลุลำดับ 3 หลอด · ' + design.sequence.map(function (s) { return s.color; }).join(' → '))
+          ? ('พลุ ' + design.sequence.length + ' หลอด · ' +
+             design.sequence.map(function (s) { return s.color; }).join(simultaneous ? ' + ' : ' → '))
           : ('พลุ ' + design.color + ' · ชนวน ' + design.fuse + ' วิ'));
         setActiveMission(mission);
 
@@ -427,14 +439,20 @@
         // M02+ : the rising khom loy stream — the SAME list feeds Physics
         // (collision check) and the flight scene (rendered lanterns)
         var lanterns = atl.lanterns || null;
-        var simOpts = { fuse: { time: design.fuse, box: box } };
-        if (atl.angles && design.angle) simOpts.launchPitchDeg = design.angle;
+        var primaryFuse = seqMode ? design.sequence[0].fuse : design.fuse;
+        var simOpts = { fuse: { time: primaryFuse, box: box } };
+        if (seqMode && design.sequence[0].pitch && design.sequence[0].pitch !== 90) {
+          simOpts.launchPitchDeg = design.sequence[0].pitch;
+        } else if (atl.angles && design.angle) {
+          simOpts.launchPitchDeg = design.angle;
+        }
         if (lanterns) simOpts.obstacles = lanterns;
 
         doLaunch({
           simOpts: simOpts,
           evalContext: seqMode
-            ? { sequenceColors: design.sequence.map(function (s) { return s.color; }) }
+            ? { sequenceColors: design.sequence.map(function (s) { return s.color; }),
+                sequenceFuses: design.sequence.map(function (s) { return s.fuse; }) }
             : null,
           flightOpts: {
             firework: {
@@ -442,7 +460,7 @@
               box: box, xbox: xbox, lift: design.lift, fuse: design.fuse,
               angle: design.angle, lanterns: lanterns,
               sequence: seqMode ? design.sequence : null,
-              sequenceGap: 1.0
+              sequenceGap: simultaneous ? 0 : 1.0
             },
             onRetry: function () { RS.render.UI.openDesignDesk(mission); }
           }

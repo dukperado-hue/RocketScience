@@ -228,11 +228,10 @@
     var box = obj.burstAltitudeBox || null;
     var goal = $('fw-desk-goal');
 
-    // ---- M03 · THE SEQUENCER DESK — three tubes, one Effect Colour each.
-    //  Lift + fuse are locked to standard values; the only choice that matters
-    //  is the chemistry of each shell, and the ORDER they are loaded.
+    // ---- THE SEQUENCER DESK — M03 (3 tubes, colour, staggered) /
+    //  M04 CARNIVAL (5 tubes, colour + fuse, all fire at t0=0).
     if (atl.sequence) {
-      this._renderSequencerDesk(obj.burstSequence || []);
+      this._renderSequencerDesk();
       return;
     }
     if (goal) goal.textContent = box ? ('🎯 กรอบเป้าหมาย ' + box[0] + '–' + box[1] + ' ม.') : '';
@@ -316,69 +315,120 @@
   //  One full Effect-Colour selector per tube. Lift + fuse are shown as a
   //  locked "standard" chip so the player knows what's fixed. The engine fires
   //  Tube 1, waits ~1 s, Tube 2, waits ~1 s, Tube 3 (see FlightScreen).
-  UI.prototype._renderSequencerDesk = function (want) {
+  UI.prototype._renderSequencerDesk = function () {
     var self = this;
     var d = this._design;
-    if (!Array.isArray(d.seq) || d.seq.length !== 3) d.seq = ['gold', 'gold', 'gold'];
+    var atl = this._mission.atlas || {};
+    var n = atl.tubeCount || 3;
+    var tuneFuse = !!atl.tuneFuse;
+    var simultaneous = !!atl.simultaneous;
+    var GLYPH = { red: '🔴', white: '⚪', blue: '🔵', green: '🟢', gold: '🟡' };
+
+    // per-tube design = [{color, fuse}] — migrate an old string[] + (re)size to n,
+    // keeping whatever the player already picked (persists across fail→retry)
+    if (!Array.isArray(d.seq)) d.seq = [];
+    d.seq = d.seq.map(function (t) {
+      return (t && typeof t === 'object')
+        ? { color: t.color || 'gold', fuse: +t.fuse || 3.0 }
+        : { color: t || 'gold', fuse: 3.0 };
+    });
+    while (d.seq.length < n) d.seq.push({ color: 'gold', fuse: 3.0 });
+    d.seq.length = n;
 
     var goal = $('fw-desk-goal');
     if (goal) {
-      goal.textContent = '🎯 ยิงตามลำดับ ' +
-        (want.length ? want.map(function (c) { return self.colorLabel(c); }).join(' → ')
-                     : 'แดง → ขาว → น้ำเงิน');
+      goal.textContent = atl.deskGoal ||
+        (simultaneous ? '🎯 ยิงพร้อมกัน ' + n + ' หลอด — ผสมสีและชนวนให้หลากหลาย'
+                      : '🎯 ยิงตามลำดับ แดง → ขาว → น้ำเงิน');
     }
 
-    // hide the single-shell rows, show the 3-tube sequencer
+    // hide the single-shell rows, show the tube sequencer
     ['fwd-row-lift', 'fwd-row-color', 'fwd-row-fuse', 'fwd-row-angle'].forEach(function (id) {
       var el = $(id); if (el) { el.hidden = true; el.innerHTML = ''; }
     });
 
-    var opts = COLOR_OPTS();
+    var colOpts = COLOR_OPTS();
+    var swatch = function (ti, o, on) {
+      return '<button type="button" class="fwd-opt' + (on ? ' on' : '') +
+        '" data-tube="' + ti + '" data-kind="color" data-val="' + o.id +
+        '" style="--fwd-c:' + o.hex + '" title="' + esc(o.sub) + '">' +
+        '<span class="fwd-opt-swatch"></span>' +
+        '<span class="fwd-opt-l">' + esc(o.label) + '</span>' +
+        (tuneFuse ? '' :
+          '<span class="fwd-opt-s">' + esc(o.sub) + '</span>' +
+          '<span class="fwd-opt-h">' + esc(o.chem) + '</span>') +
+        '</button>';
+    };
+    var fuseChip = function (ti, f, on) {
+      return '<button type="button" class="fwd-fusechip' + (on ? ' on' : '') +
+        '" data-tube="' + ti + '" data-kind="fuse" data-val="' + f.id + '" title="' + esc(f.hint) + '">' +
+        '⏱ ' + esc(f.label) + '</button>';
+    };
     var tubeHtml = function (ti) {
-      var cur = d.seq[ti];
+      var t = d.seq[ti];
+      var body = '<div class="fwd-opts fwd-opts-seq' + (tuneFuse ? ' compact' : '') + '">' +
+        colOpts.map(function (o) { return swatch(ti, o, o.id === t.color); }).join('') + '</div>';
+      if (tuneFuse) {
+        body += '<div class="fwd-fuserow">' +
+          FUSE_OPTS.map(function (f) { return fuseChip(ti, f, f.id === t.fuse); }).join('') + '</div>';
+      }
       return '<div class="fwd-tube" data-tube="' + ti + '">' +
         '<div class="fwd-tube-h"><span class="fwd-tube-n">หลอดที่ ' + (ti + 1) + '</span>' +
-        '<span class="fwd-tube-tag">Tube ' + (ti + 1) + '</span></div>' +
-        '<div class="fwd-opts fwd-opts-seq">' + opts.map(function (o) {
-          return '<button type="button" class="fwd-opt' + (o.id === cur ? ' on' : '') +
-            '" data-tube="' + ti + '" data-val="' + o.id + '" style="--fwd-c:' + o.hex + '">' +
-            '<span class="fwd-opt-swatch"></span>' +
-            '<span class="fwd-opt-l">' + esc(o.label) + '</span>' +
-            '<span class="fwd-opt-s">' + esc(o.sub) + '</span>' +
-            '<span class="fwd-opt-h">' + esc(o.chem) + '</span></button>';
-        }).join('') + '</div></div>';
+        '<span class="fwd-tube-tag">' + (GLYPH[t.color] || '⚫') +
+          (tuneFuse ? ' · ' + t.fuse.toFixed(1) + ' วิ' : '') + '</span></div>' +
+        body + '</div>';
     };
 
     var seqRow = $('fwd-row-seq');
-    if (!seqRow) {                       // markup missing — fall back to the plain desk
-      this._show('desk'); return;
-    }
+    if (!seqRow) { this._show('desk'); return; }   // markup missing — plain desk
     seqRow.hidden = false;
-    seqRow.style.setProperty('--sa-accent', (this._mission.atlas || {}).accent || '#5c8cff');
-    seqRow.innerHTML =
-      '<div class="fwd-row-h"><b>สารให้สี · 3 หลอด</b>' +
-        '<span>Effect Colour × 3 — ล็อกแรงส่ง "กลาง" · ชนวน 3.0 วิ</span></div>' +
-      '<div class="fwd-seq-lockbar">🔒 แรงส่ง: กลาง (Medium) &nbsp;·&nbsp; 🔒 ชนวน: 3.0 วินาที &nbsp;·&nbsp; 🔒 ยิงตรง 90°</div>' +
-      '<div class="fwd-tubes">' + [0, 1, 2].map(tubeHtml).join('') + '</div>';
+    seqRow.style.setProperty('--sa-accent', atl.accent || '#5c8cff');
 
-    Array.prototype.forEach.call(seqRow.querySelectorAll('.fwd-opt'), function (b) {
+    var lockTxt = simultaneous
+      ? '🔒 แรงส่ง: กลาง &nbsp;·&nbsp; 🔥 ยิงพร้อมกันทั้ง ' + n + ' หลอด (t₀ = 0) — จังหวะมาจาก "ชนวน"'
+      : '🔒 แรงส่ง: กลาง (Medium) &nbsp;·&nbsp; 🔒 ชนวน: 3.0 วินาที &nbsp;·&nbsp; 🔒 ยิงตรง 90°';
+
+    seqRow.innerHTML =
+      '<div class="fwd-row-h"><b>' + (tuneFuse ? 'สี + ชนวน' : 'สารให้สี') + ' · ' + n + ' หลอด</b>' +
+        '<span>' + (tuneFuse ? 'Colour + Fuse × ' + n : 'Effect Colour × ' + n) + '</span></div>' +
+      '<div class="fwd-seq-lockbar">' + lockTxt + '</div>' +
+      '<div class="fwd-tubes' + (n >= 5 ? ' five' : '') + '">' +
+        d.seq.map(function (_, i) { return tubeHtml(i); }).join('') + '</div>';
+
+    Array.prototype.forEach.call(seqRow.querySelectorAll('[data-kind]'), function (b) {
       b.addEventListener('click', function () {
         var ti = +b.dataset.tube;
-        self._design.seq[ti] = b.dataset.val;
-        self._renderSequencerDesk(want);
+        if (b.dataset.kind === 'fuse') self._design.seq[ti].fuse = parseFloat(b.dataset.val);
+        else self._design.seq[ti].color = b.dataset.val;
+        self._renderSequencerDesk();
       });
     });
 
-    // preview — the three shells in load order, with a "burst order" arrow strip
+    // ---- the preview strip -----------------------------------------------
     var prev = $('fw-desk-preview');
     if (prev) {
-      var GLYPH = { red: '🔴', white: '⚪', blue: '🔵', green: '🟢', gold: '🟡' };
-      prev.style.setProperty('--fwd-c', self.colorHex(d.seq[2]));
-      prev.innerHTML = '<span class="fwd-preview-shell">🎆</span>' +
-        '<span>ลำดับยิง: ' + d.seq.map(function (c, i) {
-          return '<b style="color:' + self.colorHex(c) + '">' + (GLYPH[c] || '⚫') + ' ' +
-            esc(self.colorLabel(c)) + '</b>' + (i < 2 ? ' <span style="opacity:.6">→</span> ' : '');
-        }).join('') + '</span>';
+      prev.style.setProperty('--fwd-c', self.colorHex(d.seq[n - 1].color));
+      if (tuneFuse) {
+        var cset = {}, fset = {};
+        d.seq.forEach(function (t) { cset[t.color] = 1; fset[t.fuse] = 1; });
+        var nc = Object.keys(cset).length, nf = Object.keys(fset).length;
+        var need = (this._mission.objectives && this._mission.objectives.carnivalRhythm) || {};
+        prev.innerHTML = '<span class="fwd-preview-shell">🎆</span>' +
+          '<span>' + d.seq.map(function (t) {
+            return '<b style="color:' + self.colorHex(t.color) + '" title="ชนวน ' + t.fuse.toFixed(1) + ' วิ">' +
+              (GLYPH[t.color] || '⚫') + '<sub style="opacity:.7;font-size:.7em">' + t.fuse.toFixed(1) + '</sub></b>';
+          }).join(' ') +
+          ' &nbsp;<span class="fwd-preview-tally' + (nc >= (need.minColors || 3) ? ' ok' : '') + '">สี ' +
+            nc + '/' + (need.minColors || 3) + '</span> ' +
+          '<span class="fwd-preview-tally' + (nf >= (need.minFuses || 2) ? ' ok' : '') + '">ชนวน ' +
+            nf + '/' + (need.minFuses || 2) + '</span></span>';
+      } else {
+        prev.innerHTML = '<span class="fwd-preview-shell">🎆</span>' +
+          '<span>ลำดับยิง: ' + d.seq.map(function (t, i) {
+            return '<b style="color:' + self.colorHex(t.color) + '">' + (GLYPH[t.color] || '⚫') + ' ' +
+              esc(self.colorLabel(t.color)) + '</b>' + (i < n - 1 ? ' <span style="opacity:.6">→</span> ' : '');
+          }).join('') + '</span>';
+      }
     }
 
     this._show('desk');
@@ -392,12 +442,14 @@
     if (!this._opts.onLaunchFirework) return;
 
     if (atl.sequence) {
+      var tc = atl.tubeCount || 3;
+      var seq = d.seq.slice(0, tc).map(function (t) {
+        return { color: t.color, colorHex: self.colorHex(t.color),
+                 fuse: atl.tuneFuse ? (+t.fuse || 3.0) : 3.0 };
+      });
       this._opts.onLaunchFirework(m, {
-        // locked standard values — only the per-tube chemistry is the player's
-        lift: 'fw_lift_m', fuse: 3.0, angle: 90,
-        sequence: d.seq.map(function (id) {
-          return { color: id, colorHex: self.colorHex(id) };
-        })
+        // lift is always locked "กลาง"; M03 also locks the fuse, M04 unlocks it
+        lift: 'fw_lift_m', angle: 90, fuse: seq[0].fuse, sequence: seq
       });
       return;
     }

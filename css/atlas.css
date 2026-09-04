@@ -258,8 +258,50 @@
 
 .fwd-card:has(.fwd-tubes) { max-width: 760px; }
 
+/* ---- M04 · CARNIVAL — 5 tubes, colour + fuse (Phase 19) ---- */
+.fwd-card:has(.fwd-tubes.five) { max-width: 920px; }
+.fwd-tubes.five {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+}
+.fwd-tubes.five .fwd-tube:nth-child(5) { grid-column: 1 / -1; }  /* 5th spans full width */
+.fwd-tubes.five .fwd-tube { padding: 10px 10px 9px; }
+.fwd-tubes.five .fwd-opts-seq.compact { grid-template-columns: repeat(5, 1fr); gap: 5px; }
+.fwd-opts-seq.compact .fwd-opt { padding: 7px 3px 6px; }
+.fwd-opts-seq.compact .fwd-opt-swatch { width: 17px; height: 17px; }
+.fwd-opts-seq.compact .fwd-opt-l { font-size: 11.5px; }
+
+/* the per-tube fuse chips */
+.fwd-fuserow { display: flex; gap: 6px; margin-top: 8px; }
+.fwd-fusechip {
+  flex: 1; font-family: inherit; font-size: 11.5px; font-weight: 600;
+  padding: 6px 4px; border-radius: 8px; cursor: pointer;
+  border: 1px solid rgba(150,180,240,0.22);
+  background: rgba(12,20,38,0.7); color: #b9c9e8;
+  transition: border-color .16s, background .16s, transform .12s;
+}
+.fwd-fusechip:hover { transform: translateY(-1px); border-color: rgba(150,180,240,0.5); }
+.fwd-fusechip.on {
+  border-color: var(--sa-accent, #ff7ac0); color: #fff;
+  background: color-mix(in srgb, var(--sa-accent, #ff7ac0) 34%, rgba(12,20,38,0.7));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--sa-accent, #ff7ac0) 55%, transparent);
+}
+
+.fwd-preview-tally {
+  display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px;
+  background: rgba(255,120,120,0.14); border: 1px solid rgba(255,120,120,0.3); color: #ffb3b3;
+}
+.fwd-preview-tally.ok {
+  background: rgba(95,224,168,0.14); border-color: rgba(95,224,168,0.34); color: #7de8b6;
+}
+
+@media (max-width: 780px) {
+  .fwd-tubes.five { grid-template-columns: 1fr; }
+  .fwd-tubes.five .fwd-tube:nth-child(5) { grid-column: auto; }
+}
+
 @media (max-width: 620px) {
   .fwd-opts-seq { grid-template-columns: repeat(3, 1fr); }
+  .fwd-opts-seq.compact { grid-template-columns: repeat(5, 1fr); }
 }
 
 @media (max-width: 560px) {

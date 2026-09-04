@@ -211,6 +211,27 @@
         }
       }
 
+      // ---- M04 · Carnival — rhythm & composition (colour + fuse variety) ----
+      if (o.carnivalRhythm != null) {
+        var cr = o.carnivalRhythm;
+        var crCols = ctx.sequenceColors || [];
+        var crFuses = ctx.sequenceFuses || [];
+        var distinctN = function (a) {
+          var s = {}; a.forEach(function (x) { s[String(x)] = 1; }); return Object.keys(s).length;
+        };
+        var nCol = distinctN(crCols), nFz = distinctN(crFuses);
+        var minC = cr.minColors || 3, minF = cr.minFuses || 2;
+        var colOk = nCol >= minC, fzOk = nFz >= minF;
+        res.objectives.push({ label: 'ใช้สีอย่างน้อย ' + minC + ' แบบ',
+          met: colOk, actual: nCol + ' สี' });
+        res.objectives.push({ label: 'ใช้ชนวนอย่างน้อย ' + minF + ' แบบ (พลุไม่แตกพร้อมกันหมด)',
+          met: fzOk, actual: nFz + ' แบบ' });
+        if (!colOk) res.failReasons.push('Carnival Failed: สีไม่หลากพอ — ใช้แค่ ' + nCol +
+          ' สี ต้องการ ' + minC + ' แบบขึ้นไป');
+        if (!fzOk) res.failReasons.push('Carnival Failed: พลุแตกพร้อมกันหมด — ตั้งชนวนหน่วงเวลา' +
+          'ให้ต่างกันอย่างน้อย ' + minF + ' แบบ เพื่อสร้างจังหวะ');
+      }
+
       if (o.flightTimeMin != null) {
         var ft = sum.flightTime || 0;
         var metFt = ft >= o.flightTimeMin;

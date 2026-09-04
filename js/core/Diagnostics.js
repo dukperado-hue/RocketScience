@@ -279,13 +279,31 @@
     var col = sum.collision || {};
     ctx = ctx || {};
 
-    // ---- M03 · a wrong Red/White/Blue firing order gets the chemistry card ----
+    // ---- SKY ATLAS SEQUENCER cards — M03 chemistry order / M04 rhythm ----
     if (atl.sequence) {
       var sci0 = atl.science || {};
       var NM = { red: 'แดง', white: 'ขาว', blue: 'น้ำเงิน', green: 'เขียว', gold: 'ทอง' };
-      var want0 = (mission.objectives && mission.objectives.burstSequence) || [];
-      var got0 = ctx.gotSeq || [];
       var nice0 = function (a) { return (a || []).map(function (c) { return NM[c] || c; }).join(' → '); };
+      var mo = mission.objectives || {};
+
+      // M04 · Carnival — the composition / staggering card
+      if (mo.carnivalRhythm) {
+        var cr0 = mo.carnivalRhythm;
+        var gc = ctx.gotColors || [], gf = ctx.gotFuses || [];
+        var uniq = function (a) { var s = {}; a.forEach(function (x) { s[String(x)] = 1; }); return Object.keys(s).length; };
+        var dc = uniq(gc), df = uniq(gf);
+        var ctxR = gc.length
+          ? ('รอบนี้: ใช้ ' + dc + ' สี · ชนวน ' + df + ' แบบ — ต้องการ ≥ ' + (cr0.minColors || 3) +
+             ' สี และ ≥ ' + (cr0.minFuses || 2) + ' ชนวน. ' +
+             (df < (cr0.minFuses || 2) ? 'ชนวนเท่ากันหมด = พลุบานพร้อมกันทีเดียวจบ ไม่มีจังหวะ. ' : '') +
+             (dc < (cr0.minColors || 3) ? 'สีโทนเดียว = ท้องฟ้าจืด. ' : ''))
+          : '';
+        return { tag: sci0.tag, context: ctxR, body: sci0.body };
+      }
+
+      // M03 · a wrong Red/White/Blue firing order gets the chemistry card
+      var want0 = mo.burstSequence || [];
+      var got0 = ctx.gotSeq || [];
       var ctx0 = got0.length
         ? ('รอบนี้: คุณยิงเป็นลำดับ ' + nice0(got0) + ' — ต้องเป็น ' + nice0(want0) + '. ' +
            'สีมาจากธาตุโลหะ: สตรอนเทียม→แดง · แมกนีเซียม→ขาว · ทองแดง→น้ำเงิน.')

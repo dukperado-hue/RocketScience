@@ -229,6 +229,49 @@
       reward: { score: 800 }
     },
     {
+      id: 'sky-m04-carnival',
+      era: '1p5-fireworks',
+      title: 'M04 · Carnival',
+      description: 'คาร์นิวัล — จุดพลุ 5 ลูกพร้อมกัน แล้วใช้ "ชนวนหน่วงเวลา" ที่ต่างกัน ปั้นจังหวะให้ท้องฟ้ามีแสงตลอดเวลา',
+      npc: 'pchang',
+      atlas: {
+        code: 'M04',
+        name: 'Carnival',
+        subtitle: 'Carnival · Rhythm & Composition',
+        stamp: '🎪',
+        accent: '#ff7ac0',
+        lesson: 'rhythm-composition',
+        // M04 = the CARNIVAL sequencer: 5 tubes, tune BOTH colour and fuse,
+        // all fire together (t0 = 0) — the rhythm comes purely from the fuses.
+        sequence: true,
+        tubeCount: 5,
+        tuneFuse: true,
+        simultaneous: true,
+        fanSpreadDeg: 4,      // a gentle peacock fan so 5 shells don't overlap
+        deskGoal: '🎯 5 หลอด · ยิงพร้อมกัน — ใช้สี ≥ 3 แบบ และชนวน ≥ 2 แบบ',
+        culturalBrief: 'งานคาร์นิวัลต้องการโชว์พลุที่ตระการตาและมีจังหวะ! เป้าหมาย: จุดพลุ 5 ลูก ' +
+          'ผสม "สี" และ "ชนวนหน่วงเวลา" ที่ต่างกัน ให้ท้องฟ้ามีแสงบานเหลื่อมกันตลอดเวลา ' +
+          '— เหมือนน้ำตกแสงไฟ ไม่ใช่ระเบิดพร้อมกันทีเดียวจบ',
+        design: 'firework-carnival',
+        science: {
+          tag: 'Art & Physics Insight · Rhythm and Staggering (จังหวะ · การหน่วงเหลื่อม)',
+          body: 'โชว์พลุที่ดีอาศัย "ชนวนหน่วงเวลา" ที่ต่างกัน เพื่อให้ท้องฟ้ามีแสงเต็มอยู่ตลอด. ' +
+            'แม้จุดพลุพร้อมกันทั้งหมด (t₀ = 0) แต่ถ้าชนวนของแต่ละลูกยาวไม่เท่ากัน ' +
+            '(1.5 · 3.0 · 4.5 วินาที) ลูกพลุจะบานคนละจังหวะ คนละความสูง — เกิดเป็น "ลำดับ" ' +
+            'จากการยิงพร้อมกันครั้งเดียว. ผสมสีให้หลากหลายด้วย แล้วท้องฟ้าจะมีชีวิต.'
+        }
+      },
+      npc_dialogue: [
+        'คาร์นิวัลปีนี้ต้องจัดเต็ม — พลุ 5 ลูกรวด!',
+        'แต่มีกติกา: ทุกลูกจุดพร้อมกันหมด t₀ = 0 — ไม่มีการหน่วงยิงทีละลูกแล้ว',
+        'จังหวะทั้งหมดมาจาก "ชนวน" — ตั้งชนวน 1.5 / 3.0 / 4.5 วิ ให้ต่างกัน',
+        'ลูกชนวนสั้นบานก่อน (ตอนกำลังพุ่งขึ้น) · ลูกชนวนยาวบานทีหลัง (ตอนร่วงลง) = น้ำตกแสง',
+        'เงื่อนไขผ่าน: ใช้สี ≥ 3 แบบ และชนวน ≥ 2 แบบ — ถ้าสีโทนเดียวหรือชนวนเท่ากันหมด = จืด ตก'
+      ],
+      objectives: { carnivalRhythm: { minColors: 3, minFuses: 2, tubes: 5 } },
+      reward: { score: 1000 }
+    },
+    {
       id: 'e1p5-the-pop',
       era: '1p5-fireworks',
       title: 'แรงกระแทกเดียว',

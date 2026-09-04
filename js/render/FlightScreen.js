@@ -1065,7 +1065,8 @@
     if (consume) consume.visible = false;
 
     var col = new THREE.Color(hex || '#ffc247');
-    var finale = seqIdx === 2;
+    // the show builds — the 3rd shell onward throws a bigger, brighter flower
+    var finale = seqIdx != null && seqIdx >= 2;
     var N = dud ? 26 : (finale ? 220 : 150);
     var pos = new Float32Array(N * 3), colr = new Float32Array(N * 3);
     var vel = [];
@@ -1106,12 +1107,12 @@
     }
     if (this._sound && !dud) {
       // a sequence climbs in pitch shell-to-shell — pop · pop · POP
-      var rate = inSeq ? (1.15 + seqIdx * 0.3) : 1.5;
+      var rate = inSeq ? Math.min(1.15 + seqIdx * 0.3, 2.15) : 1.5;
       this._sound.play('liftoff', { volume: inSeq ? 0.5 : 0.4, rate: rate });
     }
   };
 
-  // ---- M03 · the running "🔴 → ⚪ → 🔵" ticker as each tube fires ----------
+  // ---- M03/M04 · the running "🔴 → ⚪ → 🔵" ticker as each shell bursts ----
   FlightScreen.prototype._fwSeqToast = function (idx) {
     var GLYPH = { red: '🔴', white: '⚪', blue: '🔵', green: '🟢', gold: '🟡' };
     var total = (this._fwSeq && this._fwSeq.length) || 3;
@@ -1120,8 +1121,10 @@
       var r = this._fwSeqResult[i];
       strip.push(r ? (GLYPH[r.color] || '⚫') : '·');
     }
-    this._showToast('🎆 หลอดที่ ' + (idx + 1) + ' แตก! · ' + strip.join('  '));
-    this._phaseText = 'ชุดพลุลำดับ ' + strip.join(' ');
+    var carnival = this._mission && this._mission.objectives &&
+      this._mission.objectives.carnivalRhythm;
+    this._showToast('🎆 ' + (idx + 1) + '/' + total + ' บาน! · ' + strip.join('  '));
+    this._phaseText = (carnival ? 'คาร์นิวัล ' : 'ชุดพลุลำดับ ') + strip.join(' ');
     if (this._glowPulse != null) this._glowPulse = Math.max(this._glowPulse, 0.8);
   };
 
@@ -1475,11 +1478,13 @@
     this._fwRetry = opts.onRetry || null;
     this._fwBursted = false;
     this._lastVerdict = null;
-    // ---- M03 · the RED/WHITE/BLUE firing sequence (Phase 18) --------------
-    //  N shells, physically identical (colour has no trajectory effect), fired
-    //  one every `sequenceGap` seconds. ONE sim drives all of them.
+    // ---- THE SEQUENCER — M03 (staggered gap>0) / M04 CARNIVAL (gap 0, all
+    //  fire together, rhythm from per-tube FUSES). Tube spec = {color,colorHex,
+    //  fuse,pitch}. When a tube's fuse+pitch match the primary sim it reuses it,
+    //  else FlightScreen re-sims that tube (see the fan-out below).
     this._fwSeq = (opts.firework && opts.firework.sequence) || null;
-    this._fwSeqGap = (opts.firework && +opts.firework.sequenceGap) || 1.0;
+    var _sg = opts.firework && opts.firework.sequenceGap;
+    this._fwSeqGap = (_sg != null && isFinite(_sg)) ? +_sg : 1.0;
     this._fwSeqResult = [];
     var wantDay = (!!opts.daylight || this._bangfai || this._v2) && !buoy;
     this._applySky(this._fw ? 'night' : buoy ? 'night' : (wantDay ? 'day' : 'dusk'));
@@ -1494,20 +1499,49 @@
     this._masterDur = this._vehicles[0].flight.duration;
     this._canLaunchNext = this._bangfai || this._v2;
 
-    // ---- M03 · fan the sequence out into a staggered fleet ---------------
+    // ---- fan the sequence out into a fleet ------------------------------
     if (this._fwSeq && this._fwSeq.length) {
+      var pFuse = +this._fwSeq[0].fuse || 3.0;
+      var pPitch = +this._fwSeq[0].pitch || 90;
       var v0 = this._vehicles[0];
       v0.fwColor = this._fwSeq[0].color;
       v0.fwColorHex = this._fwSeq[0].colorHex || this._fwColorHex;
+      v0.fwFuse = pFuse;
       v0._fwBursted = false;
+
+      var baseModel = null, baseOpts = null;
+      var needResim = this._fwSeq.some(function (t) {
+        return (+t.fuse || pFuse) !== pFuse || (+t.pitch || 90) !== pPitch;
+      });
+      if (needResim && this._vehicle && this._vehicle.toPhysicsModel && RS.Physics) {
+        baseModel = this._vehicle.toPhysicsModel();
+        baseOpts = this._simOpts || { dt: 0.02, sampleEvery: 0.25 };
+      }
+
       for (var _si = 1; _si < this._fwSeq.length; _si++) {
-        var srec = this._addVehicle(simResult, { t0: _si * this._fwSeqGap });
-        srec.fwColor = this._fwSeq[_si].color;
-        srec.fwColorHex = this._fwSeq[_si].colorHex || this._fwColorHex;
+        var spec = this._fwSeq[_si];
+        var sFuse = +spec.fuse || pFuse, sPitch = +spec.pitch || 90;
+        var tubeSim = simResult;
+        if (baseModel && (sFuse !== pFuse || sPitch !== pPitch)) {
+          var op = {};
+          for (var kk in baseOpts) op[kk] = baseOpts[kk];
+          op.fuse = { time: sFuse, box: (this._fwBox || null) };
+          if (sPitch !== 90) op.launchPitchDeg = sPitch; else delete op.launchPitchDeg;
+          try { tubeSim = RS.Physics.simulate(baseModel, op) || simResult; }
+          catch (e) { tubeSim = simResult; }
+        }
+        var srec = this._addVehicle(tubeSim, { t0: _si * this._fwSeqGap });
+        srec.fwColor = spec.color;
+        srec.fwColorHex = spec.colorHex || this._fwColorHex;
+        srec.fwFuse = sFuse;
         srec._fwBursted = false;
         this._masterDur = Math.max(this._masterDur, srec.t0 + srec.flight.duration);
       }
       this._canLaunchNext = false;
+      // a simultaneous barrage (M04): frame the CENTRE tube so the fan is symmetric
+      if (this._fwSeqGap === 0 && this._fwSeq.length >= 3) {
+        this._focusIdx = Math.floor(this._fwSeq.length / 2);
+      }
     }
     this._playing = false;
     this._clearBlasts();
@@ -1937,31 +1971,32 @@
 
     // ---- SKY ATLAS · the firework burst -----------------------------
     if (this._fwTargetBox) this._fwTargetBox.visible = this._fw && !this._fwSeq;
-    if (this._fw && this._summary && this._summary.burst) {
+    if (this._fw && this._fwSeq && this._fwSeq.length) {
+      // ---- M03 / M04 · fire each tube as ITS OWN fuse runs through -------
+      //  (each vehicle may carry its own sim → its own burst time/altitude)
+      for (var vqi = 0; vqi < this._vehicles.length; vqi++) {
+        var vqr = this._vehicles[vqi];
+        if (vqr._fwBursted || this._masterT < vqr.t0) continue;
+        var vbu = (vqr.sim && vqr.sim.summary && vqr.sim.summary.burst) || null;
+        if (!vbu || !(vbu.occurred || vbu.dud)) continue;
+        if (vqr.flight.time < (vbu.time || 1e9) - 1e-3) continue;
+        var vqs = vqr.flight.sampleAt(vqr.flight.time);
+        var qx = (vqs && vqs.position) ? vqs.position.x : 0;
+        var qy = vbu.dud ? 1.5 : (vbu.altitude || (vqs && vqs.altitude) || 0);
+        var qz = (vqs && vqs.position) ? vqs.position.z : 0;
+        vqr._fwBursted = true;
+        var qIdx = this._fwSeqResult.length;
+        this._fwSeqResult.push({ color: vqr.fwColor, fuse: vqr.fwFuse, t: this._masterT });
+        this._spawnFwBurst(qx, qy, qz, vqr.fwColorHex, vbu.dud, vqr.group, qIdx);
+        this._fwSeqToast(qIdx);
+      }
+    } else if (this._fw && this._summary && this._summary.burst && !this._fwBursted) {
       var bu = this._summary.burst;
-      if (this._fwSeq && this._fwSeq.length) {
-        // ---- M03 · fire each tube as its own fuse runs through ----------
-        for (var vqi = 0; vqi < this._vehicles.length; vqi++) {
-          var vqr = this._vehicles[vqi];
-          if (vqr._fwBursted || this._masterT < vqr.t0) continue;
-          if (!(bu.occurred || bu.dud) || vqr.flight.time < (bu.time || 1e9) - 1e-3) continue;
-          var vqs = vqr.flight.sampleAt(vqr.flight.time);
-          var qx = (vqs && vqs.position) ? vqs.position.x : 0;
-          var qy = bu.dud ? 1.5 : (bu.altitude || (vqs && vqs.altitude) || 0);
-          var qz = (vqs && vqs.position) ? vqs.position.z : 0;
-          vqr._fwBursted = true;
-          var qIdx = this._fwSeqResult.length;
-          this._fwSeqResult.push({ color: vqr.fwColor, t: this._masterT });
-          this._spawnFwBurst(qx, qy, qz, vqr.fwColorHex, bu.dud, vqr.group, qIdx);
-          this._fwSeqToast(qIdx);
-        }
-      } else if (!this._fwBursted) {
-        if ((bu.occurred || bu.dud) && this.flight.time >= (bu.time || 1e9) - 1e-3) {
-          var bx2 = (st.position && st.position.x) || 0;
-          var by2 = bu.dud ? 1.5 : (bu.altitude || st.altitude || 0);
-          var bz2 = (st.position && st.position.z) || 0;
-          this._spawnFwBurst(bx2, by2, bz2, this._fwColorHex, bu.dud);
-        }
+      if ((bu.occurred || bu.dud) && this.flight.time >= (bu.time || 1e9) - 1e-3) {
+        var bx2 = (st.position && st.position.x) || 0;
+        var by2 = bu.dud ? 1.5 : (bu.altitude || st.altitude || 0);
+        var bz2 = (st.position && st.position.z) || 0;
+        this._spawnFwBurst(bx2, by2, bz2, this._fwColorHex, bu.dud);
       }
     }
     this._updateFwBursts(this._frameDt || 0.016);
@@ -2195,19 +2230,22 @@
     }
 
     if (mode === 'ground') {
-      // a firework spectator sits well back so the whole arc + target box frame up
+      // a firework spectator sits well back so the whole arc + target box frame up;
+      // a wide simultaneous barrage (M04, 4+ fanned shells) needs to sit further out
+      var wideBarrage = this._fwSeq && this._fwSeqGap === 0 && this._fwSeq.length >= 4;
       var gd = (this._fw
-        ? clamp(90 + alt * 0.6, 90, 240)
+        ? (wideBarrage ? clamp(160 + alt * 0.8, 150, 340) : clamp(90 + alt * 0.6, 90, 240))
         : clamp(10 + alt * 0.02, 10, 400)) * clamp(this._zoom, 0.5, 3);
       // frame the midpoint between the pad and the target box (so an angled
-      // arc + the offset box both stay in view)
+      // arc + the offset box both stay in view); a symmetric fan looks at x=0
       var lookX = this._fw
-        ? (this._fwXBox ? (this._fwXBox[0] + this._fwXBox[1]) / 2 * 0.6 : tx * 0.5)
+        ? (wideBarrage ? 0
+           : this._fwXBox ? (this._fwXBox[0] + this._fwXBox[1]) / 2 * 0.6 : tx * 0.5)
         : tx;
       var lookY = this._fw
-        ? Math.max(vy, (this._fwBox ? (this._fwBox[0] + this._fwBox[1]) / 2 : (this._fwSeq ? 95 : 60)))
+        ? Math.max(vy, (this._fwBox ? (this._fwBox[0] + this._fwBox[1]) / 2 : (this._fwSeq ? 90 : 60)))
         : Math.max(vy, focus);
-      cam.position.set(lookX + gd * sth, this._fw ? 6 : 1.3, gd * cth);
+      cam.position.set(lookX + gd * sth, this._fw ? (wideBarrage ? 9 : 6) : 1.3, gd * cth);
       cam.lookAt(lookX, lookY, 0);
 
     } else if (mode === 'free') {
@@ -2378,12 +2416,33 @@
         ['MECO', s.mecoTime != null ? s.mecoTime.toFixed(1) + ' s' : 'ไม่ถึงระยะ']
       ];
     }
-    if (this._fw && this._fwSeq) {
+    var _mObj = (this._mission && this._mission.objectives) || {};
+    if (this._fw && this._fwSeq && _mObj.carnivalRhythm) {
+      // ---- M04 · Carnival — rhythm & composition ----
+      var GLc = { red: '🔴', white: '⚪', blue: '🔵', green: '🟢', gold: '🟡' };
+      var crGot = this._fwSeqResult;
+      var cS = {}, fS = {};
+      crGot.forEach(function (r) { cS[r.color] = 1; fS[r.fuse] = 1; });
+      var nCarnCol = Object.keys(cS).length, nCarnFz = Object.keys(fS).length;
+      var crO = _mObj.carnivalRhythm;
+      var carnOk = nCarnCol >= (crO.minColors || 3) && nCarnFz >= (crO.minFuses || 2);
+      var crTimes = crGot.map(function (r) { return r.t; }).sort(function (a, b) { return a - b; });
+      var crSpread = crTimes.length ? (crTimes[crTimes.length - 1] - crTimes[0]) : 0;
+      cells = [
+        ['ออกแบบ ' + this._fwSeq.length + ' หลอด',
+          this._fwSeq.map(function (t) { return (GLc[t.color] || '⚫') + (+t.fuse || 3).toFixed(1); }).join('  ')],
+        ['สีที่ใช้', nCarnCol + ' / ' + (crO.minColors || 3) + (nCarnCol >= (crO.minColors || 3) ? '  ✓' : '  ✕')],
+        ['ชนวนที่ใช้', nCarnFz + ' / ' + (crO.minFuses || 2) + (nCarnFz >= (crO.minFuses || 2) ? '  ✓' : '  ✕')],
+        ['พลุบานช่วง', crGot.length
+          ? (crTimes[0].toFixed(1) + '–' + crTimes[crTimes.length - 1].toFixed(1) + ' ว · กว้าง ' + crSpread.toFixed(1) + ' ว')
+          : '—'],
+        ['ผล', carnOk ? '🎉 คาร์นิวัลสำเร็จ!' : '✕ ยังไม่ตระการตาพอ']
+      ];
+    } else if (this._fw && this._fwSeq) {
       // ---- M03 · the Red/White/Blue firing sequence ----
       var GL = { red: '🔴', white: '⚪', blue: '🔵', green: '🟢', gold: '🟡' };
       var NM = { red: 'แดง', white: 'ขาว', blue: 'น้ำเงิน', green: 'เขียว', gold: 'ทอง' };
-      var wantSeq = (this._mission && this._mission.objectives &&
-        this._mission.objectives.burstSequence) || [];
+      var wantSeq = _mObj.burstSequence || [];
       var gotSeq = this._fwSeqResult.map(function (r) { return r.color; });
       var seqOk = wantSeq.length === gotSeq.length &&
         wantSeq.every(function (c, i) { return c === gotSeq[i]; });
@@ -2459,8 +2518,11 @@
     btn.className = 'fs-ap-btn fs-why';
     btn.textContent = '🤔 ทำไมถึงพลาด?';
     btn.addEventListener('click', function () {
+      var _qr = self._fwSeqResult || [];
       var card = RS.Diagnostics.scienceCard(self._mission, self._sim, {
-        gotSeq: (self._fwSeqResult || []).map(function (q) { return q.color; })
+        gotSeq: _qr.map(function (q) { return q.color; }),
+        gotColors: _qr.map(function (q) { return q.color; }),
+        gotFuses: _qr.map(function (q) { return q.fuse; })
       });
       RS.render.UI.openScienceCard(card, function () {
         self.close();
@@ -2477,9 +2539,10 @@
     var ME = RS.MissionEngine;
     if (!this._mission || !ME || !this._sim) { el.hidden = true; this._lastVerdict = null; return; }
 
-    // M03 · the verdict re-scores off the ORDER the shells actually burst in
+    // M03/M04 · the verdict re-scores off what the shells ACTUALLY did
     var evalCtx = this._fwSeq
-      ? { sequenceColors: this._fwSeqResult.map(function (q) { return q.color; }) }
+      ? { sequenceColors: this._fwSeqResult.map(function (q) { return q.color; }),
+          sequenceFuses: this._fwSeqResult.map(function (q) { return q.fuse; }) }
       : null;
     var r = ME.evaluate(this._mission, this._sim, this._vehicle, evalCtx);
     this._lastVerdict = r;
