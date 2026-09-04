@@ -70,42 +70,50 @@
     }
   });
 
-  // ---- 3D preview — a floating modal, lazily built, only spins while open
+  // ---- 3D ASSEMBLY VIEW — a floating "VAB studio", lazily built, spins on open
   var preview = null, previewOrbit = null, previewGroup = null;
   var previewModal = document.getElementById('preview-modal');
+  var previewIids = new Set();          // to detect which parts are newly placed
 
   function ensurePreview() {
     if (preview) return preview;
     preview = new RS.render.Scene(document.getElementById('preview-canvas'),
-      { ground: true, background: 0x0a1830, shadows: true });
+      { ground: false, studio: true, background: 0x05060c });
     if (preview.available) {
       previewOrbit = new RS.render.CameraController(preview.camera, preview.canvas, {
-        target: [0, 0.4, 0], radius: 3, autoRotate: true
+        target: [0, 0.5, 0], radius: 3.2, minRadius: 1.1, maxRadius: 22, autoRotate: true
       });
-      // a faint disc under the vehicle to catch the bamboo skeleton's shadow
-      var THREE = window.THREE;
-      var floor = new THREE.Mesh(
-        new THREE.CircleGeometry(3.4, 48),
-        new THREE.MeshStandardMaterial({ color: 0x0c1c34, roughness: 1, metalness: 0 }));
-      floor.rotation.x = -Math.PI / 2;
-      floor.position.y = -0.03;
-      floor.receiveShadow = true;
-      preview.add(floor);
+      // the VAB room: moody radial backdrop + glowing blueprint floor
+      if (RS.render.makeStudioBackdrop) preview.add(RS.render.makeStudioBackdrop());
+      if (RS.render.makeBlueprintFloor) preview.add(RS.render.makeBlueprintFloor());
     }
     return preview;
   }
 
   function refreshPreview() {
     if (!preview || !preview.available) return;
+    var curIids = vehicle.instances.map(function (i) { return i.iid; });
+    var freshIids = curIids.filter(function (id) { return !previewIids.has(id); });
+
     if (previewGroup) { RS.render.VehicleRenderer.disposeGroup(previewGroup); previewGroup = null; }
     var empty = document.getElementById('preview-empty');
-    if (!vehicle.instances.length) { empty.hidden = false; return; }
+    var legend = document.getElementById('preview-legend');
+    if (!vehicle.instances.length) {
+      empty.hidden = false; if (legend) legend.hidden = true;
+      previewIids = new Set(); return;
+    }
     empty.hidden = true;
-    previewGroup = RS.render.VehicleRenderer.build(vehicle);
+    if (legend) legend.hidden = false;
+    previewGroup = RS.render.VehicleRenderer.build(vehicle, { markers: true });
     preview.add(previewGroup);
+
+    // tactile: the parts that just changed spring into place
+    freshIids.forEach(function (id) { RS.render.VehicleRenderer.pulsePart(previewGroup, id); });
+    previewIids = new Set(curIids);
+
     var b = previewGroup.userData.bounds;
     previewOrbit.frame(b.center, b.radius);
-    previewOrbit.radius *= 1.35;        // a little breathing room in the panel
+    previewOrbit.radius *= 1.4;         // a little breathing room in the panel
     previewOrbit.update(0);
   }
 
@@ -121,7 +129,11 @@
     preview.resize();
     preview.startLoop(function (dt) {
       previewOrbit.update(dt);
-      if (previewGroup) RS.render.VehicleRenderer.flicker(previewGroup, true);
+      if (previewGroup) {
+        RS.render.VehicleRenderer.flicker(previewGroup, true);
+        RS.render.VehicleRenderer.updateMarkers(previewGroup, dt);
+        RS.render.VehicleRenderer.updatePulses(previewGroup, dt);
+      }
     });
   }
   function closePreview() {

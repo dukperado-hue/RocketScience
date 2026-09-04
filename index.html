@@ -9,9 +9,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/blueprint.css?v=50">
-<link rel="stylesheet" href="css/flight.css?v=50">
-<link rel="stylesheet" href="css/mission.css?v=50">
+<link rel="stylesheet" href="css/blueprint.css?v=54">
+<link rel="stylesheet" href="css/flight.css?v=54">
+<link rel="stylesheet" href="css/mission.css?v=54">
 </head>
 <body class="bp-body">
 
@@ -160,16 +160,22 @@
   </div>
 </div>
 
-<!-- ═══ 3D preview — floating modal, off the drafting board (Phase 5) ═══ -->
+<!-- ═══ 3D ASSEMBLY BAY — the VAB studio (Phase 5 · overhauled Phase 14) ═══ -->
 <div class="pv-modal" id="preview-modal" hidden>
   <div class="pv-panel">
     <div class="pv-head">
-      <span class="pv-tag">3D PREVIEW · จาก assembly graph เดียวกัน</span>
+      <span class="pv-tag">🛠 ASSEMBLY BAY · จาก assembly graph เดียวกัน</span>
       <button type="button" class="pv-close" id="preview-close">ปิด ✕</button>
     </div>
     <div class="pv-canvas-wrap">
       <canvas id="preview-canvas"></canvas>
       <div class="bp-preview-empty" id="preview-empty" hidden>ยังไม่มีชิ้นส่วน</div>
+      <div class="pv-legend" id="preview-legend">
+        <div><i class="pv-dot pv-dot-com"></i>จุดศูนย์ถ่วง · CoM</div>
+        <div><i class="pv-dot pv-dot-cop"></i>จุดศูนย์แรงต้าน · CoP</div>
+        <div class="pv-rule"><b>เขียว</b> = เสถียร &nbsp;·&nbsp; <b class="bad">แดง</b> = พลิก</div>
+        <div class="pv-rule2">จรวด: CoM ต้องอยู่เหนือ CoP</div>
+      </div>
     </div>
     <span class="pv-hint">ลากเพื่อหมุน · สกรอลล์เพื่อซูม · Esc เพื่อปิด</span>
   </div>
@@ -223,40 +229,40 @@
 </div>
 
 <!-- ═══ core/ — ZERO dependency on render/ or Three.js ═══ -->
-<script src="js/core/PartsCatalog.js?v=50"></script>
-<script src="js/core/Vehicle.js?v=50"></script>
-<script src="js/core/SimulationEvents.js?v=50"></script>
-<script src="js/core/Diagnostics.js?v=50"></script>
-<script src="js/core/Physics.js?v=50"></script>
-<script src="js/core/Blueprint2D.js?v=50"></script>
+<script src="js/core/PartsCatalog.js?v=54"></script>
+<script src="js/core/Vehicle.js?v=54"></script>
+<script src="js/core/SimulationEvents.js?v=54"></script>
+<script src="js/core/Diagnostics.js?v=54"></script>
+<script src="js/core/Physics.js?v=54"></script>
+<script src="js/core/Blueprint2D.js?v=54"></script>
 
 <!-- ═══ data/ — pure content ═══ -->
-<script src="js/data/parts.js?v=50"></script>
-<script src="js/data/eras.js?v=50"></script>
-<script src="js/data/missions.js?v=50"></script>
+<script src="js/data/parts.js?v=54"></script>
+<script src="js/data/eras.js?v=54"></script>
+<script src="js/data/missions.js?v=54"></script>
 
 <!-- ═══ game/ — rules, consumes the contract ═══ -->
-<script src="js/game/EraManager.js?v=50"></script>
-<script src="js/game/MissionEngine.js?v=50"></script>
-<script src="js/game/MissionBriefing.js?v=50"></script>
+<script src="js/game/EraManager.js?v=54"></script>
+<script src="js/game/MissionEngine.js?v=54"></script>
+<script src="js/game/MissionBriefing.js?v=54"></script>
 
 <!-- ═══ vendor ═══ -->
-<script src="vendor/three/three.min.js?v=50"></script>
-<script src="vendor/three/loaders/GLTFLoader.js?v=50"></script>
+<script src="vendor/three/three.min.js?v=54"></script>
+<script src="vendor/three/loaders/GLTFLoader.js?v=54"></script>
 <!-- GSAP — smooth camera tweens for the orbital-map POI raycaster (graceful if blocked) -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
 
 <!-- ═══ render/ — consumes data, needs Three.js ═══ -->
-<script src="js/render/Scene.js?v=50"></script>
-<script src="js/render/EarthGlobe.js?v=50"></script>
-<script src="js/render/CameraController.js?v=50"></script>
-<script src="js/render/VehicleRenderer.js?v=50"></script>
-<script src="js/render/ExhaustFX.js?v=50"></script>
-<script src="js/render/SoundFX.js?v=50"></script>
-<script src="js/render/FlightRenderer.js?v=50"></script>
-<script src="js/render/FestivalEnv.js?v=50"></script>
-<script src="js/render/FlightScreen.js?v=50"></script>
+<script src="js/render/Scene.js?v=54"></script>
+<script src="js/render/EarthGlobe.js?v=54"></script>
+<script src="js/render/CameraController.js?v=54"></script>
+<script src="js/render/VehicleRenderer.js?v=54"></script>
+<script src="js/render/ExhaustFX.js?v=54"></script>
+<script src="js/render/SoundFX.js?v=54"></script>
+<script src="js/render/FlightRenderer.js?v=54"></script>
+<script src="js/render/FestivalEnv.js?v=54"></script>
+<script src="js/render/FlightScreen.js?v=54"></script>
 
-<script src="js/app.js?v=50"></script>
+<script src="js/app.js?v=54"></script>
 </body>
 </html>

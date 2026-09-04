@@ -83,6 +83,122 @@
   }
 
   // ---------------------------------------------------------------------------
+  //  ENGINEERING MARKERS — Centre of Mass / Centre of Pressure (Assembly view)
+  //
+  //  KSP's tell: a yellow-and-black checkered ball for the CoM, a blue-and-white
+  //  one for the CoP. The golden rule — CoM must sit ABOVE the CoP — is shown
+  //  live by a coloured spine between them (green = stable, red = it'll flip).
+  // ---------------------------------------------------------------------------
+  var _checkerTex = {};
+  function checkerTex(aHex, bHex) {
+    var kkey = aHex + '_' + bHex;
+    if (_checkerTex[kkey] !== undefined) return _checkerTex[kkey] || undefined;
+    if (!THREE || typeof document === 'undefined') { _checkerTex[kkey] = false; return undefined; }
+    var n = 6, s = 96, cell = s / n;
+    var c = document.createElement('canvas'); c.width = c.height = s;
+    var g = c.getContext('2d');
+    for (var i = 0; i < n; i++) for (var j = 0; j < n; j++) {
+      g.fillStyle = ((i + j) & 1) ? bHex : aHex;
+      g.fillRect(i * cell, j * cell, cell, cell);
+    }
+    var tex = new THREE.CanvasTexture(c);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(2, 1);
+    tex.magFilter = THREE.NearestFilter;
+    if ('colorSpace' in tex && THREE.SRGBColorSpace) tex.colorSpace = THREE.SRGBColorSpace;
+    else if ('encoding' in tex && THREE.sRGBEncoding) tex.encoding = THREE.sRGBEncoding;
+    _checkerTex[kkey] = tex;
+    return tex;
+  }
+
+  function markerBall(r, checker, tint) {
+    var t = checkerTex(checker[0], checker[1]);
+    var mat = new THREE.MeshStandardMaterial({
+      map: t, color: t ? 0xffffff : tint,
+      roughness: 0.45, metalness: 0.1,
+      emissive: new THREE.Color(tint), emissiveIntensity: 0.35,
+      transparent: true, opacity: 0.92,
+      depthTest: false                     // always readable, even inside a tank
+    });
+    var m = new THREE.Mesh(new THREE.SphereGeometry(r, 20, 16), mat);
+    m.renderOrder = 998;
+    return m;
+  }
+
+  /**
+   * Build the CoM + CoP marker group for a vehicle. Pure THREE.
+   * @param {import('../core/Vehicle').Vehicle} vehicle
+   * @param {ReturnType<typeof layout>} lo   the layout() result (for the grid map)
+   * @returns {THREE.Group|null}
+   */
+  function buildMarkers(vehicle, lo) {
+    if (!THREE || !vehicle || !vehicle.computeStats || !lo || !lo.grid) return null;
+    var s = vehicle.computeStats();
+    if (!s || !s.partCount) return null;
+
+    var grp = new THREE.Group();
+    grp.userData.isMarkerGroup = true;
+    var r = Math.max(0.045, Math.min(0.16, (lo.bounds.radius || 1) * 0.085));
+
+    var comW = cellToWorld(lo.grid, s.com.x, s.com.y);
+    var com = markerBall(r, ['#ffcf3f', '#161616'], 0x1a1a1a);
+    com.position.set(comW.x, comW.y, comW.z);
+    com.userData.isCoM = true;
+    grp.add(com);
+
+    // Stability: computeStats already knows the rule for this vehicle kind —
+    // a rocket wants CoP behind (below) the CoM; a lantern wants the CoM below
+    // its centre of lift. `s.stable` folds that in. A single part is always ok.
+    var stable = (s.partCount <= 1) ? true : (s.stable !== false);
+
+    var cop = null;
+    if (s.refArea > 0) {
+      var copW = cellToWorld(lo.grid, s.cop.x, s.cop.y);
+      cop = markerBall(r * 0.92, ['#5bb8ff', '#eef6ff'], 0x2f6f9f);
+      cop.position.set(copW.x, copW.y, copW.z);
+      cop.userData.isCoP = true;
+      grp.add(cop);
+
+      // the stability spine between the two markers — green = stable stack,
+      // red = it will weathercock / flip
+      var a = new THREE.Vector3(comW.x, comW.y, comW.z);
+      var b = new THREE.Vector3(copW.x, copW.y, copW.z);
+      var len = a.distanceTo(b);
+      if (len > 1e-3) {
+        var spine = new THREE.Mesh(
+          new THREE.CylinderGeometry(r * 0.16, r * 0.16, len, 8),
+          new THREE.MeshBasicMaterial({
+            color: stable ? 0x54e39a : 0xff4d4d,
+            transparent: true, opacity: 0.75, depthTest: false
+          }));
+        spine.position.copy(a.clone().add(b).multiplyScalar(0.5));
+        spine.quaternion.setFromUnitVectors(
+          new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
+        spine.renderOrder = 997;
+        grp.add(spine);
+      }
+    }
+
+    grp.userData.marker = { com: com, cop: cop, stable: stable, baseR: r, pulse: 0 };
+    return grp;
+  }
+
+  /** Per-frame marker life: a slow breathe; an urgent pulse when unstable. */
+  function updateMarkers(group, dt) {
+    var mg = group && group.userData && group.userData.partMarkers;
+    if (!mg || !mg.userData || !mg.userData.marker) return;
+    var mk = mg.userData.marker;
+    mk.pulse += (dt || 0.016);
+    var breathe = 1 + 0.05 * Math.sin(mk.pulse * 2.2);
+    var warn = mk.stable ? 0 : (0.5 + 0.5 * Math.sin(mk.pulse * 7.0));
+    [mk.com, mk.cop].forEach(function (m) {
+      if (!m) return;
+      m.scale.setScalar(breathe * (1 + warn * 0.18));
+      if (m.material) m.material.emissiveIntensity = 0.35 + warn * 0.5;
+    });
+  }
+
+  // ---------------------------------------------------------------------------
   //  GLTF / GLB model loader — cache + graceful fallback
   //
   //  Official space-agency models ship pre-separated into modular parts, which
@@ -230,7 +346,20 @@
         center: { x: 0, y: height / 2, z: 0 },
         radius: Math.max(height, (maxGX - minGX) * M) * 0.62,
         height: height
-      }
+      },
+      // grid→world mapping constants, so CoM/CoP markers (which come from
+      // Vehicle.computeStats in CELL coords) can be placed in the same frame:
+      //   worldX = (cellX - hCenter) * M ;  worldY = (maxGY - cellY) * M
+      grid: { hCenter: hCenter, maxGY: maxGY, minGY: minGY, M: M }
+    };
+  }
+
+  /** Map a CoM/CoP point (Vehicle cell coords) into VehicleRenderer world space. */
+  function cellToWorld(grid, cx, cy) {
+    return {
+      x: (cx - grid.hCenter) * grid.M,
+      y: (grid.maxGY - cy) * grid.M,
+      z: 0
     };
   }
 
@@ -817,10 +946,12 @@
    * `group.userData.modelsReady` resolves once every swap is done.
    *
    * @param {import('../core/Vehicle').Vehicle} vehicle
+   * @param {{markers?:boolean}} [opts]  markers → attach live CoM/CoP spheres
    * @returns {THREE.Group|null}  null if THREE is unavailable
    */
-  function build(vehicle) {
+  function build(vehicle, opts) {
     if (!THREE) { console.warn('[render/VehicleRenderer] THREE missing'); return null; }
+    opts = opts || {};
     var lo = layout(vehicle);
     var group = new THREE.Group();
     var meshes = {};
@@ -855,10 +986,49 @@
     group.userData.partMeshes = meshes;
     group.userData.flicker = flickers;   // khom-loy flames — see flicker()
     group.userData.bounds = lo.bounds;
+    group.userData.grid = lo.grid;
     group.userData.isVehicle = true;
     recomputeExhaustY(group, meshes);
     group.userData.modelsReady = pending.length ? Promise.all(pending) : Promise.resolve();
+
+    // Assembly-view engineering feedback: the CoM / CoP checkered markers
+    if (opts.markers) {
+      var mg = buildMarkers(vehicle, lo);
+      if (mg) { group.add(mg); group.userData.partMarkers = mg; }
+    }
     return group;
+  }
+
+  // ---------------------------------------------------------------------------
+  //  TACTILE PLACEMENT BOUNCE — a newly-placed part springs into shape
+  // ---------------------------------------------------------------------------
+
+  /** Flag a part's mesh to play a scale-overshoot + tiny spin on the next frames. */
+  function pulsePart(group, iid) {
+    var meshes = group && group.userData && group.userData.partMeshes;
+    var m = meshes && meshes[iid];
+    if (!m) return;
+    m.userData._pulse = { t: 0, dur: 0.46, baseRotY: m.rotation.y };
+  }
+
+  /** Advance every active placement bounce. Call once per rendered frame. */
+  function updatePulses(group, dt) {
+    var meshes = group && group.userData && group.userData.partMeshes;
+    if (!meshes) return;
+    Object.keys(meshes).forEach(function (k) {
+      var m = meshes[k];
+      var p = m && m.userData && m.userData._pulse;
+      if (!p) return;
+      p.t += (dt || 0.016);
+      var x = Math.min(1, p.t / p.dur);
+      // easeOutBack overshoot settling to 1
+      var c1 = 1.70158, c3 = c1 + 1;
+      var back = 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2);
+      var s = 0.62 + 0.38 * back;                 // starts small, overshoots, settles
+      m.scale.setScalar(s);
+      m.rotation.y = p.baseRotY + Math.sin(x * Math.PI) * 0.22 * (1 - x);
+      if (x >= 1) { m.scale.setScalar(1); m.rotation.y = p.baseRotY; delete m.userData._pulse; }
+    });
   }
 
   function recomputeExhaustY(group, meshes) {
@@ -981,6 +1151,9 @@
     disposeGroup: disposeGroup,
     breakup: breakup,        // apogee break-up: hide the whistle nose
     flicker: flicker,        // per-frame khom-loy flame driver
+    updateMarkers: updateMarkers,  // per-frame CoM/CoP marker life (Assembly view)
+    pulsePart: pulsePart,          // flag a freshly-placed part to bounce
+    updatePulses: updatePulses,    // per-frame placement-bounce driver
     loadModel: loadModel,    // Promise<Object3D|null>, cached
     preload: preload,        // Promise.all over every catalog meshUrl
     ensureFor: ensureFor     // Promise.all over one vehicle's meshUrls
