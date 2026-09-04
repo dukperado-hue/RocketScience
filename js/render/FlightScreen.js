@@ -35,6 +35,8 @@
     MAX_Q:    'แรงดันอากาศสูงสุด',
     APOGEE:   'จุดสูงสุด',
     APOGEE_BREAKUP: 'แตกที่จุดสูงสุด',
+    BURST:    'ลูกพลุแตก',
+    DUD:      'ลูกพลุด้าน',
     BURNOUT:  'เชื้อเพลิงหมด',
     LOSS_OF_CONTROL: 'เสียการควบคุม',
     MIDAIR_BURN: 'โคมไฟไหม้กลางอากาศ',
@@ -42,7 +44,7 @@
   };
   var EVENT_COLOR = {
     IGNITION: '#e9f1ff', LIFTOFF: '#5fe0a8', PITCH_OVER: '#b98cff', MAX_Q: '#5bd6ff',
-    MECO: '#ff9a5a',
+    MECO: '#ff9a5a', BURST: '#ffd24a', DUD: '#8891a5',
     BURNOUT: '#ffb63a', APOGEE: '#ffce40', APOGEE_BREAKUP: '#ff8a3a',
     LOSS_OF_CONTROL: '#ff3b3b', MIDAIR_BURN: '#ff7420', IMPACT: '#ff6a5a'
   };
@@ -146,6 +148,15 @@
     this._aimMarker = null;
     this._impactMarker = null;
     this._firingTable = null;
+
+    // ---- Sky Atlas · fireworks (Phase 16) ---------------------------
+    this._fw = false;
+    this._fwBox = null;
+    this._fwTargetBox = null;      // the glowing altitude bounding box
+    this._fwBursts = [];           // live burst particle effects
+    this._fwBursted = false;
+    this._fwRetry = null;
+    this._lastVerdict = null;
 
     // ---- sound (pooled sfx — ignite bed + liftoff whoosh) ---------------
     this._sound = RS.render.SoundFX ? new RS.render.SoundFX() : null;
@@ -987,6 +998,144 @@
   };
 
   // ======================================================================
+  //  SKY ATLAS · FIREWORKS — the target box + the burst (Phase 16)
+  // ======================================================================
+
+  // a glowing, semi-transparent altitude bounding box the shell must burst in
+  FlightScreen.prototype._buildFwTargetBox = function () {
+    if (!THREE || !this.scene) return;
+    if (this._fwTargetBox) { this.scene.remove(this._fwTargetBox); this._fwTargetBox = null; }
+    if (!this._fwBox) return;
+    var lo = this._fwBox[0], hi = this._fwBox[1];
+    var W = 64, D = 64, H = hi - lo, midY = (lo + hi) / 2;
+    var g = new THREE.Group();
+    g.userData.isFwTargetBox = true;
+
+    var fill = new THREE.Mesh(
+      new THREE.BoxGeometry(W, H, D),
+      new THREE.MeshBasicMaterial({
+        color: 0x5fe0c0, transparent: true, opacity: 0.06,
+        depthWrite: false, blending: THREE.AdditiveBlending }));
+    fill.position.y = midY;
+    g.add(fill);
+
+    var edges = new THREE.LineSegments(
+      new THREE.EdgesGeometry(new THREE.BoxGeometry(W, H, D)),
+      new THREE.LineBasicMaterial({ color: 0x8fffe4, transparent: true, opacity: 0.55 }));
+    edges.position.y = midY;
+    g.add(edges);
+
+    // a bright square outline at the floor + ceiling of the box
+    var hw = W / 2, hd = D / 2;
+    [lo, hi].forEach(function (yy) {
+      var lg = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(-hw, yy, -hd), new THREE.Vector3(hw, yy, -hd),
+        new THREE.Vector3(hw, yy, hd), new THREE.Vector3(-hw, yy, hd),
+        new THREE.Vector3(-hw, yy, -hd)]);
+      g.add(new THREE.Line(lg, new THREE.LineBasicMaterial({
+        color: 0x9dffe8, transparent: true, opacity: 0.7 })));
+    });
+
+    this.scene.add(g);
+    this._fwTargetBox = g;
+    g.visible = false;
+  };
+
+  // the burst — an expanding shell of coloured sparks + a flash
+  FlightScreen.prototype._spawnFwBurst = function (x, y, z, hex, dud) {
+    if (!THREE || !this.scene) return;
+    this._fwBursted = true;
+    // consume the shell mesh
+    if (this.vehicleGroup) this.vehicleGroup.visible = false;
+
+    var col = new THREE.Color(hex || '#ffc247');
+    var N = dud ? 26 : 150;
+    var pos = new Float32Array(N * 3), colr = new Float32Array(N * 3);
+    var vel = [];
+    for (var i = 0; i < N; i++) {
+      // random point on a sphere
+      var u = Math.random() * 2 - 1, th = Math.random() * Math.PI * 2;
+      var r = Math.sqrt(1 - u * u);
+      var dx = r * Math.cos(th), dy = u, dz = r * Math.sin(th);
+      var sp = dud ? (3 + Math.random() * 4) : (16 + Math.random() * 18);
+      vel.push({ x: dx * sp, y: dy * sp * (dud ? 0.5 : 1) + (dud ? 1 : 3), z: dz * sp, life: dud ? 0.7 : 1.4 + Math.random() * 0.6 });
+      pos[i * 3] = x; pos[i * 3 + 1] = y; pos[i * 3 + 2] = z;
+      var tint = 0.7 + Math.random() * 0.5;
+      colr[i * 3] = col.r * tint; colr[i * 3 + 1] = col.g * tint; colr[i * 3 + 2] = col.b * tint;
+    }
+    var geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(colr, 3));
+    var pts = new THREE.Points(geo, new THREE.PointsMaterial({
+      size: dud ? 1.4 : 2.6, vertexColors: true, transparent: true, opacity: 1,
+      depthWrite: false, blending: dud ? THREE.NormalBlending : THREE.AdditiveBlending,
+      map: this._sparkTex(), toneMapped: false }));
+    pts.frustumCulled = false;
+    this.scene.add(pts);
+
+    var flash = new THREE.PointLight(dud ? 0x9a9a9a : hex, dud ? 2 : 14, dud ? 40 : 220, 2);
+    flash.position.set(x, y, z);
+    this.scene.add(flash);
+
+    this._fwBursts.push({ pts: pts, geo: geo, vel: vel, flash: flash, pos: pos,
+      t: 0, life: dud ? 1.0 : 2.2, dud: !!dud });
+
+    this._showToast(dud
+      ? '💨 ลูกพลุด้าน — ตกถึงพื้นก่อนชนวนจะไหม้'
+      : ('🎆 ดอกพลุบานที่ ' + Math.round(y) + ' ม.' +
+         (this._fwBox && y >= this._fwBox[0] && y <= this._fwBox[1] ? ' — ในกรอบเป้าหมาย! 🎯' : ' — นอกกรอบ')));
+    if (this._sound && !dud) this._sound.play('liftoff', { volume: 0.4, rate: 1.5 });
+  };
+
+  FlightScreen.prototype._sparkTex = function () {
+    if (this._sparkT) return this._sparkT;
+    var c = document.createElement('canvas'); c.width = c.height = 32;
+    var x = c.getContext('2d');
+    var grd = x.createRadialGradient(16, 16, 0, 16, 16, 16);
+    grd.addColorStop(0, 'rgba(255,255,255,1)');
+    grd.addColorStop(0.4, 'rgba(255,255,255,0.6)');
+    grd.addColorStop(1, 'rgba(255,255,255,0)');
+    x.fillStyle = grd; x.fillRect(0, 0, 32, 32);
+    this._sparkT = new THREE.CanvasTexture(c);
+    return this._sparkT;
+  };
+
+  FlightScreen.prototype._updateFwBursts = function (dt) {
+    if (!this._fwBursts.length) return;
+    for (var i = this._fwBursts.length - 1; i >= 0; i--) {
+      var b = this._fwBursts[i];
+      b.t += dt;
+      var k = b.t / b.life;
+      var p = b.pos;
+      for (var j = 0; j < b.vel.length; j++) {
+        var v = b.vel[j];
+        v.y -= 9.8 * dt * 0.6;                 // gravity on the sparks
+        v.x *= (1 - 1.1 * dt); v.z *= (1 - 1.1 * dt);   // air drag
+        p[j * 3] += v.x * dt; p[j * 3 + 1] += v.y * dt; p[j * 3 + 2] += v.z * dt;
+      }
+      b.geo.attributes.position.needsUpdate = true;
+      b.pts.material.opacity = Math.max(0, 1 - k * (b.dud ? 1.6 : 1.05));
+      if (b.flash) b.flash.intensity = Math.max(0, (b.dud ? 2 : 14) * (1 - k * 2.5));
+      if (b.t >= b.life) {
+        this.scene.remove(b.pts); this.scene.remove(b.flash);
+        b.geo.dispose(); b.pts.material.dispose();
+        this._fwBursts.splice(i, 1);
+      }
+    }
+  };
+
+  FlightScreen.prototype._clearFwBursts = function () {
+    var sc = this.scene;
+    (this._fwBursts || []).forEach(function (b) {
+      if (sc) { sc.remove(b.pts); sc.remove(b.flash); }
+      if (b.geo) b.geo.dispose();
+      if (b.pts && b.pts.material) b.pts.material.dispose();
+    });
+    this._fwBursts = [];
+    this._fwBursted = false;
+  };
+
+  // ======================================================================
   //  THE RELEASE — manual two-step ignition
   //    · Era 0 (khom loy)  : light the wick → heat builds → let go the string
   //    · Era 1 (Bang Fai)  : จุดชนวน → ~5 s packed-bore pressure build (a wall
@@ -1209,8 +1358,16 @@
     this._bangfai = !!(meta.launchAngleDeg && +meta.launchAngleDeg > 0);
     // a V-2 flies a ballistic gyro-guidance program at a sea target
     this._v2 = !!(simResult && simResult.summary && simResult.summary.targeting);
+    // a Sky-Atlas firework: watch it burst against a target box in a night sky
+    this._fw = !!(opts.firework);
+    this._fwOpts = opts.firework || null;
+    this._fwBox = (opts.firework && opts.firework.box) || null;
+    this._fwColorHex = (opts.firework && opts.firework.colorHex) || '#ffc247';
+    this._fwRetry = opts.onRetry || null;
+    this._fwBursted = false;
+    this._lastVerdict = null;
     var wantDay = (!!opts.daylight || this._bangfai || this._v2) && !buoy;
-    this._applySky(buoy ? 'night' : (wantDay ? 'day' : 'dusk'));
+    this._applySky(this._fw ? 'night' : buoy ? 'night' : (wantDay ? 'day' : 'dusk'));
 
     // ---- rebuild the fleet from scratch -------------------------------
     if (this._exhaust) this._exhaust.reset();
@@ -1299,6 +1456,16 @@
     if (this.elLaunchSeq) this.elLaunchSeq.hidden = true;
     if (this.elCountdown) this.elCountdown.hidden = true;
 
+    // Sky Atlas · fireworks — the glowing target box + a spectator camera
+    this._clearFwBursts();
+    if (this.vehicleGroup) this.vehicleGroup.visible = true;
+    this._buildFwTargetBox();
+    if (this._fw) {
+      this._camIdx = CAM_MODES.indexOf('ground');
+      this.btnCam.textContent = CAM_LABEL.ground;
+      this._phaseText = 'พร้อมจุดพลุ';
+    }
+
     // ---- THE RELEASE — manual two-step ignition for a khom loy -----------
     this._haikuQueue.length = 0;
     this._haikuActive = this._haikuFading = false;
@@ -1380,6 +1547,8 @@
     this._haikuQueue.length = 0;
     this._clearDebris();
     this._clearBlasts();
+    this._clearFwBursts();
+    if (this._fwTargetBox) this._fwTargetBox.visible = false;
     if (this.elLaunchSeq) this.elLaunchSeq.hidden = true;
     if (this.elCountdown) this.elCountdown.hidden = true;
     if (this._firingTable) this._firingTable.visible = false;
@@ -1487,6 +1656,8 @@
     });
     this._clearDebris();
     this._clearBlasts();
+    this._clearFwBursts();
+    if (this.vehicleGroup) this.vehicleGroup.visible = true;
     if (this._sound) this._sound.stopAll();
     this._syncScrub();
     this.play();
@@ -1604,6 +1775,19 @@
     if (this._v2 && RS.render.OrbitalEnv && this._targetZone) {
       RS.render.OrbitalEnv.update(this._targetZone, this._frameDt || 0.016);
     }
+
+    // ---- SKY ATLAS · the firework burst -----------------------------
+    if (this._fwTargetBox) this._fwTargetBox.visible = this._fw;
+    if (this._fw && !this._fwBursted && this._summary && this._summary.burst) {
+      var bu = this._summary.burst;
+      if ((bu.occurred || bu.dud) && this.flight.time >= (bu.time || 1e9) - 1e-3) {
+        var bx2 = (st.position && st.position.x) || 0;
+        var by2 = bu.dud ? 1.5 : (bu.altitude || st.altitude || 0);
+        var bz2 = (st.position && st.position.z) || 0;
+        this._spawnFwBurst(bx2, by2, bz2, this._fwColorHex, bu.dud);
+      }
+    }
+    this._updateFwBursts(this._frameDt || 0.016);
 
     // APOGEE BREAKUP — hide the whistle nose + spawn falling debris, once
     if (st.brokenUp && this.vehicleGroup && !this.vehicleGroup.userData.brokenUp) {
@@ -1812,9 +1996,13 @@
     }
 
     if (mode === 'ground') {
-      var gd = clamp(10 + alt * 0.02, 10, 400) * clamp(this._zoom, 0.5, 3);
-      cam.position.set(gd * sth, 1.3, gd * cth);
-      cam.lookAt(tx, Math.max(vy, focus), 0);
+      // a firework spectator sits well back so the whole arc + target box frame up
+      var gd = (this._fw
+        ? clamp(70 + alt * 0.55, 70, 220)
+        : clamp(10 + alt * 0.02, 10, 400)) * clamp(this._zoom, 0.5, 3);
+      cam.position.set(gd * sth, this._fw ? 6 : 1.3, gd * cth);
+      cam.lookAt(tx, this._fw ? Math.max(vy, (this._fwBox ? (this._fwBox[0] + this._fwBox[1]) / 2 : 60))
+        : Math.max(vy, focus), 0);
 
     } else if (mode === 'free') {
       var fr = clamp(40 * this._zoom, 2.5, RE * 3);
@@ -1984,6 +2172,16 @@
         ['MECO', s.mecoTime != null ? s.mecoTime.toFixed(1) + ' s' : 'ไม่ถึงระยะ']
       ];
     }
+    if (this._fw && s.burst) {
+      var bu = s.burst, bx = this._fwBox || bu.box;
+      cells = [
+        ['ดอกพลุบานที่', bu.dud ? 'ด้าน (พื้น)' : fmtAlt(bu.altitude || 0)],
+        ['กรอบเป้าหมาย', bx ? (bx[0] + '–' + bx[1] + ' ม.') : '—'],
+        ['จุดสูงสุด (Apogee)', fmtAlt(s.apogee || 0) + ' @ ' + (s.apogeeTime || 0).toFixed(1) + ' s'],
+        ['ชนวนหน่วงเวลา', (this._fwOpts ? this._fwOpts.fuse.toFixed(1) : (bu.time || 0).toFixed(1)) + ' s'],
+        ['ผล', bu.dud ? '💨 ด้าน' : bu.inBox ? '🎯 ในกรอบ' : '✕ นอกกรอบ']
+      ];
+    }
     if (this._vehicles.length > 1) {
       cells.unshift([this._v2 ? 'V-2 ที่ยิงทั้งหมด' : 'บั้งไฟที่ปล่อยทั้งหมด',
         this._vehicles.length + ' ลูก']);
@@ -2002,16 +2200,44 @@
         (d.detail ? '<i>' + esc(d.detail) + '</i>' : '') + '</span></li>';
     }).join('');
 
+    this._renderWhyButton();
     this.autopsy.hidden = false;
+  };
+
+  // ---- the "WHY?" button — on a failed Sky Atlas mission, offer a Science Card
+  FlightScreen.prototype._renderWhyButton = function () {
+    var actions = $('fs-autopsy-actions') || (this.autopsy && this.autopsy.querySelector('.fs-ap-actions'));
+    if (!actions) return;
+    var old = $('fs-why-btn'); if (old) old.remove();
+    var failed = this._lastVerdict && !this._lastVerdict.passed;
+    var canWhy = failed && this._mission && this._mission.atlas &&
+      RS.render.UI && RS.Diagnostics && RS.Diagnostics.scienceCard;
+    if (!canWhy) return;
+    var self = this;
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.id = 'fs-why-btn';
+    btn.className = 'fs-ap-btn fs-why';
+    btn.textContent = '🤔 ทำไมถึงพลาด?';
+    btn.addEventListener('click', function () {
+      var card = RS.Diagnostics.scienceCard(self._mission, self._sim);
+      RS.render.UI.openScienceCard(card, function () {
+        self.close();
+        if (self._fwRetry) self._fwRetry();
+        else if (RS.render.UI.openDesignDesk) RS.render.UI.openDesignDesk(self._mission);
+      });
+    });
+    actions.insertBefore(btn, actions.firstChild);
   };
 
   // ---- mission verdict banner ------------------------------------
   FlightScreen.prototype._renderVerdict = function () {
     var el = this.elVerdict; if (!el) return;
     var ME = RS.MissionEngine;
-    if (!this._mission || !ME || !this._sim) { el.hidden = true; return; }
+    if (!this._mission || !ME || !this._sim) { el.hidden = true; this._lastVerdict = null; return; }
 
     var r = ME.evaluate(this._mission, this._sim, this._vehicle);
+    this._lastVerdict = r;
     var rows = [];
     r.objectives.concat(r.constraints).forEach(function (o) {
       rows.push('<li>' + (o.met ? '✓ ' : '✗ ') + esc(o.label) +

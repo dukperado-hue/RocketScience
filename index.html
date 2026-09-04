@@ -9,9 +9,10 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/blueprint.css?v=55">
-<link rel="stylesheet" href="css/flight.css?v=55">
-<link rel="stylesheet" href="css/mission.css?v=55">
+<link rel="stylesheet" href="css/blueprint.css?v=58">
+<link rel="stylesheet" href="css/flight.css?v=58">
+<link rel="stylesheet" href="css/mission.css?v=58">
+<link rel="stylesheet" href="css/atlas.css?v=58">
 </head>
 <body class="bp-body">
 
@@ -238,42 +239,109 @@
   </div>
 </div>
 
+<!-- ═══ THE SKY ATLAS — Fireworks campaign front-end (Phase 16) ═══ -->
+<div class="sa-root" id="sky-atlas-root" hidden>
+
+  <!-- 1 · the mission constellation -->
+  <section class="sa-screen" id="sky-atlas" hidden>
+    <div class="sa-stars" aria-hidden="true"></div>
+    <header class="sa-head">
+      <div>
+        <p class="sa-kicker">THE SKY ATLAS</p>
+        <h1 class="sa-title">แผนที่นภากาศ</h1>
+        <p class="sa-lede">แคมเปญพลุวัฒนธรรม — เรียนฟิสิกส์ เคมี และการจัดองค์ประกอบ ผ่านการจุดพลุงานเทศกาล</p>
+      </div>
+      <button type="button" class="sa-x" id="sky-atlas-close" aria-label="ปิด">✕</button>
+    </header>
+    <div class="sa-grid" id="sky-atlas-grid"></div>
+    <p class="sa-foot">เลือกดวงตราภารกิจเพื่อเริ่ม · ปลดล็อกภารกิจถัดไปเมื่อผ่านภารกิจก่อนหน้า</p>
+  </section>
+
+  <!-- 2 · the cultural brief -->
+  <section class="sa-screen" id="fw-cultural" hidden>
+    <article class="sa-brief-card" id="fw-cultural-card">
+      <div class="sa-brief-stamp" id="fw-cultural-stamp">💦</div>
+      <p class="sa-brief-code"><span id="fw-cultural-code">M01</span> · <span id="fw-cultural-sub">Songkran</span></p>
+      <h2 class="sa-brief-name" id="fw-cultural-name">สงกรานต์</h2>
+      <p class="sa-brief-npc" id="fw-cultural-npc"></p>
+      <p class="sa-brief-body" id="fw-cultural-brief"></p>
+      <p class="sa-brief-goal" id="fw-cultural-goal"></p>
+      <div class="sa-brief-actions">
+        <button type="button" class="sa-btn ghost" id="fw-cultural-back">‹ แผนที่</button>
+        <button type="button" class="sa-btn primary" id="fw-cultural-go">เริ่มออกแบบพลุ ›</button>
+      </div>
+    </article>
+  </section>
+
+  <!-- 3 · the firework design desk -->
+  <section class="sa-screen" id="fw-desk" hidden>
+    <article class="fwd-card">
+      <header class="fwd-head">
+        <h2>โต๊ะออกแบบพลุ · Firework Design Desk</h2>
+        <span class="fwd-goal" id="fw-desk-goal"></span>
+      </header>
+      <div class="fwd-row" id="fwd-row-lift"></div>
+      <div class="fwd-row" id="fwd-row-color"></div>
+      <div class="fwd-row" id="fwd-row-fuse"></div>
+      <div class="fwd-preview" id="fw-desk-preview"></div>
+      <div class="fwd-actions">
+        <button type="button" class="sa-btn ghost" id="fw-desk-back">‹ ย้อนกลับ</button>
+        <button type="button" class="sa-btn primary big" id="fw-desk-launch">🎆 จุดพลุ!</button>
+      </div>
+    </article>
+  </section>
+
+  <!-- 4 · the "WHY?" science card -->
+  <div class="fw-sci-overlay" id="fw-science" hidden>
+    <article class="fw-sci-card">
+      <p class="fw-sci-tag" id="fw-science-tag">Physics Insight</p>
+      <p class="fw-sci-context" id="fw-science-context" hidden></p>
+      <p class="fw-sci-body" id="fw-science-body"></p>
+      <div class="fw-sci-actions">
+        <button type="button" class="sa-btn ghost" id="fw-science-close">ปิด</button>
+        <button type="button" class="sa-btn primary" id="fw-science-retry">↻ ลองอีกครั้ง</button>
+      </div>
+    </article>
+  </div>
+</div>
+
 <!-- ═══ core/ — ZERO dependency on render/ or Three.js ═══ -->
-<script src="js/core/PartsCatalog.js?v=55"></script>
-<script src="js/core/Vehicle.js?v=55"></script>
-<script src="js/core/SimulationEvents.js?v=55"></script>
-<script src="js/core/Diagnostics.js?v=55"></script>
-<script src="js/core/Physics.js?v=55"></script>
-<script src="js/core/Blueprint2D.js?v=55"></script>
+<script src="js/core/PartsCatalog.js?v=58"></script>
+<script src="js/core/Vehicle.js?v=58"></script>
+<script src="js/core/SimulationEvents.js?v=58"></script>
+<script src="js/core/Diagnostics.js?v=58"></script>
+<script src="js/core/Physics.js?v=58"></script>
+<script src="js/core/Blueprint2D.js?v=58"></script>
 
 <!-- ═══ data/ — pure content ═══ -->
-<script src="js/data/parts.js?v=55"></script>
-<script src="js/data/eras.js?v=55"></script>
-<script src="js/data/missions.js?v=55"></script>
+<script src="js/data/parts.js?v=58"></script>
+<script src="js/data/eras.js?v=58"></script>
+<script src="js/data/missions.js?v=58"></script>
 
 <!-- ═══ game/ — rules, consumes the contract ═══ -->
-<script src="js/game/EraManager.js?v=55"></script>
-<script src="js/game/MissionEngine.js?v=55"></script>
-<script src="js/game/MissionBriefing.js?v=55"></script>
+<script src="js/game/EraManager.js?v=58"></script>
+<script src="js/game/MissionEngine.js?v=58"></script>
+<script src="js/game/MissionBriefing.js?v=58"></script>
 
 <!-- ═══ vendor ═══ -->
-<script src="vendor/three/three.min.js?v=55"></script>
-<script src="vendor/three/loaders/GLTFLoader.js?v=55"></script>
+<script src="vendor/three/three.min.js?v=58"></script>
+<script src="vendor/three/loaders/GLTFLoader.js?v=58"></script>
 <!-- GSAP — smooth camera tweens for the orbital-map POI raycaster (graceful if blocked) -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
 
 <!-- ═══ render/ — consumes data, needs Three.js ═══ -->
-<script src="js/render/Scene.js?v=55"></script>
-<script src="js/render/EarthGlobe.js?v=55"></script>
-<script src="js/render/OrbitalEnv.js?v=55"></script>
-<script src="js/render/CameraController.js?v=55"></script>
-<script src="js/render/VehicleRenderer.js?v=55"></script>
-<script src="js/render/ExhaustFX.js?v=55"></script>
-<script src="js/render/SoundFX.js?v=55"></script>
-<script src="js/render/FlightRenderer.js?v=55"></script>
-<script src="js/render/FestivalEnv.js?v=55"></script>
-<script src="js/render/FlightScreen.js?v=55"></script>
+<script src="js/render/Scene.js?v=58"></script>
+<script src="js/render/EarthGlobe.js?v=58"></script>
+<script src="js/render/OrbitalEnv.js?v=58"></script>
+<script src="js/render/CameraController.js?v=58"></script>
+<script src="js/render/VehicleRenderer.js?v=58"></script>
+<script src="js/render/ExhaustFX.js?v=58"></script>
+<script src="js/render/SoundFX.js?v=58"></script>
+<script src="js/render/FlightRenderer.js?v=58"></script>
+<script src="js/render/FestivalEnv.js?v=58"></script>
+<script src="js/render/UI.js?v=58"></script>
+<script src="js/render/FlightScreen.js?v=58"></script>
 
-<script src="js/app.js?v=55"></script>
+<script src="js/app.js?v=58"></script>
 </body>
 </html>

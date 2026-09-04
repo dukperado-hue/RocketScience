@@ -50,8 +50,12 @@
   //  V-2 ballistic gyro-guidance (PID pitch-over + analog drift + MECO); new
   //  integrator event `MECO`; new summary fields `targeting`, `targetRange`,
   //  `mecoTime`, `impactSpeed`, `impactVertSpeed`, `missDistance`, `damageRadius`.
+  //  1.10.0 — ADDITIVE: `simulate(model, {fuse:{time,box:[lo,hi]}})` — a
+  //  time-delay FUSE; the shell BURSTs wherever it is when the fuse runs
+  //  through (or is a DUD if it lands first). New events `BURST` / `DUD`; new
+  //  summary field `burst {occurred,dud,altitude,velocity,time,inBox,box}`.
   //  Trajectory-sample shape UNCHANGED; every existing field untouched.
-  var CONTRACT_VERSION = '1.9.0';
+  var CONTRACT_VERSION = '1.10.0';
 
   // --- gravity turn / pitch program -----------------------------------------
   //  Straight up until (alt > 500 m AND speed > 50 m/s). A short pitch KICK
@@ -605,6 +609,15 @@
     var tumbleT = Infinity;                    // time the tumble started
     var burnT = Infinity;                      // time a lantern's envelope ignited
     var midairBurn = null;                     // {time,alt,vel} for the event
+
+    // --- FUSE + BURST (fireworks) — a time-delay fuse burns from ignition; the
+    //  shell bursts wherever it is when the fuse runs through. Landing first =
+    //  a DUD (it bursts on / in the ground). box = the target-altitude window.
+    var fuseTime = (opts.fuse && +opts.fuse.time > 0) ? +opts.fuse.time
+      : (model.fuseTime > 0 ? +model.fuseTime : 0);
+    var burstBox = (opts.fuse && opts.fuse.box && opts.fuse.box.length === 2)
+      ? [+opts.fuse.box[0], +opts.fuse.box[1]] : null;
+    var burst = null;                          // {time,alt,vel,dud,inBox}
     // a guided vehicle follows a pitch program and never passively tumbles
     var canTumble = !!model.rocketDominant && isFinite(model.copAxisM) && !model.gravityTurn;
     var pitchCmd = PITCH_UP;                   // current commanded thrust attitude
@@ -899,6 +912,25 @@
       if (d.alt > apogee) { apogee = d.alt; apogeeTime = d.t; }
       var spdNow = Math.hypot(d.v, d.vx);
 
+      // --- FUSE BURST ------------------------------------------------------
+      if (fuseTime > 0 && burst === null && liftedOff) {
+        if (d.onPad && d.t < fuseTime - 1e-6) {
+          burst = { time: round(d.t, 3), alt: 0, vel: round(spdNow, 2), dud: true };
+        } else if (d.t >= fuseTime) {
+          // a burst at ~ground level is a dud too (it goes off in the dirt)
+          burst = { time: round(fuseTime, 3), alt: round(d.alt, 2),
+            vel: round(spdNow, 2), dud: d.alt < 3 };
+        }
+        if (burst) {
+          burst.inBox = !!burstBox && !burst.dud &&
+            burst.alt >= burstBox[0] && burst.alt <= burstBox[1];
+          // an airborne burst ends the shell — coast a beat so the trail
+          // settles, then stop. A dud keeps falling / finishes normally.
+          if (!burst.dud) softLimit = Math.min(softLimit, d.t + 0.35);
+          trajectory.push(toState(d, tumbleT, burnT));
+        }
+      }
+
       // --- APOGEE BREAKUP (traditional Bang Fai) --------------------------
       //  At the top of the arc a folk-craft บั้งไฟ burns through the head and
       //  the stick snaps — it does NOT spear back down like a lawn dart, it
@@ -1034,6 +1066,9 @@
     }
     if (state.t >= softLimit && softLimit >= maxTime) reason = 'ถึงเวลาจำกัดการจำลอง';
     else if (orbit && state.t >= softLimit) reason = 'เข้าสู่วงโคจรเสถียร';
+    else if (burst && !burst.dud) reason = burst.inBox
+      ? 'ลูกพลุแตกในกรอบเป้าหมาย 🎯' : 'ลูกพลุแตกกลางฟ้า';
+    else if (burst && burst.dud) reason = 'ลูกพลุด้าน — ตกถึงพื้นก่อนชนวนจะไหม้';
 
     var summary = {
       apogee: round(apogee, 2),
@@ -1066,6 +1101,13 @@
       impactVertSpeed: round(lastVertSpeed, 2),
       missDistance: 0,
       damageRadius: 0,
+      // --- fuse / burst (fireworks · Phase 16) ---
+      burst: burst ? {
+        occurred: !burst.dud, dud: !!burst.dud,
+        altitude: burst.alt, velocity: burst.vel, time: burst.time,
+        inBox: !!burst.inBox, box: burstBox || null
+      } : { occurred: false, dud: false, altitude: 0, velocity: 0, time: 0,
+            inBox: false, box: burstBox || null },
       mode: motorMode
     };
 
@@ -1087,6 +1129,17 @@
       physicsEvents.push({
         time: round(liftoffTime, 3), type: 'LIFTOFF', message: 'ทะยานพ้นพื้น',
         altitude: round(liftoffAlt, 2), velocity: round(liftoffVel, 2)
+      });
+    }
+    if (burst) {
+      physicsEvents.push({
+        time: burst.time,
+        type: burst.dud ? 'DUD' : 'BURST',
+        message: burst.dud
+          ? 'ชนวนไหม้ไม่ทัน — ลูกพลุตกถึงพื้นก่อนแตก (ด้าน)'
+          : ('ลูกพลุแตกที่ ' + fmtKm(burst.alt) +
+             (burst.inBox ? ' — ในกรอบเป้าหมาย 🎯' : ' — นอกกรอบเป้าหมาย')),
+        altitude: burst.alt, velocity: burst.vel
       });
     }
     if (mecoTime !== null) {
@@ -1315,6 +1368,7 @@
       orbit: { achieved: false, apoapsis: 0, periapsis: 0, eccentricity: 0, period: 0 },
       targeting: false, targetRange: 0, mecoTime: null,
       impactSpeed: 0, impactVertSpeed: 0, missDistance: 0, damageRadius: 0,
+      burst: { occurred: false, dud: false, altitude: 0, velocity: 0, time: 0, inBox: false, box: null },
       mode: 'none'
     };
   }

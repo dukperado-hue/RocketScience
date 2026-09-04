@@ -135,6 +135,28 @@
           ' — ต้องบินแนวราบให้เกิน ' + fmtM(o.downrangeMin) + ' (ใช้ Gravity Turn)');
       }
 
+      if (o.burstAltitudeBox != null) {
+        var box = o.burstAltitudeBox;
+        var br = sum.burst || {};
+        var bAlt = br.altitude || 0;
+        var inBox = !!br.occurred && !br.dud && bAlt >= box[0] && bAlt <= box[1];
+        res.objectives.push({
+          label: 'ดอกพลุบานในกรอบ ' + box[0] + '–' + box[1] + ' ม.',
+          met: inBox,
+          actual: br.dud ? 'ด้าน — แตกกลางพื้น'
+            : !br.occurred ? 'ไม่ทันแตก'
+            : ('แตกที่ ' + Math.round(bAlt) + ' ม.')
+        });
+        if (!inBox) {
+          if (br.dud) res.failReasons.push('ลูกพลุด้าน — ตกถึงพื้นก่อนชนวนจะไหม้ถึง (ชนวนยาวเกินแรงส่ง)');
+          else if (!br.occurred) res.failReasons.push('ลูกพลุยังไม่ทันแตก');
+          else if (bAlt < box[0]) res.failReasons.push('ดอกพลุบานต่ำไป — แตกที่ ' + Math.round(bAlt) +
+            ' ม. ต้องถึง ' + box[0] + ' ม. (แรงส่งน้อยไป หรือชนวนไม่ตรงจุดสูงสุด)');
+          else res.failReasons.push('ดอกพลุบานสูงเกินกรอบ — แตกที่ ' + Math.round(bAlt) +
+            ' ม. เกิน ' + box[1] + ' ม. (แรงส่งมากไป)');
+        }
+      }
+
       if (o.flightTimeMin != null) {
         var ft = sum.flightTime || 0;
         var metFt = ft >= o.flightTimeMin;

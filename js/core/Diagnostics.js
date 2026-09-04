@@ -166,6 +166,34 @@
       }
     }
 
+    // --- 4d · FIREWORK BURST — did the shell burst in the target box? -----
+    var br = sum.burst;
+    if (br && (br.occurred || br.dud || (br.box && br.box.length === 2))) {
+      var bx = br.box;
+      var apo = sum.apogee || 0, apoT = sum.apogeeTime || 0, bT = br.time || 0;
+      var timingDetail = 'ชนวน ' + bT.toFixed(1) + ' วิ · จุดสูงสุด ' + fmtAlt(apo) +
+        ' ที่ ' + apoT.toFixed(1) + ' วิ' + (bx ? ' · กรอบ ' + bx[0] + '–' + bx[1] + ' ม.' : '');
+      if (br.dud) {
+        add('burst', FAIL, 'ลูกพลุด้าน — แตกกลางพื้น',
+          'ชนวนยาวเกินแรงส่ง: ลูกพลุตกถึงพื้นก่อนชนวนจะไหม้ถึง (' + timingDetail + ')');
+      } else if (!br.occurred) {
+        add('burst', WARN, 'ยังไม่ทันแตก', timingDetail);
+      } else if (bx && br.altitude >= bx[0] && br.altitude <= bx[1]) {
+        add('burst', OK, 'ดอกพลุบานในกรอบเป้าหมาย 🎯',
+          'แตกที่ ' + fmtAlt(br.altitude) + ' — ' + timingDetail);
+      } else if (bx && br.altitude < bx[0]) {
+        add('burst', FAIL, 'ดอกพลุบานต่ำเกินไป',
+          'แตกที่ ' + fmtAlt(br.altitude) + ' (ต้องถึง ' + bx[0] + ' ม.) — ' +
+          (bT > apoT + 0.2 ? 'ชนวนยาวไป ลูกร่วงลงก่อนแตก' : 'แรงส่งน้อยไป หรือชนวนสั้นไป') +
+          ' · ' + timingDetail);
+      } else if (bx) {
+        add('burst', FAIL, 'ดอกพลุบานสูงเกินกรอบ',
+          'แตกที่ ' + fmtAlt(br.altitude) + ' (เกิน ' + bx[1] + ' ม.) — แรงส่งมากไป · ' + timingDetail);
+      } else {
+        add('burst', OK, 'ลูกพลุแตกกลางฟ้า', 'แตกที่ ' + fmtAlt(br.altitude) + ' — ' + timingDetail);
+      }
+    }
+
     // --- 5 · flight outcome ------------------------------------------
     if (!sim || !sim.ok) {
       add('outcome', FAIL, 'การจำลองไม่สำเร็จ', (sim && sim.reason) || '');
@@ -226,11 +254,48 @@
     return m >= 1000 ? (m / 1000).toFixed(2) + ' km' : Math.round(m) + ' m';
   }
 
+  /**
+   * The "WHY?" Science Card — a short teaching card shown when a mission fails.
+   * Content comes from the mission's `atlas.science` block (falls back to a
+   * generic projectile-motion card); a one-line CONTEXT sentence derived from
+   * this specific flight is prepended so the lesson lands on what just happened.
+   * @returns {{tag:string, context:string, body:string}}
+   */
+  function scienceCard(mission, sim) {
+    var sci = (mission && mission.atlas && mission.atlas.science) || {
+      tag: 'Physics Insight · Projectile Motion',
+      body: 'จังหวะแตกต้องตรงกับจุดสูงสุด (apogee) ของแรงส่ง — ' +
+        'ถ้าชนวนยาวเกินไป แรงโน้มถ่วงจะดึงลูกพลุตกลงมาก่อนแตก!'
+    };
+    var sum = (sim && sim.summary) || {};
+    var br = sum.burst || {};
+    var bx = br.box, ctx = '';
+    if (br.dud) {
+      ctx = 'รอบนี้: ชนวนไหม้ไม่ทัน ลูกพลุตกถึงพื้นก่อนแตก — แรงส่งพาลูกขึ้นได้แค่ ' +
+        fmtAlt(sum.apogee || 0) + ' แล้วร่วงลงภายใน ' + (br.time || 0).toFixed(1) + ' วิ.';
+    } else if (br.occurred && bx && (br.altitude < bx[0] || br.altitude > bx[1])) {
+      var apoT = sum.apogeeTime || 0;
+      if (br.altitude < bx[0] && (br.time || 0) > apoT + 0.2) {
+        ctx = 'รอบนี้: ลูกพลุถึงจุดสูงสุด (' + fmtAlt(sum.apogee || 0) + ') ที่ ' + apoT.toFixed(1) +
+          ' วิ แต่ชนวนตั้งไว้ ' + (br.time || 0).toFixed(1) + ' วิ — แรงโน้มถ่วงดึงมันร่วงลงมาแตกที่ ' +
+          fmtAlt(br.altitude) + '.';
+      } else if (br.altitude < bx[0]) {
+        ctx = 'รอบนี้: แรงส่งพาลูกขึ้นได้แค่ ' + fmtAlt(sum.apogee || 0) +
+          ' ยังไม่ถึงกรอบ — ลูกแตกที่ ' + fmtAlt(br.altitude) + '.';
+      } else {
+        ctx = 'รอบนี้: แรงส่งแรงเกินไป ลูกพลุพุ่งถึง ' + fmtAlt(sum.apogee || 0) +
+          ' แตกที่ ' + fmtAlt(br.altitude) + ' เลยกรอบไป.';
+      }
+    }
+    return { tag: sci.tag, context: ctx, body: sci.body };
+  }
+
   global.RS = global.RS || {};
   global.RS.Diagnostics = {
     STATUS: { OK: OK, WARN: WARN, FAIL: FAIL },
     run: run,
-    verdict: verdict
+    verdict: verdict,
+    scienceCard: scienceCard
   };
 
 })(typeof window !== 'undefined' ? window : this);

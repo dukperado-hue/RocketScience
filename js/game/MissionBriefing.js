@@ -163,6 +163,13 @@
     if (cb) cb();
   };
 
+  /** Dismiss the briefing without accepting (e.g. a different flow took over). */
+  MissionBriefing.prototype.hide = function () {
+    if (this._timer) { global.clearTimeout(this._timer); this._timer = 0; }
+    this._onAccept = null;
+    if (this.root) this.root.hidden = true;
+  };
+
   // ---- spec-sheet rows ---------------------------------------------
   function objectiveRows(m) {
     var o = m.objectives || {}, rows = [];

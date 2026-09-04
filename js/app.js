@@ -210,7 +210,9 @@
   }
 
   missionBtn.addEventListener('click', function () {
-    openBriefing(activeMission || RS.MissionEngine.firstUnfinished(currentEra));
+    var m = activeMission || RS.MissionEngine.firstUnfinished(currentEra);
+    if (openFireworkFlow(currentEra)) return;
+    openBriefing(m);
   });
 
   // keep the preview in sync only while its modal is on screen
@@ -309,24 +311,29 @@
     document.getElementById('bp-watch').disabled = true;
     var m = RS.MissionEngine.firstUnfinished(eraId);
     setActiveMission(m);
-    openBriefing(m);
+    // the Fireworks era opens THE SKY ATLAS instead of the plain briefing
+    if (!openFireworkFlow(eraId, m)) openBriefing(m);
   });
 
   // ---- LAUNCH — the cinematic transition from drafting board to launch pad
   var transEl = document.getElementById('launch-transition');
   var launching = false;
 
-  document.getElementById('bp-run').addEventListener('click', function () {
+  /**
+   * The shared launch pipeline: hold the "CALCULATING…" transition, run the
+   * sim, render the analysis, score the mission, open the flight screen.
+   * @param {Object} [extra]  { simOpts:Object, flightOpts:Object }  merged in
+   */
+  function doLaunch(extra) {
     if (launching) return;
     launching = true;
+    extra = extra || {};
     var model = vehicle.toPhysicsModel();
 
     transEl.hidden = false;
     void transEl.offsetWidth;             // flush so the fade-in actually plays
     transEl.classList.add('show');
 
-    // hold the "CALCULATING…" screen ~650ms; also wait for any .glb models this
-    // vehicle needs so the flight scene shows them from frame one, not popping in
     var holdDone = new Promise(function (r) { setTimeout(r, 650); });
     Promise.all([holdDone, ensureModels(vehicle)]).then(function () {
       try {
@@ -336,10 +343,12 @@
           var szr = activeMission.constraints && activeMission.constraints.safeZoneRadius;
           if (szr != null) simOpts.safeZoneRadius = szr;
         }
-        // ---- Era 3 · V-2 : a single-stage gyro-guided rocket flies a
-        //  ballistic program at a target in the sea east of Thailand
+        // ---- Era 3 · V-2 : ballistic gyro-guidance to a sea target
         var isV2 = !!(model && model.gravityTurn && !model.staged);
         if (isV2) simOpts.target = { range: 2500, gyroDrift: 0.5 };
+        // ---- caller-supplied opts (e.g. the Firework Design Desk's fuse)
+        for (var k in (extra.simOpts || {})) simOpts[k] = extra.simOpts[k];
+
         var result = RS.Physics.simulate(model, simOpts);
         lastSim = result;
         lastSimOpts = simOpts;
@@ -365,9 +374,9 @@
         console.log('[FIRE→ORBIT] SimulationResult v' + result.contractVersion, result);
 
         if (cinematic) {
-          flightScreen.open(lastSim, vehicle, activeMission, {
-            cinematic: true, simOpts: simOpts, daylight: isV2
-          });
+          var fo = { cinematic: true, simOpts: simOpts, daylight: isV2 };
+          for (var f in (extra.flightOpts || {})) fo[f] = extra.flightOpts[f];
+          flightScreen.open(lastSim, vehicle, activeMission, fo);
         } else {
           document.querySelector('.bp-sim').scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
@@ -378,7 +387,54 @@
       setTimeout(function () { transEl.hidden = true; }, 360);
       launching = false;
     });
-  });
+  }
+  document.getElementById('bp-run').addEventListener('click', function () { doLaunch(); });
+
+  // ======================================================================
+  //  THE SKY ATLAS — the Fireworks campaign front-end (Phase 16)
+  // ======================================================================
+  var FW_ERA = '1p5-fireworks';
+  function isAtlasMission(m) { return !!(m && m.atlas); }
+  function eraHasAtlas(eraId) {
+    return !!(RS.render.UI && RS.data.missions.forEra(eraId).some(isAtlasMission));
+  }
+
+  if (RS.render.UI) {
+    RS.render.UI.init({
+      missions: RS.data.missions,
+      missionEngine: RS.MissionEngine,
+      onLaunchFirework: function (mission, design) {
+        // assemble the abstract firework: one lift charge + the shell
+        builder.reset();
+        var C = RS.PartsCatalog;
+        var ch = vehicle.addInstance(C.get(design.lift), 0, 1, []);
+        vehicle.addInstance(C.get('fw_shell_atlas'), 0, 0,
+          [{ node: 'bottom', toIid: ch.iid, toNode: 'top' }]);
+        builder._afterEdit('พลุ ' + design.color + ' · ชนวน ' + design.fuse + ' วิ');
+        setActiveMission(mission);
+        var box = (mission.objectives && mission.objectives.burstAltitudeBox) || null;
+        doLaunch({
+          simOpts: { fuse: { time: design.fuse, box: box } },
+          flightOpts: {
+            firework: {
+              color: design.color, colorHex: design.colorHex,
+              box: box, lift: design.lift, fuse: design.fuse
+            },
+            onRetry: function () { RS.render.UI.openDesignDesk(mission); }
+          }
+        });
+      }
+    });
+  }
+  function openFireworkFlow(eraId, mission) {
+    if (eraId === FW_ERA && eraHasAtlas(eraId)) {
+      if (RS.MissionBriefing && RS.MissionBriefing.hide) RS.MissionBriefing.hide();
+      if (mission && isAtlasMission(mission)) setActiveMission(mission);
+      RS.render.UI.openSkyAtlas();       // the mission-select constellation
+      return true;
+    }
+    return false;
+  }
 
   function renderMissionResult(r) {
     if (!r || !r.mission) { missionResultEl.hidden = true; return; }
@@ -523,6 +579,7 @@
     var m = RS.MissionEngine.firstUnfinished(currentEra);
     setActiveMission(m);
     missionBar.hidden = true;          // stays hidden behind the briefing
+    if (openFireworkFlow(currentEra, m)) return;
     openBriefing(m);
   })();
 

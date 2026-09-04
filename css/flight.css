@@ -191,6 +191,11 @@
   border-color: rgba(95,224,168,0.5); color: #eafff5;
 }
 .fs-ap-btn:hover { filter: brightness(1.12); }
+.fs-ap-btn.fs-why {
+  background: linear-gradient(180deg, #7b5cc4, #543a92);
+  border-color: rgba(180,150,255,0.55); color: #f2ecff;
+  box-shadow: 0 0 22px rgba(140,110,230,0.35);
+}
 
 .fs-hint {
   position: absolute; right: 18px; bottom: 78px;

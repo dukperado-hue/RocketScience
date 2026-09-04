@@ -351,6 +351,66 @@
       attachNodes: [
         { id: 'bottom', dx: 0.5, dy: 1, type: NODE.STACK, accepts: ['Propulsion'] }
       ]
+    },
+
+    // ---- THE SKY ATLAS · abstracted firework "Design Desk" parts (Phase 16) ---
+    //  The player never snaps these by hand — the Firework Design Desk assembles
+    //  a shell + one lift charge from three menu choices (lift / colour / fuse).
+    //  Three lift charges tuned so their apogees straddle a ~100 m target box,
+    //  and their time-to-apogee straddles the 1.5 / 3.0 / 4.5 s fuse options —
+    //  the whole point of M01 is learning to match the fuse to the apogee.
+    {
+      id: 'fw_lift_s', name: 'ดินส่ง — เล็ก (Small)', category: C.PROPULSION,
+      icon: '•', era: '1p5-fireworks',
+      blurb: 'แรงส่งน้อย — ลูกพลุขึ้นได้ไม่สูง ถึงยอดเร็ว เหมาะกับชนวนสั้น',
+      mass: 0.04, cost: 8, size: { w: 1, h: 1 },
+      aerodynamics: { dragCoefficient: 0.6, crossSectionArea: 0.004 },
+      structural: { maxDynamicPressure: 250000 },
+      propulsion: { mode: 'rocket', thrust: 44, burnTime: 0.2, specificImpulse: 55,
+        propellantMass: 0.03, spoolTime: 0 },
+      attachNodes: [
+        { id: 'top', dx: 0.5, dy: 0, type: NODE.STACK, accepts: ['Payload'] },
+        { id: 'bottom', dx: 0.5, dy: 1, type: NODE.STACK, accepts: ['Structural'] }
+      ]
+    },
+    {
+      id: 'fw_lift_m', name: 'ดินส่ง — กลาง (Medium)', category: C.PROPULSION,
+      icon: '••', era: '1p5-fireworks',
+      blurb: 'แรงส่งปานกลาง — ยอดราว 100 ม. ถึงยอดราว 3 วินาที',
+      mass: 0.05, cost: 12, size: { w: 1, h: 1 },
+      aerodynamics: { dragCoefficient: 0.6, crossSectionArea: 0.004 },
+      structural: { maxDynamicPressure: 250000 },
+      propulsion: { mode: 'rocket', thrust: 175, burnTime: 0.2, specificImpulse: 55,
+        propellantMass: 0.045, spoolTime: 0 },
+      attachNodes: [
+        { id: 'top', dx: 0.5, dy: 0, type: NODE.STACK, accepts: ['Payload'] },
+        { id: 'bottom', dx: 0.5, dy: 1, type: NODE.STACK, accepts: ['Structural'] }
+      ]
+    },
+    {
+      id: 'fw_lift_l', name: 'ดินส่ง — ใหญ่ (Large)', category: C.PROPULSION,
+      icon: '•••', era: '1p5-fireworks',
+      blurb: 'แรงส่งมาก — ขึ้นสูงเกินกรอบได้ง่าย ถึงยอดช้า ต้องใช้ชนวนยาว',
+      mass: 0.06, cost: 18, size: { w: 1, h: 1 },
+      aerodynamics: { dragCoefficient: 0.6, crossSectionArea: 0.004 },
+      structural: { maxDynamicPressure: 250000 },
+      propulsion: { mode: 'rocket', thrust: 320, burnTime: 0.2, specificImpulse: 55,
+        propellantMass: 0.06, spoolTime: 0 },
+      attachNodes: [
+        { id: 'top', dx: 0.5, dy: 0, type: NODE.STACK, accepts: ['Payload'] },
+        { id: 'bottom', dx: 0.5, dy: 1, type: NODE.STACK, accepts: ['Structural'] }
+      ]
+    },
+    {
+      id: 'fw_shell_atlas', name: 'ลูกพลุ (Shell)', category: C.PAYLOAD,
+      icon: '🎆', era: '1p5-fireworks',
+      blurb: 'ลูกกลมบรรจุดาวไฟ + ชนวนหน่วงเวลา — สีของดอกพลุมาจากสารเคมีที่เลือก',
+      mass: 0.24, cost: 20, size: { w: 1, h: 1 },
+      aerodynamics: { dragCoefficient: 0.34, crossSectionArea: 0.028 },
+      structural: { maxDynamicPressure: 120000 },
+      attachNodes: [
+        { id: 'bottom', dx: 0.5, dy: 1, type: NODE.STACK, accepts: ['Propulsion'] }
+      ]
     }
   ];
 
