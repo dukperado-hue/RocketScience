@@ -51,6 +51,37 @@
     return _paperTex;
   }
 
+  // The A4 / V-2's signature roll-reference paint scheme: the airframe split
+  // into four vertical quadrants, alternating matte white / near-black, with a
+  // checker patch on one white quadrant — the Peenemünde photo-theodolite
+  // pattern that let engineers read the rocket's spin from tracking film.
+  // U wraps the circumference; shared by the nose ogive and the body tank.
+  var _v2Tex = null;
+  function v2SkinTex() {
+    if (_v2Tex !== null) return _v2Tex || undefined;
+    if (!THREE || typeof document === 'undefined') { _v2Tex = false; return undefined; }
+    var c = document.createElement('canvas');
+    c.width = 256; c.height = 256;
+    var g = c.getContext('2d');
+    var WHITE = '#e9e7df', BLACK = '#1b1b1b';
+    g.fillStyle = WHITE; g.fillRect(0, 0, 256, 256);
+    g.fillStyle = BLACK;
+    g.fillRect(0, 0, 64, 256);       // quadrant 1
+    g.fillRect(128, 0, 64, 256);     // quadrant 3
+    for (var i = 0; i < 4; i++) {    // checker across the top of a white quadrant
+      for (var j = 0; j < 6; j++) {
+        if ((i + j) % 2 === 0) { g.fillRect(64 + i * 16, j * 16, 16, 16); }
+      }
+    }
+    _v2Tex = new THREE.CanvasTexture(c);
+    _v2Tex.wrapS = THREE.RepeatWrapping;
+    _v2Tex.wrapT = THREE.ClampToEdgeWrapping;
+    _v2Tex.magFilter = THREE.NearestFilter;
+    if ('colorSpace' in _v2Tex && THREE.SRGBColorSpace) _v2Tex.colorSpace = THREE.SRGBColorSpace;
+    else if ('encoding' in _v2Tex && THREE.sRGBEncoding) _v2Tex.encoding = THREE.sRGBEncoding;
+    return _v2Tex;
+  }
+
   // ---------------------------------------------------------------------------
   //  GLTF / GLB model loader — cache + graceful fallback
   //
@@ -218,22 +249,47 @@
       if (loaded) return loaded;
     }
 
-    // ---- ERA 3 · V-2 (liquid) ------------------------------------------
+    // ---- ERA 3 · V-2 / A4 — the authentic 1944 silhouette --------------
+    //  thick cylindrical body · long pointed OGIVE nose · FOUR large swept
+    //  aerodynamic fins running past the nozzle · black-and-white roll paint.
+    //  No wings, no external tanks, no capsule — a piece of 1940s engineering.
     if (entry.partId === 'v2_nose') {
-      geo = new THREE.ConeGeometry(d.w * 0.44, d.h * 1.1, 22);
-      mat = new THREE.MeshStandardMaterial({ color: 0xd7dce3, roughness: 0.4, metalness: 0.35 });
-      mesh = new THREE.Mesh(geo, mat);
+      // a tangent-ogive nose: full radius at the base, curving to a sharp tip
+      var v2ncGeo = new THREE.ConeGeometry(d.w * 0.46, d.h * 1.35, 30);
+      var vp = v2ncGeo.attributes.position;
+      var vHalf = d.h * 0.675;
+      for (var vi = 0; vi < vp.count; vi++) {
+        var vny = (vp.getY(vi) + vHalf) / (d.h * 1.35);        // 0 base → 1 tip
+        vny = vny < 0 ? 0 : (vny > 1 ? 1 : vny);
+        var vcur = Math.sqrt(vp.getX(vi) * vp.getX(vi) + vp.getZ(vi) * vp.getZ(vi));
+        if (vcur < 1e-6) continue;
+        var vwant = (d.w * 0.46) * Math.pow(Math.cos(vny * Math.PI / 2), 0.62);
+        var vsc = vwant / vcur;
+        vp.setX(vi, vp.getX(vi) * vsc);
+        vp.setZ(vi, vp.getZ(vi) * vsc);
+      }
+      v2ncGeo.computeVertexNormals();
+      var v2skin = v2SkinTex();
+      mesh = new THREE.Mesh(v2ncGeo, new THREE.MeshStandardMaterial({
+        map: v2skin, color: v2skin ? 0xffffff : 0xe9e7df,
+        roughness: 0.62, metalness: 0.12
+      }));
+      mesh.castShadow = true;
       mesh.position.set(entry.world.x, entry.world.y, entry.world.z);
       mesh.userData.iid = entry.iid;
       return mesh;
     }
     if (entry.partId === 'v2_tank') {
-      geo = new THREE.CylinderGeometry(d.w * 0.42, d.w * 0.42, d.h * 0.98, 24);
-      mat = new THREE.MeshStandardMaterial({ color: 0x9fa6b0, roughness: 0.45, metalness: 0.4 });
-      mesh = new THREE.Mesh(geo, mat);
+      var v2body = v2SkinTex();
+      geo = new THREE.CylinderGeometry(d.w * 0.46, d.w * 0.46, d.h * 0.99, 30);
+      mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
+        map: v2body, color: v2body ? 0xffffff : 0xe9e7df,
+        roughness: 0.6, metalness: 0.14
+      }));
+      mesh.castShadow = true;
       var seam = new THREE.Mesh(
-        new THREE.TorusGeometry(d.w * 0.42, d.w * 0.03, 6, 24),
-        new THREE.MeshStandardMaterial({ color: 0x6a7076, roughness: 0.6 }));
+        new THREE.TorusGeometry(d.w * 0.462, d.w * 0.02, 6, 28),
+        new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.7 }));
       seam.rotation.x = Math.PI / 2;
       mesh.add(seam);
       mesh.position.set(entry.world.x, entry.world.y, entry.world.z);
@@ -242,30 +298,57 @@
     }
     if (entry.partId === 'v2_engine') {
       var eg = new THREE.Group();
+      // tapered aft body / boat-tail — brushed steel, not painted
       var body = new THREE.Mesh(
-        new THREE.CylinderGeometry(d.w * 0.40, d.w * 0.44, d.h * 0.60, 22),
-        new THREE.MeshStandardMaterial({ color: 0x3d4148, roughness: 0.5, metalness: 0.5 }));
-      body.position.y = d.h * 0.15;
+        new THREE.CylinderGeometry(d.w * 0.46, d.w * 0.40, d.h * 0.66, 28),
+        new THREE.MeshStandardMaterial({ color: 0x6c6f76, roughness: 0.55, metalness: 0.45 }));
+      body.position.y = d.h * 0.14;
+      body.castShadow = true;
       var bell = new THREE.Mesh(
-        new THREE.CylinderGeometry(d.w * 0.18, d.w * 0.40, d.h * 0.42, 22, 1, true),
-        new THREE.MeshStandardMaterial({ color: 0x26262c, roughness: 0.4, metalness: 0.6, side: THREE.DoubleSide }));
+        new THREE.CylinderGeometry(d.w * 0.17, d.w * 0.40, d.h * 0.46, 24, 1, true),
+        new THREE.MeshStandardMaterial({ color: 0x1f1f24, roughness: 0.42, metalness: 0.6, side: THREE.DoubleSide }));
       bell.position.y = -d.h * 0.34;
       eg.add(body); eg.add(bell);
-      // four V-2 fins — the big aft reference area that keeps it stable
-      var finMat = new THREE.MeshStandardMaterial({ color: 0x53575e, roughness: 0.7, side: THREE.DoubleSide });
+
+      // ---- FOUR large swept trapezoidal fins — the A4's defining feature.
+      //  A full body-diameter of span per side, root chord running past the
+      //  nozzle exit. Alternating white / black to carry the roll pattern aft.
+      var finWhite = new THREE.MeshStandardMaterial({
+        color: 0xe9e7df, roughness: 0.62, metalness: 0.08, side: THREE.DoubleSide });
+      var finBlack = new THREE.MeshStandardMaterial({
+        color: 0x1b1b1b, roughness: 0.7, metalness: 0.08, side: THREE.DoubleSide });
+      var fSpan = d.w * 1.15, fRoot = d.h * 1.05, fTip = d.h * 0.42;
+      var fThick = d.w * 0.06, fSweep = d.h * 0.5;
+      var finShape = new THREE.Shape();
+      finShape.moveTo(0, fRoot * 0.5);
+      finShape.lineTo(fSpan, fRoot * 0.5 - fSweep);
+      finShape.lineTo(fSpan, fRoot * 0.5 - fSweep - fTip);
+      finShape.lineTo(0, -fRoot * 0.5);
+      finShape.closePath();
+      var finGeo = new THREE.ExtrudeGeometry(finShape, { depth: fThick, bevelEnabled: false });
+      finGeo.translate(0, 0, -fThick / 2);
       for (var fn = 0; fn < 4; fn++) {
-        var blade = new THREE.Mesh(new THREE.BoxGeometry(d.w * 0.5, d.h * 0.5, d.w * 0.05), finMat);
-        var hold = new THREE.Group();
+        var blade = new THREE.Mesh(finGeo, fn % 2 ? finBlack : finWhite);
+        blade.castShadow = true;
         blade.position.x = d.w * 0.42;
+        var hold = new THREE.Group();
         hold.add(blade);
         hold.rotation.y = fn * Math.PI / 2;
-        hold.position.y = -d.h * 0.22;
+        hold.position.y = -d.h * 0.30;   // low — the fin roots straddle the bell
         eg.add(hold);
       }
+      // a light tail ring bracing the four fin roots
+      var tailRing = new THREE.Mesh(
+        new THREE.TorusGeometry(d.w * 0.44, d.w * 0.03, 6, 24),
+        new THREE.MeshStandardMaterial({ color: 0x33343a, roughness: 0.6 }));
+      tailRing.rotation.x = Math.PI / 2;
+      tailRing.position.y = -d.h * 0.55;
+      eg.add(tailRing);
+
       var flame = new THREE.Mesh(
-        new THREE.ConeGeometry(d.w * 0.22, d.h * 0.9, 16),
+        new THREE.ConeGeometry(d.w * 0.20, d.h * 0.9, 16),
         new THREE.MeshBasicMaterial({ color: 0xffd07a }));
-      flame.position.y = -d.h * 0.85;
+      flame.position.y = -d.h * 0.9;
       flame.rotation.x = Math.PI;
       eg.add(flame);
       eg.position.set(entry.world.x, entry.world.y, entry.world.z);

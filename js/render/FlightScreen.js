@@ -46,6 +46,29 @@
   };
   var UP = THREE ? new THREE.Vector3(0, 1, 0) : null;
   var RATES = [0.5, 1, 2, 4];
+
+  // The launch site — the north pole of the globe (the pad sits at the world
+  // origin). Orienting a real place to +Y puts that continent under the rocket
+  // and lets the orbital-map POI raycaster frame it as "the launch site".
+  var LAUNCH_LAT = 13.7, LAUNCH_LON = 100.5;   // ~Bangkok, Thailand
+
+  // a soft additive halo sprite for the map POI markers
+  function makeHaloSprite(hex) {
+    if (!THREE || typeof document === 'undefined') return null;
+    var s = 128, cv = document.createElement('canvas');
+    cv.width = cv.height = s;
+    var g = cv.getContext('2d');
+    var grd = g.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
+    var c = hex || '255,120,90';
+    grd.addColorStop(0.0, 'rgba(' + c + ',0.95)');
+    grd.addColorStop(0.3, 'rgba(' + c + ',0.45)');
+    grd.addColorStop(1.0, 'rgba(' + c + ',0)');
+    g.fillStyle = grd; g.fillRect(0, 0, s, s);
+    var tex = new THREE.CanvasTexture(cv);
+    return new THREE.Sprite(new THREE.SpriteMaterial({
+      map: tex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+    }));
+  }
   // C key / the 🎥 button cycles these in order; a drag while an auto-tracking
   // rig is running hands control straight to 'free' (see the pointermove below)
   var CAM_MODES = ['observer', 'chase', 'free', 'ground', 'map'];
@@ -259,6 +282,12 @@
       self._phi = clamp(self._phi - dy * 0.008, 0.16, 1.5);
     });
     global.addEventListener('pointerup', function () { self._drag = null; });
+    // orbital-map POI pick — a click (not a drag) on a marker frames it
+    this.canvas.addEventListener('pointerup', function (e) {
+      if (CAM_MODES[self._camIdx] !== 'map') return;
+      if ((self._dragDist || 0) > 6) return;
+      self._pickMapPOI(e);
+    });
     this.canvas.addEventListener('wheel', function (e) {
       e.preventDefault();
       self._zoom = clamp(self._zoom * (e.deltaY < 0 ? 0.88 : 1.14), 0.04, 60);
@@ -291,7 +320,8 @@
 
     var mapIdx = CAM_MODES.indexOf('map');
     if (evt.type === 'ORBIT' && this._camIdx !== mapIdx) {
-      this._camIdx = mapIdx; this._zoom = 1;
+      this._camIdx = mapIdx;
+      this._resetMapView();
       this.btnCam.textContent = CAM_LABEL.map;
     }
   };
@@ -301,6 +331,8 @@
     var mode = CAM_MODES[this._camIdx];
     this.btnCam.textContent = CAM_LABEL[mode];
     this._zoom = 1;
+    if (mode === 'map') { this._resetMapView(); this._showToast('แผนที่วงโคจร — แตะหมุดฐานปล่อย / ยาน เพื่อซูมเข้าไปดู'); }
+    else if (this._mapEase || this._mapLook) { this._mapEase = null; }
     if (mode === 'free') {
       var st = this.flight.sampleAt(this.flight.time);
       this._freeTarget.set(
@@ -459,14 +491,38 @@
     this._stars = makeStars(1400, RE * 4);
     sc.add(this._stars);
 
-    // ---- THE PLANET — a real sphere centred at (0, -RE) --------------
-    var planet = new THREE.Mesh(
-      new THREE.SphereGeometry(RE, 96, 64),
-      new THREE.MeshStandardMaterial({ color: 0x1f5133, roughness: 1, metalness: 0 })
-    );
-    planet.position.set(0, -RE, 0);
-    planet.receiveShadow = true;
-    sc.add(planet);
+    // ---- THE PLANET — the Blue Marble, centred at (0, -RE) so its north
+    //  pole (the launch site) sits at the world origin / launch pad. -------
+    var earthGlobe = RS.render.EarthGlobe
+      ? RS.render.EarthGlobe.build(RE, { detail: 12, rimHex: 0x5aa9ff })
+      : null;
+    var planet;
+    if (earthGlobe) {
+      earthGlobe.position.set(0, -RE, 0);
+      RS.render.EarthGlobe.orientTo(earthGlobe, LAUNCH_LAT, LAUNCH_LON);
+      var maxAniso = (this.scene.renderer.capabilities &&
+        this.scene.renderer.capabilities.getMaxAnisotropy)
+        ? this.scene.renderer.capabilities.getMaxAnisotropy() : 1;
+      earthGlobe.traverse(function (o) {
+        if (o.isMesh) {
+          o.receiveShadow = true;
+          if (o.material && o.material.map) o.material.map.anisotropy = maxAniso;
+        }
+      });
+      sc.add(earthGlobe);
+      this._earth = earthGlobe;
+      planet = earthGlobe.userData.earth;         // the MeshStandardMaterial mesh
+      planet.userData.textured = true;
+    } else {
+      // fallback: the old flat sphere if EarthGlobe / textures are unavailable
+      planet = new THREE.Mesh(
+        new THREE.SphereGeometry(RE, 96, 64),
+        new THREE.MeshStandardMaterial({ color: 0x1f5133, roughness: 1, metalness: 0 })
+      );
+      planet.position.set(0, -RE, 0);
+      planet.receiveShadow = true;
+      sc.add(planet);
+    }
     var atmo = new THREE.Mesh(
       new THREE.SphereGeometry(RE + ((RS.Physics && RS.Physics.ATMOS_TOP) || 70000), 64, 48),
       new THREE.MeshBasicMaterial({ color: 0x5aa9ff, transparent: true, opacity: 0.10,
@@ -476,6 +532,49 @@
     sc.add(atmo);
     this._planet = planet;
     this._atmo = atmo;
+
+    // ---- ORBITAL-MAP POI MARKERS — only shown in the 'map' camera mode.
+    //  A raycaster click on either one GSAP-pans the map camera to frame it.
+    var lm = new THREE.Mesh(
+      new THREE.SphereGeometry(RE * 0.022, 16, 12),
+      new THREE.MeshBasicMaterial({ color: 0xff5a4a }));
+    lm.position.set(0, RE * 0.006, 0);          // the north pole = the pad
+    lm.userData.poi = 'launch';
+    lm.visible = false;
+    sc.add(lm);
+    this._launchMarker = lm;
+    var lh = makeHaloSprite('255,110,90');
+    if (lh) {
+      lh.scale.setScalar(RE * 0.12);
+      lh.position.copy(lm.position);
+      lh.userData.poi = 'launch';
+      lh.visible = false;
+      sc.add(lh);
+      this._launchHalo = lh;
+    }
+    var vm = new THREE.Mesh(
+      new THREE.SphereGeometry(RE * 0.014, 12, 10),
+      new THREE.MeshBasicMaterial({ color: 0x8fd6ff }));
+    vm.userData.poi = 'vehicle';
+    vm.visible = false;
+    sc.add(vm);
+    this._vehMarker = vm;
+    var vh = makeHaloSprite('130,210,255');
+    if (vh) {
+      vh.scale.setScalar(RE * 0.07);
+      vh.userData.poi = 'vehicle';
+      vh.visible = false;
+      sc.add(vh);
+      this._vehHalo = vh;
+    }
+    this._mapLook = null;        // world point the map camera orbits (null = planet centre)
+    this._mapEase = null;        // no-GSAP fallback tween target
+
+    // a dedicated "sun" for the Blue Marble — only lit in the orbital-map view
+    // so it never over-brightens the near-pad scenes. Gives a clean terminator.
+    this._earthSun = new THREE.DirectionalLight(0xfff4e8, 0);
+    this._earthSun.position.set(-RE * 2.6, RE * 1.15, RE * 1.9);
+    sc.add(this._earthSun);
 
     // ---- the DAYTIME GRADIENT SKY — a large inward sphere, warm horizon glow
     //  melting up into a deep azure zenith. NO sun geometry — the directional
@@ -577,8 +676,16 @@
       if (L.rim.color && L.rim.color.setHex)
         L.rim.color.setHex(night ? 0x3355aa : (day ? 0xaecbe8 : 0x88aaff));
     }
-    if (this._planet && this._planet.material)
-      this._planet.material.color.setHex(day ? 0x496f36 : night ? 0x0d1119 : 0x1f5133);
+    if (this._planet && this._planet.material) {
+      if (this._planet.userData && this._planet.userData.textured) {
+        // the Blue Marble carries its own day/night via its dedicated map-view
+        // sun + the emissive city-lights map — keep the glow subtle so it reads
+        // as cities on the night side, not lava on the day side
+        this._planet.material.emissiveIntensity = night ? 1.15 : day ? 0.22 : 0.6;
+      } else {
+        this._planet.material.color.setHex(day ? 0x496f36 : night ? 0x0d1119 : 0x1f5133);
+      }
+    }
     if (this._atmo && this._atmo.material) {
       this._atmo.material.opacity = day ? 0.0 : night ? 0.05 : 0.10;   // the sky dome does it now
       this._atmo.material.color.setHex(day ? 0x8fc4e8 : night ? 0x2a4a80 : 0x5aa9ff);
@@ -895,6 +1002,8 @@
     this._camIdx = buoy ? CAM_MODES.indexOf('observer') : CAM_MODES.indexOf('chase');
     this.btnCam.textContent = CAM_LABEL[CAM_MODES[this._camIdx]];
     this._theta = 0.7; this._phi = 1.12; this._zoom = 1; this._camX = 0;
+    this._mapLook = null; this._mapEase = null;
+    if (global.gsap) global.gsap.killTweensOf(this);
     this._obsYaw = 0; this._obsPitch = 0;
     this._phaseText = 'อยู่บนแท่น';
     this._hideToast();
@@ -1109,6 +1218,7 @@
 
     this._stepVehicles();
     this._syncAliases();
+    if (this._earth && RS.render.EarthGlobe) RS.render.EarthGlobe.update(this._earth, dt);
 
     var st = this.flight.sampleAt(this.flight.time);
     this._renderFrame(st);
@@ -1293,14 +1403,52 @@
     this._camTY += (vy - this._camTY) * k;
     var tx = this._camTX, ty = this._camTY;
 
+    // orbital-map POI markers only live in map mode; the vehicle marker rides
+    // the focused rocket's world position
+    var inMap = (mode === 'map');
+    // the Fresnel atmosphere rim is a from-space effect — show it in the map
+    // view or once the rocket is genuinely high, not down at the pad
+    if (this._earth && this._earth.userData && this._earth.userData.glow) {
+      this._earth.userData.glow.visible = inMap || alt > 80000;
+    }
+    // the Blue Marble's dedicated sun only burns in the map view
+    if (this._earthSun) this._earthSun.intensity = (inMap || alt > 120000) ? 2.6 : 0;
+    if (this._launchMarker) this._launchMarker.visible = inMap;
+    if (this._launchHalo) this._launchHalo.visible = inMap;
+    var vpz = (st && st.position) ? st.position.z : 0;
+    if (this._vehMarker) {
+      var showVeh = inMap && (vy > RE * 0.0008);   // hide it while still on the pad
+      this._vehMarker.visible = showVeh;
+      if (this._vehHalo) this._vehHalo.visible = showVeh;
+      if (showVeh) {
+        this._vehMarker.position.set(vx, vy, vpz);
+        if (this._vehHalo) this._vehHalo.position.set(vx, vy, vpz);
+      }
+    }
+
     var sp = Math.sin(this._phi), cp = Math.cos(this._phi);
     var sth = Math.sin(this._theta), cth = Math.cos(this._theta);
 
     if (mode === 'map') {
       var pcy = -RE;
-      var dist = RE * 2.6 * clamp(this._zoom, 0.3, 6);
-      cam.position.set(dist * sp * sth, pcy + dist * cp, dist * sp * cth);
-      cam.lookAt(0, pcy, 0);
+      // no-GSAP fallback: ease theta / phi / zoom / look toward a stored POI
+      if (this._mapEase) {
+        var e = this._mapEase, ke = 0.10;
+        this._theta += (e.theta - this._theta) * ke;
+        this._phi   += (e.phi   - this._phi)   * ke;
+        this._zoom  += (e.zoom  - this._zoom)  * ke;
+        if (this._mapLook && e.look) this._mapLook.lerp(e.look, ke);
+        if (Math.abs(e.theta - this._theta) < 0.003 &&
+            Math.abs(e.zoom - this._zoom) < 0.01) this._mapEase = null;
+        sp = Math.sin(this._phi); cp = Math.cos(this._phi);
+        sth = Math.sin(this._theta); cth = Math.cos(this._theta);
+      }
+      var lookX = this._mapLook ? this._mapLook.x : 0;
+      var lookY = this._mapLook ? this._mapLook.y : pcy;
+      var lookZ = this._mapLook ? this._mapLook.z : 0;
+      var dist = RE * 2.6 * clamp(this._zoom, 0.12, 6);
+      cam.position.set(lookX + dist * sp * sth, lookY + dist * cp, lookZ + dist * sp * cth);
+      cam.lookAt(lookX, lookY, lookZ);
       return;
     }
 
@@ -1332,6 +1480,79 @@
       cam.position.set(tx + cr * sp * sth, vy + cr * cp, cr * sp * cth);
       cam.lookAt(tx, vy, 0);
     }
+  };
+
+  // ---- ORBITAL-MAP POI RAYCASTER ------------------------------------------
+  //  Reset the map camera to its wide default framing (planet centre, 3/4 view).
+  FlightScreen.prototype._resetMapView = function () {
+    if (global.gsap) {
+      global.gsap.killTweensOf(this);
+      if (this._mapLook) global.gsap.killTweensOf(this._mapLook);
+    }
+    this._mapLook = null;
+    this._mapEase = null;
+    this._zoom = 1;
+    this._theta = 0.7;
+    this._phi = 1.12;
+  };
+
+  FlightScreen.prototype._pickMapPOI = function (e) {
+    if (!THREE || !this.scene || !this.scene.camera) return;
+    var rect = this.canvas.getBoundingClientRect();
+    if (!this._ray) { this._ray = new THREE.Raycaster(); this._rayNdc = new THREE.Vector2(); }
+    this._rayNdc.set(
+      ((e.clientX - rect.left) / rect.width) * 2 - 1,
+      -((e.clientY - rect.top) / rect.height) * 2 + 1);
+    this._ray.setFromCamera(this._rayNdc, this.scene.camera);
+    var targets = [];
+    if (this._launchMarker) targets.push(this._launchMarker);
+    if (this._launchHalo) targets.push(this._launchHalo);
+    if (this._vehMarker && this._vehMarker.visible) targets.push(this._vehMarker);
+    if (this._vehHalo && this._vehHalo.visible) targets.push(this._vehHalo);
+    var hit = this._ray.intersectObjects(targets, false)[0];
+    if (hit && hit.object && hit.object.userData) this._focusMapPOI(hit.object.userData.poi);
+  };
+
+  FlightScreen.prototype._focusMapPOI = function (which) {
+    if (!THREE) return;
+    var RE = this._RE || 600000;
+    var centre = new THREE.Vector3(0, -RE, 0);
+    var target, zoom;
+    if (which === 'vehicle' && this._vehMarker && this._vehMarker.visible) {
+      target = this._vehMarker.position.clone();
+      zoom = 0.66;
+    } else {
+      which = 'launch';
+      target = new THREE.Vector3(0, 0, 0);   // north pole of the globe = the pad
+      zoom = 0.40;
+    }
+    var d = target.clone().sub(centre).normalize();
+    var theta = Math.atan2(d.x, d.z);
+    // shortest angular path from the current azimuth
+    while (theta - this._theta > Math.PI) theta -= Math.PI * 2;
+    while (theta - this._theta < -Math.PI) theta += Math.PI * 2;
+    var phi = clamp(Math.acos(clamp(d.y, -1, 1)) - 0.12, 0.06, 1.45);
+    var lookDest = centre.clone().lerp(target, which === 'launch' ? 0.82 : 0.68);
+
+    this._mapLook = this._mapLook || centre.clone();
+    if (global.gsap) {
+      global.gsap.killTweensOf(this);
+      global.gsap.to(this, {
+        _theta: theta, _phi: phi, _zoom: zoom,
+        duration: 1.5, ease: 'power3.inOut', overwrite: true
+      });
+      global.gsap.killTweensOf(this._mapLook);
+      global.gsap.to(this._mapLook, {
+        x: lookDest.x, y: lookDest.y, z: lookDest.z,
+        duration: 1.5, ease: 'power3.inOut', overwrite: true
+      });
+      this._mapEase = null;
+    } else {
+      this._mapEase = { theta: theta, phi: phi, zoom: zoom, look: lookDest };
+    }
+    this._showToast(which === 'launch'
+      ? 'โฟกัส: ฐานปล่อย (ประเทศไทย) — แตะยานเพื่อตามจรวด'
+      : 'โฟกัส: ยานที่กำลังบิน — แตะหมุดฐานเพื่อกลับ');
   };
 
   FlightScreen.prototype._updateHud = function (st) {

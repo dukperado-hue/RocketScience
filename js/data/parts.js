@@ -371,16 +371,15 @@
   var ERA3 = [
     {
       id: 'v2_nose',
-      name: 'หัวรบ / เพย์โหลด V-2',
+      name: 'หัวรบโอไจว์ V-2 (A4)',
       category: C.PAYLOAD,
-      icon: '🛰️',
+      icon: '🔺',
       era: '3-v2',
-      blurb: 'ส่วนหัวเพรียวลม บรรจุเพย์โหลด — ผิวเรียบแรงต้านต่ำ นำหน้าตลอดการเลี้ยวโค้ง',
+      blurb: 'หัวโอไจว์แหลมยาวแบบ A4/V-2 ปี 1944 — เพรียวลม แรงต้านต่ำ พ่นลายกลิ้ง ขาว-ดำ สำหรับวัดการหมุน',
       mass: 1.4,
       cost: 60,
       size: { w: 1, h: 1 },
-      meshUrl: 'assets/models/capsule.glb',   // NASA Gemini capsule stands in as the payload
-      meshScale: 1.0,
+      // rendered as a true pointed ogive by VehicleRenderer — no stand-in model
       aerodynamics: { dragCoefficient: 0.22, crossSectionArea: 0.030 },
       structural: { maxDynamicPressure: 90000 },
       attachNodes: [
