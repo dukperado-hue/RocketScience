@@ -82,6 +82,57 @@
     return _v2Tex;
   }
 
+  // Brushed-aluminum / painted-panel skin for the orbital-era tanks — a Falcon
+  // 9 / Saturn V read: pale panel base, faint vertical brush streaks, dark
+  // horizontal seams with a rivet line. U wraps the tank's circumference.
+  var _panelTex = null;
+  function panelAluminumTex() {
+    if (_panelTex !== null) return _panelTex || undefined;
+    if (!THREE || typeof document === 'undefined') { _panelTex = false; return undefined; }
+    var c = document.createElement('canvas');
+    c.width = 128; c.height = 256;
+    var g = c.getContext('2d');
+    g.fillStyle = '#e9ebee'; g.fillRect(0, 0, 128, 256);
+    g.globalAlpha = 0.06;
+    for (var i = 0; i < 46; i++) {
+      g.strokeStyle = Math.random() < 0.5 ? '#ffffff' : '#8b93a0';
+      var x = Math.random() * 128;
+      g.beginPath(); g.moveTo(x, 0); g.lineTo(x + (Math.random() * 5 - 2.5), 256); g.stroke();
+    }
+    g.globalAlpha = 1;
+    g.strokeStyle = 'rgba(55,60,70,0.4)'; g.lineWidth = 2;
+    [64, 128, 192].forEach(function (y) { g.beginPath(); g.moveTo(0, y); g.lineTo(128, y); g.stroke(); });
+    g.fillStyle = 'rgba(40,44,52,0.55)';
+    [64, 128, 192].forEach(function (y) {
+      for (var rx = 6; rx < 128; rx += 13) { g.beginPath(); g.arc(rx, y, 1.1, 0, TAU); g.fill(); }
+    });
+    var tex = new THREE.CanvasTexture(c);
+    tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(3, 1);
+    if ('colorSpace' in tex && THREE.SRGBColorSpace) tex.colorSpace = THREE.SRGBColorSpace;
+    _panelTex = tex;
+    return tex;
+  }
+
+  // Vertical heat gradient for a liquid-engine bell: clean steel throat fading
+  // to a carbon-scorched exit lip — the "dark, heat-scored metal bell" look.
+  var _scorchTex = null;
+  function engineScorchTex() {
+    if (_scorchTex !== null) return _scorchTex || undefined;
+    if (!THREE || typeof document === 'undefined') { _scorchTex = false; return undefined; }
+    var c = document.createElement('canvas');
+    c.width = 4; c.height = 128;
+    var g = c.getContext('2d');
+    var grd = g.createLinearGradient(0, 0, 0, 128);
+    grd.addColorStop(0.00, '#82868f');   // throat — clean brushed steel
+    grd.addColorStop(0.40, '#4c4c50');
+    grd.addColorStop(0.72, '#2c261f');   // heat-scored
+    grd.addColorStop(1.00, '#161211');   // exit lip — carbon black
+    g.fillStyle = grd; g.fillRect(0, 0, 4, 128);
+    _scorchTex = new THREE.CanvasTexture(c);
+    return _scorchTex;
+  }
+
   // ---------------------------------------------------------------------------
   //  ENGINEERING MARKERS — Centre of Mass / Centre of Pressure (Assembly view)
   //
@@ -364,6 +415,99 @@
   }
 
   // ---------------------------------------------------------------------------
+  //  PHASE 21 — 3D ASSEMBLY BAY interactive build
+  //
+  //  Pure grid-graph math (no THREE) that mirrors Blueprint2D's `_solveSnap`,
+  //  but returns WORLD positions instead of canvas pixels — so the 3D VAB can
+  //  point-and-place a part instead of dragging it on a 2D grid. Kept here
+  //  (not core/) because it depends on layout()/cellToWorld's world-space map.
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Every legal placement for `part` against the vehicle's current OPEN nodes
+   * (same compatibility rules as Blueprint2D: node type + accepts whitelist
+   * both ways + no footprint overlap). On an empty vehicle, returns one
+   * candidate at the pad origin.
+   * @param {import('../core/Vehicle').Vehicle} vehicle
+   * @param {import('../core/PartsCatalog').Part} part
+   * @returns {{gx:number,gy:number,links:Object[],world:{x,y,z}}[]}
+   */
+  function findSnapCandidates(vehicle, part) {
+    if (!vehicle || !part) return [];
+    if (!vehicle.instances.length) {
+      return [{
+        gx: 0, gy: 0, links: [],
+        world: { x: 0, y: (part.size.h / 2) * mpc(), z: 0 },
+        first: true
+      }];
+    }
+    var lo = layout(vehicle);
+    var openNodes = vehicle.openNodes();
+    var out = [];
+    part.attachNodes.forEach(function (myNode) {
+      openNodes.forEach(function (tgt) {
+        if (myNode.type !== tgt.type) return;
+        if (tgt.accepts.indexOf('*') === -1 && tgt.accepts.indexOf(part.category) === -1) return;
+        var tgtInst = vehicle.byIid(tgt.iid);
+        if (!tgtInst) return;
+        if (myNode.accepts.indexOf('*') === -1 &&
+            myNode.accepts.indexOf(tgtInst.part.category) === -1) return;
+
+        var gx = Math.round(tgt.x - myNode.dx);
+        var gy = Math.round(tgt.y - myNode.dy);
+        var overlap = false;
+        for (var x = gx; x < gx + part.size.w && !overlap; x++) {
+          for (var y = gy; y < gy + part.size.h; y++) {
+            if (vehicle.cellOccupied(x, y)) { overlap = true; break; }
+          }
+        }
+        if (overlap) return;
+
+        out.push({
+          gx: gx, gy: gy,
+          links: [{ node: myNode.id, toIid: tgt.iid, toNode: tgt.nodeId }],
+          world: cellToWorld(lo.grid, tgt.x, tgt.y)
+        });
+      });
+    });
+    return out;
+  }
+
+  /** A glowing torus ring — the "valid attach node" marker in the 3D VAB. */
+  function makeSnapRing(radius) {
+    if (!THREE) return null;
+    var geo = new THREE.TorusGeometry(radius, Math.max(0.006, radius * 0.1), 10, 28);
+    var mat = new THREE.MeshBasicMaterial({
+      color: 0x5bf0ff, transparent: true, opacity: 0.85,
+      blending: THREE.AdditiveBlending, depthTest: false
+    });
+    var m = new THREE.Mesh(geo, mat);
+    m.renderOrder = 999;
+    return m;
+  }
+
+  /**
+   * Build a standalone mesh for ONE part at local origin — the "flying in
+   * from the catalog" ghost preview. Reuses makeMesh via a throwaway layout
+   * entry, so every part keeps its real per-part skin (V-2 paint, khom paper,
+   * brushed-aluminum tanks, …) instead of a generic placeholder box.
+   * @param {import('../core/PartsCatalog').Part} part
+   */
+  function buildSinglePart(part) {
+    if (!THREE || !part) return null;
+    var M = mpc();
+    return makeMesh({
+      iid: 'ghost',
+      partId: part.id,
+      category: part.category,
+      meshUrl: part.meshUrl || null,
+      meshScale: part.meshScale || 1,
+      world: { x: 0, y: 0, z: 0 },
+      dims: { w: part.size.w * M, h: part.size.h * M, d: Math.min(part.size.w, part.size.h) * M }
+    });
+  }
+
+  // ---------------------------------------------------------------------------
   //  THREE — skin the layout
   // ---------------------------------------------------------------------------
 
@@ -485,6 +629,89 @@
       eg.userData.isMotor = true;
       eg.userData.exhaustLocalY = -d.h * 0.6;
       return eg;
+    }
+
+    // ---- ERA 4 · ORBITAL — brushed-aluminum tanks + heat-scored engines ----
+    //  Falcon 9 / Saturn V read: pale riveted-panel tanks with domed caps,
+    //  a dark decoupler ring, and liquid engines whose bells actually darken
+    //  from a clean steel throat to a carbon-scorched exit lip.
+    if (entry.partId === 'orb_tank_large') {
+      var alu = panelAluminumTex();
+      var tkg = new THREE.Group();
+      var tankMat = new THREE.MeshStandardMaterial({
+        map: alu, color: alu ? 0xffffff : 0xe9ebee, roughness: 0.48, metalness: 0.38
+      });
+      var tankBody = new THREE.Mesh(
+        new THREE.CylinderGeometry(d.w * 0.46, d.w * 0.46, d.h * 0.9, 30), tankMat);
+      tankBody.castShadow = true;
+      var capMat = new THREE.MeshStandardMaterial({ color: 0xf1f3f6, roughness: 0.4, metalness: 0.45 });
+      var domeTop = new THREE.Mesh(
+        new THREE.SphereGeometry(d.w * 0.46, 24, 12, 0, TAU, 0, Math.PI / 2), capMat);
+      domeTop.position.y = d.h * 0.45;
+      var domeBot = new THREE.Mesh(
+        new THREE.SphereGeometry(d.w * 0.46, 24, 12, 0, TAU, 0, Math.PI / 2), capMat);
+      domeBot.rotation.x = Math.PI;
+      domeBot.position.y = -d.h * 0.45;
+      var seamMat = new THREE.MeshStandardMaterial({ color: 0x26282e, roughness: 0.5, metalness: 0.6 });
+      var seamTop = new THREE.Mesh(new THREE.TorusGeometry(d.w * 0.462, d.w * 0.016, 6, 28), seamMat);
+      seamTop.rotation.x = Math.PI / 2; seamTop.position.y = d.h * 0.44;
+      var seamBot = seamTop.clone(); seamBot.position.y = -d.h * 0.44;
+      tkg.add(tankBody, domeTop, domeBot, seamTop, seamBot);
+      tkg.position.set(entry.world.x, entry.world.y, entry.world.z);
+      tkg.userData.iid = entry.iid;
+      return tkg;
+    }
+    if (entry.partId === 'orb_decoupler') {
+      var dcg = new THREE.Group();
+      var dcRing = new THREE.Mesh(
+        new THREE.CylinderGeometry(d.w * 0.47, d.w * 0.47, d.h * 0.5, 28),
+        new THREE.MeshStandardMaterial({ color: 0x2b2d33, roughness: 0.5, metalness: 0.55 }));
+      var dcBolts = new THREE.Mesh(
+        new THREE.TorusGeometry(d.w * 0.44, d.w * 0.02, 6, 26),
+        new THREE.MeshStandardMaterial({
+          color: 0xffcf3f, roughness: 0.4, metalness: 0.3,
+          emissive: 0x3a2600, emissiveIntensity: 0.4
+        }));
+      dcBolts.rotation.x = Math.PI / 2;
+      dcg.add(dcRing, dcBolts);
+      dcg.position.set(entry.world.x, entry.world.y, entry.world.z);
+      dcg.userData.iid = entry.iid;
+      return dcg;
+    }
+    if (entry.partId === 'orb_engine_heavy' || entry.partId === 'orb_engine_vacuum') {
+      var isVac = entry.partId === 'orb_engine_vacuum';
+      var scorch = engineScorchTex();
+      var oeg = new THREE.Group();
+      var neck = new THREE.Mesh(
+        new THREE.CylinderGeometry(d.w * 0.30, d.w * 0.40, d.h * 0.28, 22),
+        new THREE.MeshStandardMaterial({ color: 0x6c6f76, roughness: 0.45, metalness: 0.62 }));
+      neck.position.y = d.h * 0.34;
+      neck.castShadow = true;
+      var bellWide = isVac ? d.w * 0.58 : d.w * 0.42;
+      var bellLen = isVac ? d.h * 0.88 : d.h * 0.58;
+      var bell = new THREE.Mesh(
+        new THREE.CylinderGeometry(d.w * 0.15, bellWide, bellLen, 28, 1, true),
+        new THREE.MeshStandardMaterial({
+          map: scorch, color: scorch ? 0xffffff : 0x2a2a2e,
+          roughness: 0.55, metalness: 0.68, side: THREE.DoubleSide
+        }));
+      bell.position.y = -bellLen * 0.42;
+      bell.castShadow = true;
+      oeg.add(neck, bell);
+      var oflame = new THREE.Mesh(
+        new THREE.ConeGeometry(d.w * (isVac ? 0.30 : 0.22), d.h * (isVac ? 1.05 : 0.8), 16),
+        new THREE.MeshBasicMaterial({
+          color: isVac ? 0x9fd7ff : 0xffd07a, transparent: true, opacity: 0.85,
+          blending: THREE.AdditiveBlending, depthWrite: false
+        }));
+      oflame.position.y = -bellLen * 0.86;
+      oflame.rotation.x = Math.PI;
+      oeg.add(oflame);
+      oeg.position.set(entry.world.x, entry.world.y, entry.world.z);
+      oeg.userData.iid = entry.iid;
+      oeg.userData.isMotor = true;
+      oeg.userData.exhaustLocalY = -bellLen * 0.92;
+      return oeg;
     }
 
     // ---- ERA 1 · Bang Fai ------------------------------------------------
@@ -1156,7 +1383,12 @@
     updatePulses: updatePulses,    // per-frame placement-bounce driver
     loadModel: loadModel,    // Promise<Object3D|null>, cached
     preload: preload,        // Promise.all over every catalog meshUrl
-    ensureFor: ensureFor     // Promise.all over one vehicle's meshUrls
+    ensureFor: ensureFor,    // Promise.all over one vehicle's meshUrls
+    // Phase 21 — 3D Assembly Bay interactive build
+    cellToWorld: cellToWorld,           // pure — Vehicle cell coords -> world
+    findSnapCandidates: findSnapCandidates,  // pure — legal placements for a part
+    makeSnapRing: makeSnapRing,         // THREE — glowing attach-node marker
+    buildSinglePart: buildSinglePart    // THREE — standalone "ghost" part mesh
   };
 
 })(typeof window !== 'undefined' ? window : this);

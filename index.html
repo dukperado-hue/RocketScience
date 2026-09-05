@@ -9,10 +9,11 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/blueprint.css?v=62">
-<link rel="stylesheet" href="css/flight.css?v=62">
-<link rel="stylesheet" href="css/mission.css?v=62">
-<link rel="stylesheet" href="css/atlas.css?v=62">
+<link rel="stylesheet" href="css/blueprint.css?v=65">
+<link rel="stylesheet" href="css/flight.css?v=65">
+<link rel="stylesheet" href="css/mission.css?v=65">
+<link rel="stylesheet" href="css/atlas.css?v=65">
+<link rel="stylesheet" href="css/vab3d.css?v=65">
 </head>
 <body class="bp-body">
 
@@ -27,7 +28,7 @@
     <button type="button" class="bp-era-btn" data-era="4-orbit">ยุค 4 · วงโคจร</button>
   </span>
   <button type="button" class="bp-mission-btn" id="bp-mission">📋 ภารกิจ</button>
-  <span class="bp-tagline">Reboot Phase 20 — The Sky Atlas · M05 Japan (Hanabi & Particle Physics)</span>
+  <span class="bp-tagline">Reboot Phase 21 — The Next-Gen 3D VAB</span>
 </header>
 
 <div class="bp-stage">
@@ -55,7 +56,7 @@
         <button type="button" id="bp-zoom-in">+</button>
         <button type="button" id="bp-reset">รีเซ็ต</button>
         <button type="button" id="bp-sample">โคมตัวอย่าง</button>
-        <button type="button" id="bp-preview-open" class="bp-tool-accent">👁️ 3D พรีวิว</button>
+        <button type="button" id="bp-preview-open" class="bp-tool-accent">🛠️ 3D Assembly Bay</button>
       </div>
     </section>
   </div>
@@ -171,24 +172,48 @@
   </div>
 </div>
 
-<!-- ═══ 3D ASSEMBLY BAY — the VAB studio (Phase 5 · overhauled Phase 14) ═══ -->
+<!-- ═══ 3D ASSEMBLY BAY — the VAB studio (Phase 5 · overhauled Phase 14 · Phase 21 interactive) ═══ -->
 <div class="pv-modal" id="preview-modal" hidden>
-  <div class="pv-panel">
+  <div class="pv-panel vab3d-panel">
     <div class="pv-head">
       <span class="pv-tag">🛠 ASSEMBLY BAY · จาก assembly graph เดียวกัน</span>
       <button type="button" class="pv-close" id="preview-close">ปิด ✕</button>
     </div>
-    <div class="pv-canvas-wrap">
-      <canvas id="preview-canvas"></canvas>
-      <div class="bp-preview-empty" id="preview-empty" hidden>ยังไม่มีชิ้นส่วน</div>
-      <div class="pv-legend" id="preview-legend">
-        <div><i class="pv-dot pv-dot-com"></i>จุดศูนย์ถ่วง · CoM</div>
-        <div><i class="pv-dot pv-dot-cop"></i>จุดศูนย์แรงต้าน · CoP</div>
-        <div class="pv-rule"><b>เขียว</b> = เสถียร &nbsp;·&nbsp; <b class="bad">แดง</b> = พลิก</div>
-        <div class="pv-rule2">จรวด: CoM ต้องอยู่เหนือ CoP</div>
+    <div class="vab3d-body">
+      <!-- glass parts catalog — click a part to arm it, then aim + click to place -->
+      <aside class="vab3d-rail" id="vab3d-rail">
+        <h3>คลังชิ้นส่วน</h3>
+        <div class="vab3d-cat-list" id="vab3d-cat-list"></div>
+      </aside>
+      <div class="pv-canvas-wrap">
+        <canvas id="preview-canvas"></canvas>
+        <div class="bp-preview-empty" id="preview-empty" hidden>ยังไม่มีชิ้นส่วน</div>
+        <div class="pv-legend" id="preview-legend">
+          <div><i class="pv-dot pv-dot-com"></i>จุดศูนย์ถ่วง · CoM</div>
+          <div><i class="pv-dot pv-dot-cop"></i>จุดศูนย์แรงต้าน · CoP</div>
+          <div class="pv-rule"><b>เขียว</b> = เสถียร &nbsp;·&nbsp; <b class="bad">แดง</b> = พลิก</div>
+          <div class="pv-rule2">จรวด: CoM ต้องอยู่เหนือ CoP</div>
+        </div>
+        <div class="vab3d-place-hint" id="vab3d-place-hint" hidden>
+          <b id="vab3d-place-name">—</b> เล็งจุดต่อสีฟ้า · คลิกในฉากเพื่อวาง · Esc ยกเลิก
+        </div>
+        <!-- Telemetry Deck — live Mass / Thrust / TWR readout -->
+        <div class="vab3d-deck" id="vab3d-deck">
+          <div class="vab3d-deck-stat">
+            <span>MASS</span><b id="vab3d-mass">0.0 kg</b>
+          </div>
+          <div class="vab3d-deck-sep"></div>
+          <div class="vab3d-deck-stat">
+            <span>THRUST</span><b id="vab3d-thrust">0 N</b>
+          </div>
+          <div class="vab3d-deck-sep"></div>
+          <div class="vab3d-deck-stat vab3d-deck-twr">
+            <span>TWR</span><b id="vab3d-twr">0.00</b>
+          </div>
+        </div>
       </div>
     </div>
-    <span class="pv-hint">ลากเพื่อหมุน · สกรอลล์เพื่อซูม · Esc เพื่อปิด</span>
+    <span class="pv-hint">ลากเพื่อหมุน · สกรอลล์เพื่อซูม · คลิกชิ้นส่วนซ้ายเพื่อวาง · Esc เพื่อปิด/ยกเลิก</span>
   </div>
 </div>
 
@@ -308,42 +333,42 @@
 </div>
 
 <!-- ═══ core/ — ZERO dependency on render/ or Three.js ═══ -->
-<script src="js/core/PartsCatalog.js?v=62"></script>
-<script src="js/core/Vehicle.js?v=62"></script>
-<script src="js/core/SimulationEvents.js?v=62"></script>
-<script src="js/core/Diagnostics.js?v=62"></script>
-<script src="js/core/Physics.js?v=62"></script>
-<script src="js/core/Blueprint2D.js?v=62"></script>
+<script src="js/core/PartsCatalog.js?v=65"></script>
+<script src="js/core/Vehicle.js?v=65"></script>
+<script src="js/core/SimulationEvents.js?v=65"></script>
+<script src="js/core/Diagnostics.js?v=65"></script>
+<script src="js/core/Physics.js?v=65"></script>
+<script src="js/core/Blueprint2D.js?v=65"></script>
 
 <!-- ═══ data/ — pure content ═══ -->
-<script src="js/data/parts.js?v=62"></script>
-<script src="js/data/eras.js?v=62"></script>
-<script src="js/data/missions.js?v=62"></script>
+<script src="js/data/parts.js?v=65"></script>
+<script src="js/data/eras.js?v=65"></script>
+<script src="js/data/missions.js?v=65"></script>
 
 <!-- ═══ game/ — rules, consumes the contract ═══ -->
-<script src="js/game/EraManager.js?v=62"></script>
-<script src="js/game/MissionEngine.js?v=62"></script>
-<script src="js/game/MissionBriefing.js?v=62"></script>
+<script src="js/game/EraManager.js?v=65"></script>
+<script src="js/game/MissionEngine.js?v=65"></script>
+<script src="js/game/MissionBriefing.js?v=65"></script>
 
 <!-- ═══ vendor ═══ -->
-<script src="vendor/three/three.min.js?v=62"></script>
-<script src="vendor/three/loaders/GLTFLoader.js?v=62"></script>
+<script src="vendor/three/three.min.js?v=65"></script>
+<script src="vendor/three/loaders/GLTFLoader.js?v=65"></script>
 <!-- GSAP — smooth camera tweens for the orbital-map POI raycaster (graceful if blocked) -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
 
 <!-- ═══ render/ — consumes data, needs Three.js ═══ -->
-<script src="js/render/Scene.js?v=62"></script>
-<script src="js/render/EarthGlobe.js?v=62"></script>
-<script src="js/render/OrbitalEnv.js?v=62"></script>
-<script src="js/render/CameraController.js?v=62"></script>
-<script src="js/render/VehicleRenderer.js?v=62"></script>
-<script src="js/render/ExhaustFX.js?v=62"></script>
-<script src="js/render/SoundFX.js?v=62"></script>
-<script src="js/render/FlightRenderer.js?v=62"></script>
-<script src="js/render/FestivalEnv.js?v=62"></script>
-<script src="js/render/UI.js?v=62"></script>
-<script src="js/render/FlightScreen.js?v=62"></script>
+<script src="js/render/Scene.js?v=65"></script>
+<script src="js/render/EarthGlobe.js?v=65"></script>
+<script src="js/render/OrbitalEnv.js?v=65"></script>
+<script src="js/render/CameraController.js?v=65"></script>
+<script src="js/render/VehicleRenderer.js?v=65"></script>
+<script src="js/render/ExhaustFX.js?v=65"></script>
+<script src="js/render/SoundFX.js?v=65"></script>
+<script src="js/render/FlightRenderer.js?v=65"></script>
+<script src="js/render/FestivalEnv.js?v=65"></script>
+<script src="js/render/UI.js?v=65"></script>
+<script src="js/render/FlightScreen.js?v=65"></script>
 
-<script src="js/app.js?v=62"></script>
+<script src="js/app.js?v=65"></script>
 </body>
 </html>

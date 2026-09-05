@@ -1,0 +1,212 @@
+/* =============================================================================
+ * FROM FIRE TO ORBIT — Reboot Phase 21
+ * css/vab3d.css  ·  The Next-Gen 3D VAB — glassmorphism catalog + telemetry deck
+ *
+ * Everything here skins the existing #preview-modal (the "Assembly Bay") which
+ * used to be a passive spin-and-look viewer. Phase 21 turns it into the primary
+ * fluid, aerospace-grade construction surface — the interaction logic lives in
+ * app.js (findSnapCandidates / ghost-part fly-in / magnetic snap), this file is
+ * purely the "make it feel like Tony Stark's workshop" skin.
+ * ===========================================================================*/
+
+.vab3d-panel {
+  width: min(1180px, 96vw);
+  height: min(82vh, 780px);
+}
+
+.vab3d-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: row;
+  gap: 0;
+}
+
+/* ---- glass parts catalog --------------------------------------------------*/
+.vab3d-rail {
+  width: 236px;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 10px;
+  background: rgba(14, 26, 48, 0.42);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  border-right: 1px solid rgba(140, 200, 255, 0.16);
+  overflow: hidden;
+}
+.vab3d-rail h3 {
+  margin: 2px 4px 0;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #9db4d8;
+  font-weight: 700;
+}
+.vab3d-cat-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding-right: 2px;
+}
+.vab3d-cat-list::-webkit-scrollbar { width: 6px; }
+.vab3d-cat-list::-webkit-scrollbar-thumb { background: rgba(120,180,255,0.25); border-radius: 4px; }
+
+.vab3d-part {
+  --cat: #5bd6ff;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  padding: 9px 10px 9px 12px;
+  border-radius: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(135deg, rgba(255,255,255,0.07), rgba(255,255,255,0.015));
+  backdrop-filter: blur(6px);
+  color: #e9f1ff;
+  cursor: pointer;
+  font-family: var(--bp-font, "Sarabun", system-ui, sans-serif);
+  transition: transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1),
+              background 0.22s ease, border-color 0.22s ease, box-shadow 0.28s ease;
+  will-change: transform;
+}
+.vab3d-part::before {
+  content: "";
+  position: absolute; left: 0; top: 8%; bottom: 8%; width: 3px;
+  background: var(--cat);
+  border-radius: 3px;
+  box-shadow: 0 0 8px 0 var(--cat);
+  opacity: 0.75;
+  transition: opacity 0.2s ease, box-shadow 0.2s ease;
+}
+.vab3d-part:hover {
+  transform: translateX(5px) scale(1.03);
+  background: linear-gradient(135deg, rgba(120,200,255,0.16), rgba(255,255,255,0.03));
+  border-color: rgba(140, 210, 255, 0.4);
+  box-shadow: -4px 6px 26px -8px rgba(91, 214, 255, 0.45),
+              0 8px 22px -12px rgba(0,0,0,0.6);
+}
+.vab3d-part:hover::before { opacity: 1; box-shadow: 0 0 14px 2px var(--cat); }
+.vab3d-part:active { transform: translateX(2px) scale(0.98); }
+.vab3d-part.armed {
+  background: linear-gradient(135deg, rgba(91,214,255,0.28), rgba(91,214,255,0.05));
+  border-color: #5bd6ff;
+  box-shadow: 0 0 0 1px rgba(91,214,255,0.5), 0 0 22px -2px rgba(91,214,255,0.55);
+  animation: vab3d-armed-pulse 1.4s ease-in-out infinite;
+}
+@keyframes vab3d-armed-pulse {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(91,214,255,0.5), 0 0 16px -2px rgba(91,214,255,0.4); }
+  50%      { box-shadow: 0 0 0 1px rgba(91,214,255,0.8), 0 0 28px 2px rgba(91,214,255,0.7); }
+}
+
+.vab3d-part-ic {
+  font-size: 21px;
+  line-height: 1;
+  width: 26px;
+  text-align: center;
+  filter: drop-shadow(0 0 6px rgba(91,214,255,0.25));
+  transition: transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.vab3d-part:hover .vab3d-part-ic { transform: scale(1.18) rotate(-4deg); }
+.vab3d-part-tx { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.vab3d-part-nm { font-size: 13px; font-weight: 700; }
+.vab3d-part-mt { font-size: 10px; color: #9db4d8; font-family: var(--bp-mono, monospace); }
+
+@media (prefers-reduced-motion: reduce) {
+  .vab3d-part, .vab3d-part-ic { transition: background 0.15s ease, border-color 0.15s ease; }
+  .vab3d-part:hover, .vab3d-part:active { transform: none; }
+  .vab3d-part.armed { animation: none; }
+}
+
+/* ---- placement hint pill --------------------------------------------------*/
+.vab3d-place-hint {
+  position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+  z-index: 3;
+  padding: 8px 18px;
+  border-radius: 999px;
+  background: rgba(10, 22, 44, 0.65);
+  border: 1px solid rgba(91, 214, 255, 0.45);
+  backdrop-filter: blur(10px);
+  font-size: 11.5px;
+  color: #cfe0f5;
+  box-shadow: 0 8px 26px -10px rgba(0,0,0,0.6), 0 0 20px -6px rgba(91,214,255,0.35);
+  animation: vab3d-hint-in 0.28s cubic-bezier(0.2,0.9,0.25,1);
+  pointer-events: none;
+  white-space: nowrap;
+}
+.vab3d-place-hint b { color: #8ff0ff; }
+@keyframes vab3d-hint-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+/* ---- The Telemetry Deck — bottom-center live HUD --------------------------*/
+.vab3d-deck {
+  position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%);
+  z-index: 3;
+  display: flex; align-items: stretch; gap: 0;
+  padding: 10px 4px;
+  border-radius: 14px;
+  background: rgba(8, 16, 32, 0.55);
+  border: 1px solid rgba(140, 200, 255, 0.18);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  box-shadow: 0 14px 40px -14px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.05);
+  pointer-events: none;
+}
+.vab3d-deck-stat {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 2px 22px;
+  min-width: 84px;
+}
+.vab3d-deck-stat span {
+  font-size: 9.5px; letter-spacing: 0.16em; color: #7f96b6; font-weight: 700;
+}
+.vab3d-deck-stat b {
+  font-family: var(--bp-mono, "Roboto Mono", ui-monospace, monospace);
+  font-size: 19px; font-weight: 700; color: #e9f1ff;
+  text-shadow: 0 0 10px rgba(233,241,255,0.15);
+  transition: color 0.25s ease, text-shadow 0.25s ease;
+  font-variant-numeric: tabular-nums;
+}
+.vab3d-deck-sep { width: 1px; background: rgba(140,200,255,0.16); margin: 2px 0; }
+
+.vab3d-deck-twr b.bad {
+  color: #ff5d5d;
+  text-shadow: 0 0 14px rgba(255,93,93,0.75);
+  animation: vab3d-twr-warn 0.9s ease-in-out infinite;
+}
+.vab3d-deck-twr b.warn {
+  color: #ffce40;
+  text-shadow: 0 0 12px rgba(255,206,64,0.6);
+}
+.vab3d-deck-twr b.good {
+  color: #54e39a;
+  text-shadow: 0 0 14px rgba(84,227,154,0.7);
+}
+@keyframes vab3d-twr-warn {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.55; }
+}
+
+/* ---- responsive: rail collapses to a horizontal strip on narrow screens ---*/
+@media (max-width: 860px) {
+  .vab3d-panel { width: 98vw; height: 92vh; }
+  .vab3d-body { flex-direction: column; }
+  .vab3d-rail {
+    width: auto; flex-direction: row; overflow-x: auto; overflow-y: hidden;
+    border-right: none; border-bottom: 1px solid rgba(140,200,255,0.16);
+    max-height: 96px;
+  }
+  .vab3d-rail h3 { display: none; }
+  .vab3d-cat-list { flex-direction: row; overflow-y: hidden; overflow-x: auto; }
+  .vab3d-part { width: 168px; flex: 0 0 auto; }
+  .vab3d-deck-stat { padding: 2px 12px; min-width: 64px; }
+  .vab3d-deck-stat b { font-size: 15px; }
+}

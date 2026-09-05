@@ -258,6 +258,7 @@ body.bp-body {
 .bp-preview-empty {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
   color: var(--bp-ink-dim); font-size: 12px; font-family: var(--bp-mono);
+  pointer-events: none;   /* Phase 21: never let this label eat clicks meant for the ghost part */
 }
 .bp-preview-empty[hidden] { display: none; }
 

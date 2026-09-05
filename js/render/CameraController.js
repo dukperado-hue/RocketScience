@@ -132,6 +132,21 @@
       return;
     }
 
+    // Auto-framing (Phase 21): frame() sets a GOAL rather than snapping —
+    // ease target/radius toward it so a growing rocket keeps sliding into view
+    // instead of jump-cutting the camera every time a part is added.
+    if (this._goalTarget) {
+      var ek = 1 - Math.pow(0.0006, Math.max(dt || 0, 0)); // frame-rate-independent ease
+      this.target.lerp(this._goalTarget, ek);
+      this.radius += (this._goalRadius - this.radius) * ek;
+      if (this.target.distanceTo(this._goalTarget) < 0.01 &&
+          Math.abs(this.radius - this._goalRadius) < 0.01) {
+        this.target.copy(this._goalTarget);
+        this.radius = this._goalRadius;
+        this._goalTarget = null;
+      }
+    }
+
     if (this.autoRotate) this.theta += (dt || 0) * 0.25;
     var sp = Math.sin(this.phi), cp = Math.cos(this.phi);
     this.camera.position.set(
@@ -165,11 +180,23 @@
     if (this.available) this.target.set(x, y, z);
   };
 
-  /** Frame a bounding sphere (centre Vector3-like + radius). */
+  /**
+   * Frame a bounding sphere (centre Vector3-like + radius). The very first call
+   * snaps straight there; every call after that sets a GOAL that `update(dt)`
+   * eases toward — so a rocket growing part-by-part gets a smooth upward glide
+   * instead of a jump-cut every time the bounds change.
+   */
   CameraController.prototype.frame = function (center, radius) {
     if (!this.available) return;
-    this.target.set(center.x, center.y, center.z);
-    this.radius = clamp(radius * 2.6, this.minRadius, this.maxRadius);
+    var goalR = clamp(radius * 2.6, this.minRadius, this.maxRadius);
+    this._goalTarget = new THREE.Vector3(center.x, center.y, center.z);
+    this._goalRadius = goalR;
+    if (!this._framed) {
+      this._framed = true;
+      this.target.copy(this._goalTarget);
+      this.radius = goalR;
+      this._goalTarget = null;
+    }
     this.update(0);
   };
 

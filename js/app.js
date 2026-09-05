@@ -56,6 +56,7 @@
       watchBtn.disabled = true;      // any edit invalidates the last replay
       renderMissionBar(stats);        // live-update budget / mass / parts chips
       schedulePreview();
+      updateVabDeck(stats);           // Phase 21 — Telemetry Deck (Mass/Thrust/TWR)
     }
   });
 
@@ -122,6 +123,7 @@
 
   function openPreview() {
     ensurePreview();
+    buildVabRail();                 // Phase 21 — glass catalog for this era
     previewModal.hidden = false;
     if (!preview.available) {
       document.getElementById('preview-empty').hidden = false;
@@ -129,6 +131,7 @@
       return;
     }
     refreshPreview();
+    updateVabDeck(vehicle.computeStats());
     preview.resize();
     preview.startLoop(function (dt) {
       previewOrbit.update(dt);
@@ -137,9 +140,11 @@
         RS.render.VehicleRenderer.updateMarkers(previewGroup, dt);
         RS.render.VehicleRenderer.updatePulses(previewGroup, dt);
       }
+      if (placing) updatePlacementVisual(dt);
     });
   }
   function closePreview() {
+    cancelPlacement();
     previewModal.hidden = true;
     if (preview) preview.stopLoop();
   }
@@ -153,7 +158,222 @@
     if (!previewModal.hidden && preview) preview.resize();
   });
   window.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape' && !previewModal.hidden) closePreview();
+    if (e.key !== 'Escape' || previewModal.hidden) return;
+    if (placing) { cancelPlacement(); return; }   // Esc cancels an armed part first
+    closePreview();
+  });
+
+  // =====================================================================
+  //  PHASE 21 — THE NEXT-GEN 3D VAB
+  //  A glassmorphism parts catalog + point-and-place construction directly
+  //  in the Assembly Bay: click a part → it flies in as a translucent ghost →
+  //  every legal attach node lights up with a glowing cyan ring → move the
+  //  mouse to aim (nearest ring wins, screen-space) → click to snap it home.
+  //  Same `vehicle` the 2D board writes to — both views stay in lock-step.
+  // =====================================================================
+  var vabRailEl = document.getElementById('vab3d-cat-list');
+  var vabHintEl = document.getElementById('vab3d-place-hint');
+  var vabHintNameEl = document.getElementById('vab3d-place-name');
+  var vabMassEl = document.getElementById('vab3d-mass');
+  var vabThrustEl = document.getElementById('vab3d-thrust');
+  var vabTwrEl = document.getElementById('vab3d-twr');
+  var previewCanvasEl = document.getElementById('preview-canvas');
+
+  var placing = null;   // { part, ghost, candidates[], ringGroup, hoverIdx, ringR, rowEl, t }
+  var _vabAudioCtx = null;
+
+  /** A short synthesised "tock" — the magnetic-snap sound cue. No audio asset needed. */
+  function snapBlip() {
+    try {
+      _vabAudioCtx = _vabAudioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      var ctx = _vabAudioCtx, t0 = ctx.currentTime;
+      var osc = ctx.createOscillator(), gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, t0);
+      osc.frequency.exponentialRampToValueAtTime(1500, t0 + 0.05);
+      gain.gain.setValueAtTime(0.0001, t0);
+      gain.gain.exponentialRampToValueAtTime(0.24, t0 + 0.008);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.15);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(t0); osc.stop(t0 + 0.17);
+    } catch (e) {}
+  }
+
+  function updateVabDeck(stats) {
+    if (!vabMassEl) return;
+    stats = stats || vehicle.computeStats();
+    vabMassEl.textContent = fmtMass(stats.totalMass || 0);
+    var lift = Math.max(stats.totalThrust || 0, stats.totalBuoyancy || 0);
+    vabThrustEl.textContent = Math.round(lift).toLocaleString() + ' N';
+    var twr = stats.twr || 0;
+    vabTwrEl.textContent = twr.toFixed(2);
+    vabTwrEl.classList.remove('bad', 'warn', 'good');
+    if (lift > 0) vabTwrEl.classList.add(twr < 1.0 ? 'bad' : (twr > 1.2 ? 'good' : 'warn'));
+  }
+
+  function buildVabRail() {
+    if (!vabRailEl) return;
+    cancelPlacement();
+    var parts = RS.PartsCatalog.byEra(currentEra);
+    var CAT_COLOR = RS.render.VehicleRenderer.CAT_COLOR;
+    vabRailEl.innerHTML = '';
+    parts.forEach(function (part) {
+      var row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'vab3d-part';
+      row.dataset.partId = part.id;
+      var hex = '#' + ((CAT_COLOR[part.category] != null ? CAT_COLOR[part.category] : 0x9aa7b4)
+        .toString(16).padStart(6, '0'));
+      row.style.setProperty('--cat', hex);
+      row.innerHTML =
+        '<span class="vab3d-part-ic">' + part.icon + '</span>' +
+        '<span class="vab3d-part-tx">' +
+          '<span class="vab3d-part-nm">' + esc(part.name) + '</span>' +
+          '<span class="vab3d-part-mt">' + fmtMass(part.mass) + ' · ฿' + part.cost + '</span>' +
+        '</span>';
+      row.title = part.blurb || part.name;
+      row.addEventListener('click', function () {
+        if (placing && placing.part.id === part.id) { cancelPlacement(); return; }
+        armPlacement(part, row);
+      });
+      vabRailEl.appendChild(row);
+    });
+  }
+
+  /** Click a catalog part: it flies in as a ghost and every legal node lights up. */
+  function armPlacement(part, rowEl) {
+    if (!preview || !preview.available) return;
+    cancelPlacement();
+    var VR = RS.render.VehicleRenderer;
+    var candidates = VR.findSnapCandidates(vehicle, part);
+    if (!candidates.length) {
+      if (builder && builder._setStatus) {
+        builder._setStatus('ไม่มีจุดต่อที่เข้ากันกับ "' + part.name + '" ในตอนนี้');
+      }
+      return;
+    }
+    var ghost = VR.buildSinglePart(part);
+    if (!ghost) return;
+    ghost.traverse(function (o) {
+      if (!o.material) return;
+      var mats = Array.isArray(o.material) ? o.material : [o.material];
+      mats.forEach(function (m) {
+        m.transparent = true;
+        m.opacity = (m.opacity != null ? m.opacity : 1) * 0.5;
+        m.depthWrite = false;
+      });
+    });
+    ghost.renderOrder = 995;
+    preview.add(ghost);
+
+    var baseR = previewGroup ? previewGroup.userData.bounds.radius : 0.7;
+    var ringR = Math.max(0.07, Math.min(0.26, baseR * 0.13));
+    var ringGroup = new THREE.Group();
+    candidates.forEach(function (c) {
+      var ring = VR.makeSnapRing(ringR);
+      ring.position.set(c.world.x, c.world.y, c.world.z);
+      ringGroup.add(ring);
+    });
+    preview.add(ringGroup);
+
+    if (rowEl) rowEl.classList.add('armed');
+    vabHintEl.hidden = false;
+    vabHintNameEl.textContent = part.name;
+
+    placing = {
+      part: part, ghost: ghost, candidates: candidates, ringGroup: ringGroup,
+      hoverIdx: 0, ringR: ringR, rowEl: rowEl, t: 0
+    };
+  }
+
+  /** Ghosts may share cached .glb geometry (instantiateModel clones by
+   *  reference) — never call disposeGroup() on one, just detach it. */
+  function disposeGhost(obj) {
+    if (obj && obj.parent) obj.parent.remove(obj);
+  }
+
+  function cancelPlacement() {
+    if (!placing) return;
+    disposeGhost(placing.ghost);
+    if (preview) preview.remove(placing.ringGroup);
+    RS.render.VehicleRenderer.disposeGroup(placing.ringGroup);
+    if (placing.rowEl) placing.rowEl.classList.remove('armed');
+    vabHintEl.hidden = true;
+    placing = null;
+  }
+
+  function confirmPlacement() {
+    if (!placing) return;
+    var cand = placing.candidates[placing.hoverIdx];
+    var part = placing.part;
+    vehicle.addInstance(part, cand.gx, cand.gy, cand.links);
+    snapBlip();
+    cancelPlacement();
+    // vehicle.markDirty() + the 2D board's recentre/telemetry/preview refresh —
+    // the exact same path buildSample() already uses for programmatic edits.
+    builder._afterEdit('ต่อ "' + part.name + '" เข้ากับยานใน 3D Assembly Bay แล้ว');
+  }
+
+  /** Nearest candidate to the pointer, in SCREEN space — works at any camera angle. */
+  function pickNearestCandidateScreen(clientX, clientY) {
+    var rect = previewCanvasEl.getBoundingClientRect();
+    var mx = clientX - rect.left, my = clientY - rect.top;
+    var best = 0, bestD = Infinity;
+    placing.candidates.forEach(function (c, i) {
+      var v = new THREE.Vector3(c.world.x, c.world.y, c.world.z).project(preview.camera);
+      var sx = (v.x * 0.5 + 0.5) * rect.width;
+      var sy = (-v.y * 0.5 + 0.5) * rect.height;
+      var d = Math.hypot(sx - mx, sy - my);
+      if (d < bestD) { bestD = d; best = i; }
+    });
+    return best;
+  }
+
+  /** Per-frame: ease the ghost toward the hovered node, pulse its ring, keep
+   *  the camera framing both the existing stack AND the part about to join it. */
+  function updatePlacementVisual(dt) {
+    var cand = placing.candidates[placing.hoverIdx];
+    if (!cand) return;
+    var g = placing.ghost, k = Math.min(1, dt * 10);
+    g.position.x += (cand.world.x - g.position.x) * k;
+    g.position.y += (cand.world.y - g.position.y) * k;
+    g.position.z += (cand.world.z - g.position.z) * k;
+
+    placing.t += dt;
+    placing.ringGroup.children.forEach(function (ring, i) {
+      var on = i === placing.hoverIdx;
+      ring.scale.setScalar(on ? (1.15 + 0.08 * Math.sin(placing.t * 7)) : 0.85);
+      ring.material.opacity = on ? 0.95 : 0.32;
+    });
+
+    if (previewOrbit) {
+      var centerY = previewGroup ? previewGroup.userData.bounds.center.y : cand.world.y;
+      var baseR = previewGroup ? previewGroup.userData.bounds.radius : 0.6;
+      var reach = Math.max(baseR, Math.abs(cand.world.y - centerY) + placing.ringR * 3, 0.8);
+      previewOrbit.frame({ x: 0, y: (centerY + cand.world.y) / 2, z: 0 }, reach * 1.15);
+    }
+  }
+
+  previewCanvasEl.addEventListener('pointermove', function (e) {
+    if (!placing) return;
+    placing.hoverIdx = pickNearestCandidateScreen(e.clientX, e.clientY);
+  });
+  // Confirm on a true click (down+up within a few px) — tracked explicitly
+  // rather than relying on the browser's synthesized `click`, which can be
+  // unreliable once CameraController's orbit-drag calls setPointerCapture
+  // on the same canvas. `click` is kept too as a harmless defensive fallback.
+  var _vabDownAt = null;
+  previewCanvasEl.addEventListener('pointerdown', function (e) {
+    if (placing) _vabDownAt = { x: e.clientX, y: e.clientY };
+  });
+  previewCanvasEl.addEventListener('pointerup', function (e) {
+    if (!placing || !_vabDownAt) { _vabDownAt = null; return; }
+    var moved = Math.hypot(e.clientX - _vabDownAt.x, e.clientY - _vabDownAt.y);
+    _vabDownAt = null;
+    if (moved < 6) confirmPlacement();
+  });
+  previewCanvasEl.addEventListener('click', function () {
+    if (placing) confirmPlacement();
   });
 
   // ---- mission state ------------------------------------------------
@@ -305,6 +525,7 @@
     builder.setEra(eraId);
     setEraTag(eraId);
     syncEraLabels(eraId);
+    if (!previewModal.hidden) buildVabRail();   // Phase 21 — keep the glass catalog in sync
     Array.prototype.forEach.call(this.children, function (c) {
       c.classList.toggle('is-on', c === btn);
     });
