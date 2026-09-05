@@ -2445,7 +2445,19 @@
       cam.lookAt(tg);
 
     } else {
-      var cr = clamp((14 + alt * 0.06) * this._zoom, 6, RE * 2);
+      // BUGFIX (Phase 22 course-correction): this pull-back had NO ceiling
+      // (was clamped to RE*2 — over a million units) so it grew unbounded
+      // with altitude. Fine for Bang Fai / Khom Loy, whose apogees stay
+      // under ~2.6 km (cr tops out ~170) — but the Orbital era's default
+      // 'chase' mode climbs to 100+ km, where the old formula put the
+      // camera 1000s of units away from a <1 m-wide rocket: sub-pixel and
+      // invisible (confirmed empirically — same geometry rendered fine at
+      // close range). 400 keeps every part of the vehicle at least a few
+      // pixels wide at any altitude while leaving low-altitude flights
+      // (everything this formula already covers) numerically untouched —
+      // 180 matches the distance Bang Fai's own ~2.6 km apogee already
+      // produces and is Chrome-verified to read clearly on screen.
+      var cr = clamp((14 + alt * 0.06) * this._zoom, 6, 180);
       // on impact, pull back + lift so the fireball + dust ring read as a whole
       var crashLift = 0;
       if (st && st.crashed) { cr = Math.max(cr, 62); crashLift = 12; }

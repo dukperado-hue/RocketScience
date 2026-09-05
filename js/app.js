@@ -430,6 +430,7 @@
   }
 
   missionBtn.addEventListener('click', function () {
+    if (flightScreen && flightScreen.root && !flightScreen.root.hidden) flightScreen.close();
     var m = activeMission || RS.MissionEngine.firstUnfinished(currentEra);
     if (openFireworkFlow(currentEra)) return;
     openBriefing(m);
@@ -519,6 +520,16 @@
     var btn = e.target.closest('.bp-era-btn');
     if (!btn || btn.classList.contains('is-on')) return;
     var eraId = btn.dataset.era;
+    // BUGFIX (Phase 22 course-correction): switching eras never closed a
+    // still-open flight screen. A rapid-fire era (Bang Fai's "launch next",
+    // a manual V-2 countdown, …) kept running its rAF loop + timers
+    // UNDERNEATH whatever screen opened next — so entering, say, a firework
+    // mission right after watching a different era's flight could show that
+    // OLD flight's own mission-fail/verdict state re-surfacing once the new
+    // screen was dismissed, looking exactly like "the new mission
+    // auto-launched and instantly failed." Always close it first.
+    if (flightScreen && flightScreen.root && !flightScreen.root.hidden) flightScreen.close();
+    if (!previewModal.hidden) closePreview();   // same leak risk for the 3D Assembly Bay
     RS.EraManager.unlock(eraId);
     RS.EraManager.setCurrent(eraId);
     currentEra = eraId;

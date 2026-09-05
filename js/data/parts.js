@@ -436,7 +436,13 @@
       icon: '🔺',
       era: '3-v2',
       blurb: 'หัวโอไจว์แหลมยาวแบบ A4/V-2 ปี 1944 — เพรียวลม แรงต้านต่ำ พ่นลายกลิ้ง ขาว-ดำ สำหรับวัดการหมุน',
-      mass: 1.4,
+      // Phase 22 course-correction: mass rebalanced to PROPORTIONAL realism.
+      // The real A4/V-2 was ~12,500 kg wet, ~70% propellant, TWR ~1.8-2.0 at
+      // liftoff, ~65s burn — those ratios are preserved here at a scale that
+      // stays consistent with the rest of this toy-scale game (a stock V-2
+      // sample now totals ~300 kg: a clear step up from Bang Fai's ~115 kg,
+      // still well short of the Orbital era that comes after it).
+      mass: 18,
       cost: 60,
       size: { w: 1, h: 1 },
       // rendered as a true pointed ogive by VehicleRenderer — no stand-in model
@@ -453,10 +459,11 @@
       icon: '🛢️',
       era: '3-v2',
       blurb: 'ถังคู่บรรจุเชื้อเพลิงเหลวมหาศาล — ต่อซ้อนได้ ยิ่งหลายถัง ยิ่งเผาได้นาน ยิ่งไปไกล',
-      mass: 2.6,
+      mass: 33,
       cost: 55,
       size: { w: 1, h: 3 },
-      propellantMass: 16,     // kg into the SHARED pool the engine draws from
+      propellantMass: 193,    // kg into the SHARED pool the engine draws from —
+                               // real A4 ran ~70% propellant by mass; kept here
       aerodynamics: { dragCoefficient: 0.30, crossSectionArea: 0.050 },
       structural: { maxDynamicPressure: 55000 },
       attachNodes: [
@@ -470,8 +477,8 @@
       category: C.PROPULSION,
       icon: '🚀',
       era: '3-v2',
-      blurb: 'มอเตอร์แอลกอฮอล์/LOX จุดติดทันที แรงคงที่ ~23 วิต่อถัง + ไจโรคุมทิศ บินโปรแกรมเลี้ยวโค้งเอง',
-      mass: 4.5,
+      blurb: 'มอเตอร์แอลกอฮอล์/LOX จุดติดทันที แรงคงที่ ~77 วิต่อถัง + ไจโรคุมทิศ บินโปรแกรมเลี้ยวโค้งเอง',
+      mass: 57,
       cost: 140,
       size: { w: 1, h: 2 },
       // fat finned skirt: big REFERENCE area at the very aft keeps CoP behind CoM,
@@ -480,11 +487,15 @@
       structural: { maxDynamicPressure: 120000 },
       propulsion: {
         mode: 'rocket',
-        thrust: 1400,           // N steady
+        // thrust/massFlow/Isp scaled together (thrust = massFlow · Isp · g0
+        // holds, same as before) so a stock V-2 (18+33+57 kg dry, 193 kg
+        // propellant, 301 kg total) lifts off at TWR ≈ 1.8 — matching the
+        // real A4's ~1.8-2.0 — with a ~77 s burn, close to its real ~65 s.
+        thrust: 5300,           // N steady
         burnTime: 999,          // s — a ceiling; real cutoff is tank depletion
         specificImpulse: 215,   // s — early regen-cooled liquid bipropellant
         propellantMass: 0,      // the grain lives in the tanks, not here
-        massFlow: 0.70,         // kg/s drawn from the shared pool
+        massFlow: 2.514,        // kg/s drawn from the shared pool
         spoolTime: 0,           // liquid ignition is effectively instant
         guidance: true          // gyro-guided → flies the pitch program, no tumble
       },
