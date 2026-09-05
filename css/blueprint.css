@@ -155,37 +155,52 @@ body.bp-body {
 /* ---- canvas ----------------------------------------------------------------*/
 .bp-canvas-wrap {
   position: relative;
-  background: var(--bp-panel);
+  background:
+    radial-gradient(760px 420px at 50% -8%, rgba(91,214,255,0.10), transparent 65%),
+    var(--bp-panel);
   border: 1px solid var(--bp-line);
   border-radius: var(--bp-radius);
   overflow: hidden;
   display: flex; flex-direction: column;
+  box-shadow: inset 0 1px 0 rgba(120,200,255,0.06);
+}
+/* Phase 22 — a faint studio vignette on the grid, matching the Phase 21
+   Assembly Bay's glass aesthetic, without ever dulling the grid itself */
+.bp-canvas-wrap::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 1;
+  box-shadow: inset 0 0 90px 14px rgba(3,8,20,0.35);
 }
 #bp-canvas { flex: 1; width: 100%; height: 100%; display: block; cursor: crosshair; }
 
 .bp-canvas-tools {
-  position: absolute; left: 10px; bottom: 10px;
+  position: absolute; left: 10px; bottom: 10px; z-index: 2;
   display: flex; gap: 6px;
 }
 .bp-canvas-tools button {
-  background: rgba(10,24,48,0.85);
+  background: rgba(10,24,48,0.55);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   border: 1px solid var(--bp-line);
   color: var(--bp-ink);
   border-radius: 7px; padding: 5px 10px; font-size: 12px; cursor: pointer;
   font-family: var(--bp-mono);
+  transition: border-color .15s ease, background .15s ease, transform .15s ease;
 }
-.bp-canvas-tools button:hover { border-color: var(--bp-accent); color: var(--bp-accent); }
+.bp-canvas-tools button:hover { border-color: var(--bp-accent); color: var(--bp-accent); transform: translateY(-1px); }
 .bp-canvas-tools .bp-tool-accent {
   border-color: rgba(91,214,255,0.5); color: #bfefff;
-  background: rgba(33,80,127,0.9);
+  background: rgba(33,80,127,0.55);
 }
 .bp-canvas-tools .bp-tool-accent:hover { border-color: var(--bp-accent); color: #fff; }
 
 .bp-legend {
-  position: absolute; right: 10px; bottom: 10px;
+  position: absolute; right: 10px; bottom: 10px; z-index: 2;
   display: flex; flex-direction: column; gap: 3px;
   font-family: var(--bp-mono); font-size: 10px; color: var(--bp-ink-dim);
-  background: rgba(10,24,48,0.7); border: 1px solid var(--bp-line);
+  background: rgba(10,24,48,0.5);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid var(--bp-line);
   border-radius: 7px; padding: 6px 9px;
 }
 .bp-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
@@ -196,15 +211,31 @@ body.bp-body {
   display: flex; justify-content: space-between; gap: 10px;
   font-size: 12px; padding: 3px 0;
   border-bottom: 1px dashed rgba(120,180,255,0.10);
+  animation: bp-telem-in .26s cubic-bezier(.2,.9,.25,1);
+}
+@keyframes bp-telem-in {
+  from { opacity: 0; transform: translateX(4px); }
+  to   { opacity: 1; transform: translateX(0); }
 }
 .bp-telem dt { color: var(--bp-ink-dim); margin: 0; }
 .bp-telem dd { margin: 0; font-family: var(--bp-mono); text-align: right; }
+/* TWR glow — same red/amber/green thresholds as the 3D Assembly Bay's
+   Telemetry Deck (Phase 21), so the two panels read as one system. */
+.bp-twr { font-family: inherit; }
+.bp-twr.bad  { color: var(--bp-no);  text-shadow: 0 0 10px rgba(255,138,122,0.6); animation: bp-twr-warn .9s ease-in-out infinite; }
+.bp-twr.warn { color: #ffce40; text-shadow: 0 0 8px rgba(255,206,64,0.5); }
+.bp-twr.good { color: var(--bp-go);  text-shadow: 0 0 10px rgba(95,224,168,0.6); }
+@keyframes bp-twr-warn { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
 .bp-verdict {
   margin: 6px 0 0; text-align: center; font-weight: 700; font-size: 13px;
   padding: 7px; border-radius: 8px;
 }
 .bp-verdict.ok { background: rgba(95,224,168,0.14); color: var(--bp-go); }
 .bp-verdict.no { background: rgba(255,138,122,0.12); color: var(--bp-no); }
+@media (prefers-reduced-motion: reduce) {
+  .bp-telem > div { animation: none; }
+  .bp-twr.bad { animation: none; }
+}
 
 /* ---- status strip -------------------------------------------------------- */
 .bp-status {

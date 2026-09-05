@@ -55,7 +55,18 @@
     this.hoverSolution = null;  // resolved snap while carrying
     this.selectedIid = null;
     this._raf = 0;
+    this._lastT = 0;
+    this._clock = 0;
     this._dpr = Math.min(global.devicePixelRatio || 1, 2);
+
+    // Phase 22 — magnetic-snap feel: an eased ghost position (the "pull"),
+    // transient burst rings (lock-on flash + drop confirm), and a brief
+    // pop-in bounce per newly-placed part. Purely cosmetic — _solveSnap's
+    // placement math is untouched.
+    this._ghostPx = null;
+    this._ghostWasSnapped = false;
+    this._fx = [];            // {x,y,t,dur,r0,r1,color}
+    this._placeAnim = {};     // iid -> {t}
 
     this._buildCatalog();
     this._bind();
@@ -104,6 +115,9 @@
   Blueprint2D.prototype._startCarry = function (part, fromIid, e) {
     this.carry = { part: part, fromIid: fromIid };
     this.selectedIid = fromIid;
+    this._ghostPx = null;            // fresh eased-position tracking for this drag
+    this._ghostWasSnapped = false;
+    this._lastT = 0;
     if (e && e.pointerId != null && this.canvas.setPointerCapture) {
       try { global.addEventListener('pointermove', this._onMoveWin, true); } catch (x) {}
     }
@@ -134,12 +148,22 @@
     }
 
     if (fromIid != null) this.vehicle.removeInstance(fromIid);
-    this.vehicle.addInstance(part, sol.gx, sol.gy, sol.links);
+    var anchor = sol._anchorPx ||
+      this._cellToPx(sol.gx + part.size.w / 2, sol.gy + part.size.h / 2);
+    var newInst = this.vehicle.addInstance(part, sol.gx, sol.gy, sol.links);
     this._afterEdit((fromIid != null ? 'ย้าย' : 'ต่อ') + ' “' + part.name + '” เข้ากับยานแล้ว');
+
+    // the satisfying part: a bright ring burst + snap tone + a pop-in bounce
+    // on the part that just landed
+    spawnBurst(this._fx, anchor.x, anchor.y, { dur: 0.4, r0: 6, r1: 34, color: '170,255,210' });
+    playSnapTone(1);
+    this._placeAnim[newInst.iid] = { t: 0 };
+    this._lastT = 0;
+    this._render();
 
     this.carry = null;
     this.hoverSolution = null;
-    this.selectedIid = this.vehicle.instances[this.vehicle.instances.length - 1].iid;
+    this.selectedIid = newInst.iid;
   };
 
   Blueprint2D.prototype._afterEdit = function (msg) {
@@ -373,13 +397,24 @@
   Blueprint2D.prototype._render = function () {
     if (this._raf) return;
     var self = this;
-    this._raf = global.requestAnimationFrame(function () {
+    this._raf = global.requestAnimationFrame(function (t) {
       self._raf = 0;
-      self._paint();
+      var dt = self._lastT ? Math.min((t - self._lastT) / 1000, 0.05) : 0.016;
+      self._lastT = t;
+      self._clock += dt;
+      self._paint(dt);
+      // keep animating on our own while a drag, burst, or pop-in is live —
+      // everything else stays a cheap one-shot repaint
+      if (self.carry || self._fx.length || Object.keys(self._placeAnim).length) {
+        self._render();
+      } else {
+        self._lastT = 0;
+      }
     });
   };
 
-  Blueprint2D.prototype._paint = function () {
+  Blueprint2D.prototype._paint = function (dt) {
+    dt = dt || 0.016;
     var ctx = this.ctx;
     var w = this.canvas.clientWidth, h = this.canvas.clientHeight;
     var cell = this.view.cell;
@@ -414,27 +449,71 @@
       ctx.setLineDash([]);
     }
 
-    // placed parts
+    // placed parts — a freshly-snapped one gets an easeOutBack pop-in bounce
     this.vehicle.instances.forEach(function (inst) {
+      var anim = this._placeAnim[inst.iid];
+      if (!anim) { this._drawPart(inst, inst.iid === this.selectedIid); return; }
+      anim.t += dt;
+      var x = Math.min(1, anim.t / 0.32);
+      var c1 = 1.70158, c3 = c1 + 1;
+      var back = 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2);
+      var s = 0.5 + 0.5 * back;
+      var cpx = this._cellToPx(inst.gx + inst.part.size.w / 2, inst.gy + inst.part.size.h / 2);
+      ctx.save();
+      ctx.translate(cpx.x, cpx.y); ctx.scale(s, s); ctx.translate(-cpx.x, -cpx.y);
       this._drawPart(inst, inst.iid === this.selectedIid);
+      ctx.restore();
+      if (x >= 1) delete this._placeAnim[inst.iid];
     }, this);
 
-    // open attach nodes (snap targets) — only while carrying
+    // transient burst rings (lock-on flash + drop confirm) — age + draw + drop
+    for (var fi = this._fx.length - 1; fi >= 0; fi--) {
+      var fx = this._fx[fi];
+      fx.t += dt;
+      var ft = Math.min(1, fx.t / fx.dur);
+      if (ft >= 1) { this._fx.splice(fi, 1); continue; }
+      var fr = fx.r0 + (fx.r1 - fx.r0) * (1 - Math.pow(1 - ft, 2));
+      ctx.strokeStyle = 'rgba(' + fx.color + ',' + (0.9 * (1 - ft)).toFixed(2) + ')';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(fx.x, fx.y, fr, 0, Math.PI * 2); ctx.stroke();
+    }
+
+    // open attach nodes (snap targets) — only while carrying. The node the
+    // carried part is CURRENTLY locked onto gets a bright pulsing ring;
+    // every other legal node stays a dim ambient marker.
     if (this.carry) {
+      var activeKey = null;
+      if (this.hoverSolution && this.hoverSolution.links && this.hoverSolution.links[0]) {
+        var lk0 = this.hoverSolution.links[0];
+        activeKey = lk0.toIid + ':' + lk0.toNode;
+      }
       var open = this.vehicle.openNodes().filter(function (n) {
         return n.iid !== this.carry.fromIid;
       }, this);
+      var pulse = 0.5 + 0.5 * Math.sin(this._clock * 5);
       open.forEach(function (n) {
         var px = this._cellToPx(n.x, n.y);
-        ctx.fillStyle = 'rgba(120,255,180,0.9)';
-        ctx.beginPath(); ctx.arc(px.x, px.y, 5, 0, 7); ctx.fill();
-        ctx.strokeStyle = 'rgba(120,255,180,0.35)';
-        ctx.beginPath(); ctx.arc(px.x, px.y, 10, 0, 7); ctx.stroke();
+        var radial = n.type === 'radial';
+        if (activeKey === (n.iid + ':' + n.nodeId)) {
+          var r1 = 8 + pulse * 4;
+          nodeGlyph(ctx, px.x, px.y, 6, radial, 'rgba(150,255,200,0.95)');
+          ctx.strokeStyle = 'rgba(150,255,200,0.85)';
+          ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.arc(px.x, px.y, r1, 0, Math.PI * 2); ctx.stroke();
+          ctx.strokeStyle = 'rgba(150,255,200,0.3)';
+          ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.arc(px.x, px.y, r1 + 7, 0, Math.PI * 2); ctx.stroke();
+        } else {
+          var amb = 0.35 + 0.25 * (0.5 + 0.5 * Math.sin(this._clock * 2.4 + n.x + n.y));
+          nodeGlyph(ctx, px.x, px.y, 4, radial, 'rgba(120,255,180,' + amb.toFixed(2) + ')');
+          ctx.strokeStyle = 'rgba(120,255,180,0.25)';
+          ctx.beginPath(); ctx.arc(px.x, px.y, 9, 0, Math.PI * 2); ctx.stroke();
+        }
       }, this);
     }
 
     // carry ghost
-    if (this.carry) this._drawGhost();
+    if (this.carry) this._drawGhost(dt);
 
     // CoM / CoP markers
     var stats = this.vehicle.computeStats();
@@ -622,16 +701,16 @@
     ctx.font = '10px system-ui, sans-serif';
     ctx.fillText(p.name, a.x + wpx / 2, a.y + hpx - 9);
 
-    // node markers
+    // node markers — a diamond for radial (side-mount) nodes, a dot for stack
     p.attachNodes.forEach(function (node) {
       var used = inst.links.some(function (lk) { return lk.node === node.id; });
       var px = this._cellToPx(inst.gx + node.dx, inst.gy + node.dy);
-      ctx.fillStyle = used ? 'rgba(255,255,255,0.25)' : 'rgba(120,255,180,0.55)';
-      ctx.beginPath(); ctx.arc(px.x, px.y, 3, 0, 7); ctx.fill();
+      nodeGlyph(ctx, px.x, px.y, 3, node.type === 'radial',
+        used ? 'rgba(255,255,255,0.25)' : 'rgba(120,255,180,0.55)');
     }, this);
   };
 
-  Blueprint2D.prototype._drawGhost = function () {
+  Blueprint2D.prototype._drawGhost = function (dt) {
     var ctx = this.ctx;
     var part = this.carry.part;
     var sol = this.hoverSolution;
@@ -643,9 +722,27 @@
       gy = Math.round(c.cy - part.size.h / 2);
       ok = this.vehicle.instances.length === 0;
     }
-    var a = this._cellToPx(gx, gy);
+    var target = this._cellToPx(gx, gy);
     var wpx = part.size.w * this.view.cell, hpx = part.size.h * this.view.cell;
 
+    // magnetic pull: once a snap solution exists, ease the ghost toward it
+    // (the "magnetic" feel) instead of teleporting; free placement tracks
+    // the cursor 1:1 since there's nothing to be pulled toward.
+    if (!this._ghostPx) this._ghostPx = { x: target.x, y: target.y };
+    if (sol) {
+      var k = Math.min(1, (dt || 0.016) * 14);
+      this._ghostPx.x += (target.x - this._ghostPx.x) * k;
+      this._ghostPx.y += (target.y - this._ghostPx.y) * k;
+      if (!this._ghostWasSnapped) {
+        spawnBurst(this._fx, target.x, target.y, { dur: 0.22, r0: 4, r1: 16, color: '150,255,200' });
+        playSnapTone(0.45);
+      }
+    } else {
+      this._ghostPx.x = target.x; this._ghostPx.y = target.y;
+    }
+    this._ghostWasSnapped = !!sol;
+
+    var a = this._ghostPx;
     ctx.save();
     ctx.globalAlpha = 0.75;
     ctx.fillStyle = ok ? 'rgba(120,255,180,0.20)' : 'rgba(255,120,120,0.18)';
@@ -692,6 +789,10 @@
   };
 
   Blueprint2D.prototype._renderTelemetry = function (s) {
+    // TWR glow — same red/amber/green thresholds as the 3D Assembly Bay's
+    // Telemetry Deck (Phase 21), so the two panels agree at a glance.
+    var lift = Math.max(s.totalThrust, s.totalBuoyancy);
+    var twrCls = lift > 0 ? (s.twr < 1.0 ? 'bad' : (s.twr > 1.2 ? 'good' : 'warn')) : '';
     var rows = [
       ['ชิ้นส่วน', s.partCount],
       ['มวลรวม (เปียก)', fmtMass(s.totalMass)],
@@ -701,7 +802,7 @@
       ['แรงขับรวม', s.totalThrust.toFixed(1) + ' N'],
       ['แรงพยุงรวม', s.totalBuoyancy.toFixed(1) + ' N'],
       ['น้ำหนัก', s.weightN.toFixed(1) + ' N'],
-      ['TWR', s.twr.toFixed(2)],
+      ['TWR', '<b class="bp-twr ' + twrCls + '">' + s.twr.toFixed(2) + '</b>'],
       ['เวลาเผาไหม้', s.burnTime.toFixed(0) + ' s'],
       ['Σ Cd·A', s.dragArea.toFixed(3) + ' m²'],
       ['CoM (x,y)', s.comM.x.toFixed(2) + ', ' + s.comM.y.toFixed(2) + ' m'],
@@ -749,6 +850,43 @@
   Blueprint2D.prototype.getStats = function () { return this.vehicle.computeStats(); };
 
   // ---------------------------------------------------------------------------
+  //  Phase 22 — magnetic-snap feel: sound + transient burst rings
+  // ---------------------------------------------------------------------------
+
+  var _bpAudioCtx = null;
+  /** A short synthesised tone — quiet for "node found", full for "snapped in". */
+  function playSnapTone(vol) {
+    try {
+      var AC = global.AudioContext || global.webkitAudioContext;
+      if (!AC) return;
+      _bpAudioCtx = _bpAudioCtx || new AC();
+      var ctx = _bpAudioCtx, t0 = ctx.currentTime;
+      var osc = ctx.createOscillator(), gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(760, t0);
+      osc.frequency.exponentialRampToValueAtTime(1320, t0 + 0.045);
+      var peak = 0.2 * (vol == null ? 1 : vol);
+      gain.gain.setValueAtTime(0.0001, t0);
+      gain.gain.exponentialRampToValueAtTime(peak, t0 + 0.008);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.13);
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.start(t0); osc.stop(t0 + 0.15);
+    } catch (e) {}
+  }
+
+  /** Queue an expanding-ring flash at a canvas point; _paint ages it out. */
+  function spawnBurst(list, x, y, opts) {
+    opts = opts || {};
+    list.push({
+      x: x, y: y, t: 0,
+      dur: opts.dur || 0.3,
+      r0: opts.r0 != null ? opts.r0 : 4,
+      r1: opts.r1 != null ? opts.r1 : 26,
+      color: opts.color || '140,255,190'
+    });
+  }
+
+  // ---------------------------------------------------------------------------
   //  small utils
   // ---------------------------------------------------------------------------
 
@@ -787,6 +925,22 @@
       i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
     }
     ctx.closePath();
+  }
+
+  /** A stack node draws a dot; a radial node (boosters, fins) draws a diamond
+   *  — so a side-mount point reads differently from a top/bottom one at a glance. */
+  function nodeGlyph(ctx, x, y, r, isRadial, fillStyle) {
+    ctx.fillStyle = fillStyle;
+    ctx.beginPath();
+    if (isRadial) {
+      ctx.save();
+      ctx.translate(x, y); ctx.rotate(Math.PI / 4);
+      ctx.rect(-r, -r, r * 2, r * 2);
+      ctx.restore();
+    } else {
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+    }
+    ctx.fill();
   }
 
   function nodeCrosshair(ctx, x, y, used) {
