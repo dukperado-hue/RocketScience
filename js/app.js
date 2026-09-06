@@ -599,9 +599,11 @@
           var szr = activeMission.constraints && activeMission.constraints.safeZoneRadius;
           if (szr != null) simOpts.safeZoneRadius = szr;
         }
-        // ---- Era 3 · V-2 : ballistic gyro-guidance to a sea target
+        // ---- Era 3 · V-2 : ballistic gyro-guidance to a sea target ~160 km
+        //      downrange (London→Antwerp scale) — a real A4 arc: ~55 km apogee,
+        //      a kilometre-class miss. Short 2.5 km lobs were the "scale wrong".
         var isV2 = !!(model && model.gravityTurn && !model.staged);
-        if (isV2) simOpts.target = { range: 2500, gyroDrift: 0.5 };
+        if (isV2) simOpts.target = { range: 160000, gyroDrift: 0.5 };
         // ---- caller-supplied opts (e.g. the Firework Design Desk's fuse)
         for (var k in (extra.simOpts || {})) simOpts[k] = extra.simOpts[k];
 

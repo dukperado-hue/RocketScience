@@ -240,6 +240,12 @@
     this._camX = 0;
     this._camY = (this.bodyH || 3) * 0.5;
 
+    this._mecoT = null;
+    for (var ee = 0; ee < (sim.events || []).length; ee++) {
+      var ety = sim.events[ee].type;
+      if (ety === 'MECO' || ety === 'BURNOUT' || ety === 'ORBIT') { this._mecoT = sim.events[ee].time; break; }
+    }
+
     // auto time-warp: powered ascent is the show — keep it near real time; a long
     // ballistic coast / a khom loy's 15-min drift gets wound forward hard (the
     // loop adds a further ×N once past apogee — see the rAF driver).
@@ -255,6 +261,12 @@
     this._hideAutopsy();
     this._resize();
 
+    // a V-2 / orbital shot is a BALLISTIC ARC over a curved world — a chase cam
+    // loses it in seconds. Project the whole flight onto the globe as a trace.
+    // (after _resize so this.W / this.H are set)
+    this._stars = null;
+    if (this.toSpace) this._prepMap(); else this._mapS = null;
+
     // a lantern doesn't ROAR — the bang-fai ignite/liftoff clips are wrong for it
     if (!this.buoy && this.sound && this.sound.play) { try { this.sound.play('ignite', 0.5); } catch (e) {} }
 
@@ -269,8 +281,11 @@
         // falling, there's nothing to study — fast-forward the descent so the
         // flight doesn't outstay its welcome (SFS-style auto-warp).
         var warp = 1;
-        if (self.cur && self.t > self.apogeeTime + 2 && (self.cur.velocity || 0) < -2 &&
-            !self.toSpace && self.t < self.dur - 3) warp = 4;
+        if (self.cur && self.t < self.dur - 3) {
+          if (!self.toSpace && self.t > self.apogeeTime + 2 && (self.cur.velocity || 0) < -2) warp = 4;
+          // on the arc map, wind the ballistic coast forward once the engine is out
+          else if (self.toSpace && self._mecoT != null && self.t > self._mecoT + 3) warp = 5;
+        }
         self.t += dt * self.rate * warp;
         if (self.t >= self.dur) { self.t = self.dur; self.playing = false; self._syncPlayBtn(); }
       }
@@ -382,6 +397,217 @@
     for (var i = 0; i < this.traj.length; i += step) {
       this.trail.push({ t: this.traj[i].time, x: this.traj[i].drift || 0, y: this.traj[i].altitude });
     }
+  };
+
+  // --------------------------------------------------- ballistic-arc map view
+  P._prepMap = function () {
+    var RE = (RS.Physics && RS.Physics.RE) || 600000;
+    this._RE = RE;
+    // arc extent from the trajectory itself
+    var maxDr = 0, apo = 0;
+    for (var i = 0; i < this.trail.length; i++) {
+      maxDr = Math.max(maxDr, Math.abs(this.trail[i].x));
+      apo = Math.max(apo, this.trail[i].y);
+    }
+    var thMax = maxDr / RE;
+    this._mapThetaMid = thMax * 0.5;
+    // bounding box of the mapped path in RE-centred metres, θ measured from mid
+    var lo = { x: 1e18, y: 1e18 }, hi = { x: -1e18, y: -1e18 };
+    var probe = function (th, alt) {
+      var r = RE + alt, a = th - (thMax * 0.5);
+      var px = r * Math.sin(a), py = -r * Math.cos(a);
+      lo.x = Math.min(lo.x, px); hi.x = Math.max(hi.x, px);
+      lo.y = Math.min(lo.y, py); hi.y = Math.max(hi.y, py);
+    };
+    for (var s = 0; s <= 40; s++) { probe((s / 40) * thMax, ((s / 40) < 0.5 ? (s / 20) : (2 - s / 20)) * apo); }
+    probe(thMax * 0.5, apo * 1.12);
+    probe(0, 0); probe(thMax, 0);
+    // include a slice of planet below the launch/impact points for context
+    lo.y -= (hi.y - lo.y) * 0.12;
+    var bw = hi.x - lo.x, bh = hi.y - lo.y;
+    var S = Math.min((this.W * 0.86) / bw, (this.H * 0.78) / bh);
+    this._mapS = S;
+    this._mapCx = this.W / 2 - ((lo.x + hi.x) / 2) * S;
+    this._mapCy = this.H * 0.56 - ((lo.y + hi.y) / 2) * S;
+    this._mapApo = apo; this._mapThMax = thMax;
+  };
+
+  P._mapPt = function (dr, alt) {
+    var RE = this._RE, a = (dr / RE) - this._mapThetaMid, r = RE + alt;
+    return {
+      x: this._mapCx + r * Math.sin(a) * this._mapS,
+      y: this._mapCy - r * Math.cos(a) * this._mapS
+    };
+  };
+
+  P._drawMapFrame = function (ctx, st) {
+    var W = this.W, H = this.H, RE = this._RE, S = this._mapS;
+    var cx = this._mapCx, cy = this._mapCy, Rpx = RE * S;
+
+    // ---- space
+    var g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, '#05060e'); g.addColorStop(1, '#0b1022');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    if (!this._stars) {
+      this._stars = [];
+      for (var si = 0; si < 140; si++) this._stars.push([Math.random(), Math.random(), 0.3 + Math.random() * 0.7]);
+    }
+    ctx.fillStyle = '#fff';
+    for (var s2 = 0; s2 < this._stars.length; s2++) {
+      var stx = this._stars[s2];
+      ctx.globalAlpha = stx[2] * 0.7;
+      ctx.fillRect(stx[0] * W, stx[1] * H, 1.6, 1.6);
+    }
+    ctx.globalAlpha = 1;
+
+    // ---- planet
+    ctx.save();
+    var atm = ctx.createRadialGradient(cx, cy, Rpx * 0.99, cx, cy, Rpx * 1.06);
+    atm.addColorStop(0, 'rgba(90,170,255,0.5)');
+    atm.addColorStop(1, 'rgba(90,170,255,0)');
+    ctx.fillStyle = atm;
+    ctx.beginPath(); ctx.arc(cx, cy, Rpx * 1.06, 0, TAU); ctx.fill();
+    var pg = ctx.createRadialGradient(cx - Rpx * 0.35, cy - Rpx * 0.35, Rpx * 0.1, cx, cy, Rpx);
+    pg.addColorStop(0, '#3a7bd0'); pg.addColorStop(0.6, '#1f4f8f'); pg.addColorStop(1, '#123056');
+    ctx.fillStyle = pg;
+    ctx.beginPath(); ctx.arc(cx, cy, Rpx, 0, TAU); ctx.fill();
+    // a couple of land smudges near the launch arc
+    ctx.fillStyle = 'rgba(70,120,80,0.5)';
+    for (var li = 0; li < 5; li++) {
+      var lp = this._mapPt(this._mapThMax * (li / 4), 0);
+      ctx.beginPath(); ctx.ellipse(lp.x, lp.y + 6, 26 + li * 6, 10, 0, 0, TAU); ctx.fill();
+    }
+    ctx.restore();
+
+    // ---- the full trajectory: future faint, flown bright
+    var tr = this.trail, now = this.t;
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    // future (dashed)
+    ctx.save();
+    ctx.setLineDash([5, 7]); ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(150,180,230,0.35)';
+    ctx.beginPath();
+    for (var f = 0; f < tr.length; f++) {
+      var pf = this._mapPt(tr[f].x, tr[f].y);
+      if (f === 0) ctx.moveTo(pf.x, pf.y); else ctx.lineTo(pf.x, pf.y);
+    }
+    ctx.stroke();
+    ctx.restore();
+    // flown (glow)
+    ctx.save();
+    ctx.shadowColor = 'rgba(255,180,90,0.9)'; ctx.shadowBlur = 8;
+    ctx.strokeStyle = '#ffb45a'; ctx.lineWidth = 3;
+    ctx.beginPath();
+    var started = false;
+    for (var fl2 = 0; fl2 < tr.length; fl2++) {
+      if (tr[fl2].t > now) break;
+      var pl = this._mapPt(tr[fl2].x, tr[fl2].y);
+      if (!started) { ctx.moveTo(pl.x, pl.y); started = true; } else ctx.lineTo(pl.x, pl.y);
+    }
+    ctx.stroke();
+    ctx.restore();
+
+    // ---- markers
+    var self = this;
+    var pin = function (dr, alt, col, label) {
+      var p = self._mapPt(dr, alt);
+      ctx.fillStyle = col;
+      ctx.beginPath(); ctx.arc(p.x, p.y, 4.5, 0, TAU); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(p.x, p.y, 4.5, 0, TAU); ctx.stroke();
+      if (label) {
+        ctx.font = '12px system-ui, sans-serif';
+        ctx.fillStyle = 'rgba(230,238,255,0.9)';
+        ctx.textAlign = 'center';
+        ctx.fillText(label, p.x, p.y - 12);
+      }
+    };
+    pin(0, 0, '#ff5a5a', 'ฐานยิง');
+    var s = this.sim.summary || {};
+    var tgt = s.targetRange || 0;
+    if (tgt > 0) pin(tgt, 0, '#5bd6ff', 'เป้า');
+    // apogee
+    var apoPt = tr[0]; for (var ai = 0; ai < tr.length; ai++) if (tr[ai].y > apoPt.y) apoPt = tr[ai];
+    pin(apoPt.x, apoPt.y, '#ffd24a', 'จุดสูงสุด ' + fmtM(apoPt.y));
+
+    // ---- the rocket + exhaust
+    var here = this._mapPt(st.drift || 0, st.altitude);
+    // heading from a short step along the flown path (screen space)
+    var ahead = this._mapPt((st.drift || 0) + (st.vx || 0), st.altitude + (st.velocity || 0));
+    var ang = Math.atan2(ahead.y - here.y, ahead.x - here.x);
+    var powered = this._mecoT != null ? (this.t < this._mecoT - 0.1) : (st.thrust > 1);
+    ctx.save();
+    ctx.translate(here.x, here.y);
+    ctx.rotate(ang);
+    if (powered) {
+      var fl = 16 + 10 * Math.sin(this._flameT * 40);
+      var eg = ctx.createLinearGradient(0, 0, -fl - 10, 0);
+      eg.addColorStop(0, 'rgba(255,240,200,0.95)');
+      eg.addColorStop(0.5, 'rgba(255,150,50,0.6)');
+      eg.addColorStop(1, 'rgba(255,120,40,0)');
+      ctx.fillStyle = eg;
+      ctx.beginPath();
+      ctx.moveTo(-6, -4); ctx.lineTo(-fl - 10, 0); ctx.lineTo(-6, 4); ctx.closePath();
+      ctx.fill();
+    }
+    ctx.fillStyle = '#e8eef7';
+    ctx.strokeStyle = '#243a5a'; ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(11, 0); ctx.lineTo(-6, -5); ctx.lineTo(-3, 0); ctx.lineTo(-6, 5);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.restore();
+    // locator ring so it never gets lost
+    ctx.strokeStyle = 'rgba(255,220,150,0.5)'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(here.x, here.y, 15 + 3 * Math.sin(this.t * 4), 0, TAU); ctx.stroke();
+
+    // ---- picture-in-picture chase during powered flight
+    if (powered) this._drawMapPip(ctx, st);
+  };
+
+  P._drawMapPip = function (ctx, st) {
+    var w = Math.min(230, this.W * 0.28), h = w * 0.62;
+    var x = this.W - w - 16, y = 16;
+    ctx.save();
+    ctx.beginPath(); this._roundRect(ctx, x, y, w, h, 10); ctx.clip();
+    // mini sky
+    var g = ctx.createLinearGradient(0, y, 0, y + h);
+    g.addColorStop(0, '#0a1226'); g.addColorStop(1, '#1a2f4a');
+    ctx.fillStyle = g; ctx.fillRect(x, y, w, h);
+    // ground line rising away
+    var horiz = y + h * clamp(1 - st.altitude / 40000, 0.12, 0.95);
+    ctx.fillStyle = '#2a3f2c'; ctx.fillRect(x, horiz, w, y + h - horiz);
+    // the rocket close up, tilted by pitch
+    var cxp = x + w * 0.5, cyp = y + h * 0.55;
+    var pitch = st.pitch != null ? st.pitch : 90;
+    ctx.save();
+    ctx.translate(cxp, cyp);
+    ctx.rotate((90 - pitch) * Math.PI / 180);
+    var L = h * 0.42;
+    // plume
+    var fl = L * (0.8 + 0.3 * Math.sin(this._flameT * 40));
+    var eg = ctx.createLinearGradient(0, L * 0.5, 0, L * 0.5 + fl);
+    eg.addColorStop(0, 'rgba(255,240,200,0.95)');
+    eg.addColorStop(0.5, 'rgba(255,150,50,0.6)');
+    eg.addColorStop(1, 'rgba(255,120,40,0)');
+    ctx.fillStyle = eg;
+    ctx.beginPath();
+    ctx.moveTo(-L * 0.13, L * 0.5); ctx.lineTo(0, L * 0.5 + fl); ctx.lineTo(L * 0.13, L * 0.5);
+    ctx.closePath(); ctx.fill();
+    // body
+    ctx.fillStyle = '#e8eef7'; ctx.strokeStyle = '#243a5a'; ctx.lineWidth = 1.5;
+    this._roundRect(ctx, -L * 0.13, -L * 0.5, L * 0.26, L, L * 0.06);
+    ctx.fill(); ctx.stroke();
+    ctx.beginPath();                                  // nose
+    ctx.moveTo(-L * 0.13, -L * 0.5); ctx.lineTo(L * 0.13, -L * 0.5); ctx.lineTo(0, -L * 0.72);
+    ctx.closePath(); ctx.fillStyle = '#cfd9e6'; ctx.fill(); ctx.stroke();
+    ctx.restore();
+    // frame + label
+    ctx.restore();
+    ctx.strokeStyle = 'rgba(180,200,230,0.5)'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); this._roundRect(ctx, x, y, w, h, 10); ctx.stroke();
+    ctx.font = '11px system-ui, sans-serif'; ctx.fillStyle = 'rgba(220,230,245,0.85)';
+    ctx.textAlign = 'left';
+    ctx.fillText('เครื่องยนต์ทำงาน', x + 10, y + h - 9);
   };
 
   // ------------------------------------------------------------ interpolate
@@ -536,6 +762,7 @@
     this.canvas.style.height = h + 'px';
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     this.W = w; this.H = h;
+    if (this.toSpace && this._RE) this._prepMap();   // re-fit the arc projection
     this._drawFrame();
   };
 
@@ -550,6 +777,15 @@
     if (!this.ctx || !this.cur) return;
     var ctx = this.ctx, W = this.W, H = this.H, st = this.cur;
     var alt = st.altitude;
+
+    // V-2 / orbit → the ballistic-arc map (chase cam can't hold a 160 km lob)
+    if (this.toSpace && this._mapS) {
+      this._drawMapFrame(ctx, st);
+      this._updateHud(st);
+      var tst = $('f2-toast');
+      if (tst && !tst.hidden && this.t > this._toastUntil) tst.hidden = true;
+      return;
+    }
 
     ctx.save();
     if (this._shake > 0) {

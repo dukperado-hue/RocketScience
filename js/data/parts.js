@@ -439,18 +439,18 @@
       icon: '🔺',
       era: '3-v2',
       blurb: 'หัวโอไจว์แหลมยาวแบบ A4/V-2 ปี 1944 — เพรียวลม แรงต้านต่ำ พ่นลายกลิ้ง ขาว-ดำ สำหรับวัดการหมุน',
-      // Phase 22 course-correction: mass rebalanced to PROPORTIONAL realism.
-      // The real A4/V-2 was ~12,500 kg wet, ~70% propellant, TWR ~1.8-2.0 at
-      // liftoff, ~65s burn — those ratios are preserved here at a scale that
-      // stays consistent with the rest of this toy-scale game (a stock V-2
-      // sample now totals ~300 kg: a clear step up from Bang Fai's ~115 kg,
-      // still well short of the Orbital era that comes after it).
-      mass: 18,
+      // Phase 24: scaled ×3.5 vs Phase 22 so a stock V-2 reads as a ~1-tonne
+      // machine (not 300 kg) and, fired at the new ~160 km sea target, throws
+      // a real A4-style arc — ~55 km apogee, ~1 km miss. Ratios (70% prop,
+      // TWR ≈ 1.8, ~65 s burn) preserved; thrust + massFlow scaled to match.
+      mass: 63,
       cost: 60,
       size: { w: 1, h: 1 },
       // rendered as a true pointed ogive by VehicleRenderer — no stand-in model
       aerodynamics: { dragCoefficient: 0.22, crossSectionArea: 0.030 },
-      structural: { maxDynamicPressure: 90000 },
+      // milspec welded-steel airframe — the scaled-up V-2 punches Mach 3+ through
+      // dense air; a real A4 was built to take that load, so the q limits are high
+      structural: { maxDynamicPressure: 850000 },
       attachNodes: [
         { id: 'bottom', dx: 0.5, dy: 1, type: NODE.STACK, accepts: ['Structural', 'Propulsion'] }
       ]
@@ -462,13 +462,13 @@
       icon: '🛢️',
       era: '3-v2',
       blurb: 'ถังคู่บรรจุเชื้อเพลิงเหลวมหาศาล — ต่อซ้อนได้ ยิ่งหลายถัง ยิ่งเผาได้นาน ยิ่งไปไกล',
-      mass: 33,
+      mass: 115,
       cost: 55,
       size: { w: 1, h: 3 },
-      propellantMass: 193,    // kg into the SHARED pool the engine draws from —
+      propellantMass: 675,    // kg into the SHARED pool the engine draws from —
                                // real A4 ran ~70% propellant by mass; kept here
       aerodynamics: { dragCoefficient: 0.30, crossSectionArea: 0.050 },
-      structural: { maxDynamicPressure: 55000 },
+      structural: { maxDynamicPressure: 780000 },   // welded-steel propellant tank
       attachNodes: [
         { id: 'top',    dx: 0.5, dy: 0, type: NODE.STACK, accepts: ['Payload', 'Structural'] },
         { id: 'bottom', dx: 0.5, dy: 3, type: NODE.STACK, accepts: ['Propulsion', 'Structural'] }
@@ -481,24 +481,24 @@
       icon: '🚀',
       era: '3-v2',
       blurb: 'มอเตอร์แอลกอฮอล์/LOX จุดติดทันที แรงคงที่ ~77 วิต่อถัง + ไจโรคุมทิศ บินโปรแกรมเลี้ยวโค้งเอง',
-      mass: 57,
+      mass: 200,
       cost: 140,
       size: { w: 1, h: 2 },
       // fat finned skirt: big REFERENCE area at the very aft keeps CoP behind CoM,
       // low drag COEFFICIENT so it doesn't brake the climb (the fin trick again)
       aerodynamics: { dragCoefficient: 0.10, crossSectionArea: 0.060 },
-      structural: { maxDynamicPressure: 120000 },
+      structural: { maxDynamicPressure: 950000 },
       propulsion: {
         mode: 'rocket',
         // thrust/massFlow/Isp scaled together (thrust = massFlow · Isp · g0
-        // holds, same as before) so a stock V-2 (18+33+57 kg dry, 193 kg
-        // propellant, 301 kg total) lifts off at TWR ≈ 1.8 — matching the
-        // real A4's ~1.8-2.0 — with a ~77 s burn, close to its real ~65 s.
-        thrust: 5300,           // N steady
+        // holds) so a stock V-2 (63+115+200 kg dry, 675 kg propellant,
+        // ~1053 kg total) lifts off at TWR ≈ 1.8 — matching the real A4's
+        // ~1.8-2.0 — with a ~77 s burn, close to its real ~65 s.
+        thrust: 18550,          // N steady
         burnTime: 999,          // s — a ceiling; real cutoff is tank depletion
         specificImpulse: 215,   // s — early regen-cooled liquid bipropellant
         propellantMass: 0,      // the grain lives in the tanks, not here
-        massFlow: 2.514,        // kg/s drawn from the shared pool
+        massFlow: 8.80,         // kg/s drawn from the shared pool
         spoolTime: 0,           // liquid ignition is effectively instant
         guidance: true          // gyro-guided → flies the pitch program, no tumble
       },

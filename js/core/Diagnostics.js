@@ -135,9 +135,14 @@
       var meco = events.filter(function (e) { return e.type === 'MECO'; })[0];
       var miss = Math.abs(sum.missDistance || 0);
       var dmg = sum.damageRadius || 0;
-      var st = miss <= Math.max(120, dmg * 0.6) ? OK : (miss <= 400 ? WARN : FAIL);
+      // a real A4/V-2 had a CEP of kilometres at 300 km — accuracy scales with
+      // range, not a fixed metre count. Pass band ≈ 1.5% of range (min 150 m).
+      var rng = Math.abs(sum.targetRange || 0);
+      var okBand = Math.max(150, dmg * 0.6, rng * 0.015);
+      var st = miss <= okBand ? OK : (miss <= okBand * 3 ? WARN : FAIL);
       add('guidance', st,
-        meco ? ('ยิงเข้าเป้า — พลาดระยะ ' + fmtAlt(miss))
+        meco ? ('ยิงเข้าเป้า — พลาดระยะ ' + fmtAlt(miss) +
+                (rng > 20000 ? ' (V-2 จริงพลาดเป็นกิโลเมตรที่ระยะนี้)' : ''))
              : 'เชื้อเพลิงหมดก่อนถึงระยะยิง — ตกสั้นกว่าเป้า',
         'ระยะยิงเป้า ' + fmtAlt(sum.targetRange || 0) +
         ' · ตกจริง ' + fmtAlt(Math.abs(sum.downrange || sum.impactX || 0)) +
@@ -227,7 +232,8 @@
     if (impact) {
       var vImp = Math.abs(impact.velocity);
       var iDetail = 'ความเร็วแตะพื้น ' + vImp.toFixed(1) + ' m/s';
-      if (loc) add('landing', WARN, 'ร่วงลงหลังเสียการควบคุม', iDetail);
+      if (sum.targeting) add('landing', OK, 'หัวรบพุ่งเข้าเป้าด้วยความเร็วสูง — ตามที่ตั้งใจ', iDetail);
+      else if (loc) add('landing', WARN, 'ร่วงลงหลังเสียการควบคุม', iDetail);
       else if (brk) add('landing', OK, 'ตีลังกาลงหลังแตกที่ยอด — ไม่พุ่งปักหัวเหมือนหอกทิ้ง', iDetail);
       else if (vImp <= 6) add('landing', OK, 'ลงแตะพื้นนุ่มนวล', iDetail);
       else if (vImp <= 15) add('landing', WARN, 'ลงแรง — โครงสร้างอาจเสียหาย', iDetail);
