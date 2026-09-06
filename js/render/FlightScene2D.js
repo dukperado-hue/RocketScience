@@ -189,6 +189,15 @@
     this.apogee = (sim.summary && sim.summary.apogee) || 100;
     this.apogeeTime = (sim.summary && sim.summary.apogeeTime) || this.dur * 0.4;
     this.toSpace = this.apogee > 20000;         // V-2 / orbit — climbs out of the sky band
+    // is this a HOT-AIR LANTERN? (buoyancy carries it, not a motor). It gets its
+    // own silhouette, its own hush, and a camera that doesn't chase it so the
+    // slow drift reads against the fixed hills.
+    var maxThr = 0, maxBuo = 0;
+    for (var ti2 = 0; ti2 < this.traj.length; ti2++) {
+      maxThr = Math.max(maxThr, this.traj[ti2].thrust || 0);
+      maxBuo = Math.max(maxBuo, this.traj[ti2].buoyancy || 0);
+    }
+    this.buoy = maxBuo > maxThr;
     this.groundColor = this.toSpace ? '#4a3a2c' : '#3a2f26';
 
     this.smoke = [];
@@ -224,7 +233,8 @@
     this._hideAutopsy();
     this._resize();
 
-    if (this.sound && this.sound.play) { try { this.sound.play('ignite', 0.5); } catch (e) {} }
+    // a lantern doesn't ROAR — the bang-fai ignite/liftoff clips are wrong for it
+    if (!this.buoy && this.sound && this.sound.play) { try { this.sound.play('ignite', 0.5); } catch (e) {} }
 
     var self = this;
     cancelAnimationFrame(this._raf);
@@ -407,9 +417,10 @@
     this._shake *= Math.pow(0.0025, dt);
     if (this._shake < 0.05) this._shake = 0;
 
-    // ---- pad smoke while the motor is spooling / just off the pad
+    // ---- pad smoke while the motor is spooling / just off the pad (a lantern
+    //      lifts clean — no ground-hugging exhaust cloud)
     var lift = Math.max(st.thrust, st.buoyancy);
-    if (this.playing && lift > 1 && st.altitude < 60 && this.t < (this._liftoffT || 0) + 3.2 &&
+    if (!this.buoy && this.playing && lift > 1 && st.altitude < 60 && this.t < (this._liftoffT || 0) + 3.2 &&
         this.smoke.length < 90 && Math.random() < dt * 40) {
       this.smoke.push({
         x: (st.drift || 0) + (Math.random() - 0.5) * this.rocketH * 0.9,
@@ -434,17 +445,34 @@
     // below it, a 300 m khom loy barely zooms at all.
     var alt = st.altitude, drift = st.drift || 0;
     var m0 = this._mpp0 || 0.04;
+    var ck = dt <= 0 ? 1 : (1 - Math.pow(0.02, dt));    // dt 0 (scrub) → snap; ~0.25 s TC
+
+    if (this.buoy) {
+      // A LANTERN. The whole point is watching it pull away from the hills, so
+      // hold ONE near-fixed wide shot framed to the flight's own ceiling: the
+      // pad low, ~1.5× apogee of air above it. The lantern then visibly
+      // traverses the frame — no chase, no "the number moves but the picture
+      // doesn't". Only creep the camera up if it would clip the very top.
+      var span = Math.max(60, this.apogee * 1.5);
+      var fixedMpp = clamp(span / (this.H * 0.82), m0, 30);
+      this._mpp = lerp(this._mpp, fixedMpp, ck);
+      var topM = this._camY + this._mpp * this.H * 0.42;      // world-y at frame top
+      var wy = this._camY;
+      if (alt > topM - this._mpp * this.H * 0.12) wy = alt - this._mpp * this.H * 0.30;
+      wy = Math.max(wy, this._mpp * this.H * 0.30);           // keep the ground in shot
+      this._camY = lerp(this._camY, wy, ck);
+      this._camX = lerp(this._camX, drift * 0.5, ck);
+      return;
+    }
+
+    // ---- ROCKET camera (SFS-style): zoom-out ceiling scales with apogee so the
+    // whole climb uses the full zoom range; a 3 km Bang Fai ends showing km of
+    // air below it, a 300 m firework barely zooms.
     var ceil = this.toSpace ? 1600 : clamp(this.apogee / 240, m0 * 1.5, 60);
-    // ease-out on altitude: quick initial pull-back, then gentle
     var climb = clamp(alt / Math.max(120, this.apogee * 0.55), 0, 1);
     var targetMpp = clamp(m0 + (ceil - m0) * Math.pow(climb, 0.72), m0, ceil);
-    var ck = dt <= 0 ? 1 : (1 - Math.pow(0.02, dt));    // dt 0 (scrub) → snap; ~0.25 s TC
     this._mpp = lerp(this._mpp, targetMpp, ck);
-    // aim a little above the rocket so there's sky to climb into...
     var wantY = alt + this.bodyH * 0.5 + this._mpp * this.H * 0.08;
-    // ...but while the rocket is still low, hold the camera down so the ground
-    // and village stay in frame (the height cue). Ground (world y=0) leaves the
-    // bottom of the screen once camY > ~0.34·H·mpp.
     var lowCeil = this._mpp * this.H * 0.30;
     if (alt < lowCeil) wantY = Math.min(wantY, lowCeil);
     this._camY = lerp(this._camY, wantY, ck);
@@ -453,8 +481,10 @@
 
   P._fireEvent = function (e) {
     if (e.type === 'LIFTOFF') {
-      this._liftoffT = e.time; this._shake = 1;
-      if (this.sound && this.sound.play) { try { this.sound.play('liftoff', 0.7); } catch (x) {} }
+      this._liftoffT = e.time;
+      // a lantern lifts on a whisper — no rail-tearing whoosh, no camera kick
+      this._shake = this.buoy ? 0 : 1;
+      if (!this.buoy && this.sound && this.sound.play) { try { this.sound.play('liftoff', 0.7); } catch (x) {} }
     }
     if (e.type === 'IMPACT' || e.type === 'APOGEE_BREAKUP' || e.type === 'LOSS_OF_CONTROL') this._shake = Math.max(this._shake, 0.8);
     if (e.type === 'SEPARATE_STAGE') this._shake = Math.max(this._shake, 0.5);
@@ -712,6 +742,11 @@
   P._drawRocket = function (ctx, st) {
     if (!this.parts || !this.parts.length) return;
     var base = this._w2s(st.drift || 0, st.altitude);
+
+    // a hot-air lantern is not a rocket — draw the paper envelope glowing, not a
+    // vector part stack
+    if (this.buoy) { this._drawLantern(ctx, st, base); return; }
+
     // keep the rocket readable even when the camera is way out (SFS keeps the
     // craft a constant on-screen size once you're high enough)
     var MIN_PX = 54;
@@ -833,6 +868,101 @@
       self._roundRect(ctx, p.x - p.w / 2, p.yBot, p.w, p.h, Math.min(p.w, p.h) * 0.18);
       ctx.fill(); ctx.stroke();
     });
+    ctx.restore();
+  };
+
+  // ------------------------------------------------------ the khom loy itself
+  P._drawLantern = function (ctx, st, base) {
+    // hot-air lantern: a glowing sa-paper onion, an open mouth with a flame,
+    // a wish-tag swinging below. Drawn in screen space at a readable size that
+    // does not depend on the (wide, near-fixed) lantern camera zoom.
+    var hot = clamp((st.buoyancy || 0) / Math.max(1, this._maxThrust()), 0, 1);
+    var alive = st.buoyancy > 0.05 && !this._crashed(st);
+    var t = this.t;
+    var sway = Math.sin(t * 1.3) * 0.12 + Math.sin(t * 0.6 + 1) * 0.06;   // gentle drift
+    var bob = Math.sin(t * 0.9) * 0.5;
+    var Rpx = clamp(1.1 / this._mpp, 26, 46);      // envelope radius on screen
+    var cx = base.x + sway * Rpx * 0.6;
+    var cy = base.y - Rpx * 0.7 + bob;             // envelope centre above the mouth
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(sway * 0.5);
+
+    // warm light it casts
+    if (alive) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      var gl = ctx.createRadialGradient(0, Rpx * 0.2, 0, 0, Rpx * 0.2, Rpx * 3.4);
+      gl.addColorStop(0, 'rgba(255,190,90,' + (0.22 + 0.16 * hot).toFixed(3) + ')');
+      gl.addColorStop(1, 'rgba(255,170,70,0)');
+      ctx.fillStyle = gl;
+      ctx.fillRect(-Rpx * 3.4, -Rpx * 3.4, Rpx * 6.8, Rpx * 6.8);
+      ctx.restore();
+    }
+
+    // the paper onion — rounded dome, shoulders, tapering to the mouth
+    var topY = -Rpx * 1.35, mouthY = Rpx * 1.15, mouthW = Rpx * 0.62;
+    ctx.beginPath();
+    ctx.moveTo(0, topY);
+    ctx.bezierCurveTo(Rpx * 1.15, topY + Rpx * 0.15, Rpx * 1.05, Rpx * 0.35, mouthW, mouthY);
+    ctx.lineTo(-mouthW, mouthY);
+    ctx.bezierCurveTo(-Rpx * 1.05, Rpx * 0.35, -Rpx * 1.15, topY + Rpx * 0.15, 0, topY);
+    ctx.closePath();
+    var body = ctx.createLinearGradient(0, topY, 0, mouthY);
+    if (alive) {
+      body.addColorStop(0, '#ffe4a6');
+      body.addColorStop(0.55, '#ffb765');
+      body.addColorStop(1, '#ff8f43');
+    } else {
+      body.addColorStop(0, '#d9c9a8'); body.addColorStop(1, '#b59a72');   // cooled — dull
+    }
+    ctx.fillStyle = body;
+    ctx.shadowColor = alive ? 'rgba(255,170,80,0.9)' : 'transparent';
+    ctx.shadowBlur = alive ? Rpx * 0.9 : 0;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    // paper ribs
+    ctx.strokeStyle = 'rgba(150,90,40,0.35)';
+    ctx.lineWidth = Math.max(1, Rpx * 0.05);
+    for (var r = -1; r <= 1; r++) {
+      ctx.beginPath();
+      ctx.moveTo(r * Rpx * 0.5, topY + Rpx * 0.2);
+      ctx.quadraticCurveTo(r * Rpx * 1.0, 0, r * mouthW * 0.8, mouthY);
+      ctx.stroke();
+    }
+    // rim of the mouth
+    ctx.strokeStyle = 'rgba(120,70,30,0.7)';
+    ctx.lineWidth = Math.max(1, Rpx * 0.07);
+    ctx.beginPath(); ctx.moveTo(-mouthW, mouthY); ctx.lineTo(mouthW, mouthY); ctx.stroke();
+
+    // the flame at the mouth
+    if (alive) {
+      var fl = Rpx * (0.32 + 0.22 * hot) * (0.9 + 0.1 * Math.sin(t * 22));
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      var fg = ctx.createRadialGradient(0, mouthY + fl * 0.3, 0, 0, mouthY + fl * 0.3, fl * 1.6);
+      fg.addColorStop(0, 'rgba(255,246,214,0.95)');
+      fg.addColorStop(0.5, 'rgba(255,170,60,0.7)');
+      fg.addColorStop(1, 'rgba(255,120,40,0)');
+      ctx.fillStyle = fg;
+      ctx.beginPath(); ctx.ellipse(0, mouthY + fl * 0.2, fl * 0.7, fl, 0, 0, TAU); ctx.fill();
+      ctx.restore();
+    }
+
+    // wish-tag on a thread
+    ctx.strokeStyle = 'rgba(90,60,35,0.6)';
+    ctx.lineWidth = Math.max(1, Rpx * 0.04);
+    var tagY = mouthY + Rpx * 0.9, tagX = sway * Rpx * 1.4;
+    ctx.beginPath(); ctx.moveTo(0, mouthY); ctx.lineTo(tagX, tagY); ctx.stroke();
+    ctx.fillStyle = alive ? '#fff2d8' : '#e8ddc8';
+    ctx.save();
+    ctx.translate(tagX, tagY); ctx.rotate(sway);
+    ctx.fillRect(-Rpx * 0.16, 0, Rpx * 0.32, Rpx * 0.42);
+    ctx.strokeStyle = 'rgba(160,40,40,0.5)';
+    ctx.strokeRect(-Rpx * 0.16, 0, Rpx * 0.32, Rpx * 0.42);
+    ctx.restore();
+
     ctx.restore();
   };
 
