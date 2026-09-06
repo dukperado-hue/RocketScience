@@ -142,6 +142,22 @@ body.bp-body {
   font-size: 22px; line-height: 1; width: 26px; text-align: center;
   transition: transform .16s cubic-bezier(.2,.9,.25,1);
 }
+/* storybook silhouette thumbnail (Phase 25) */
+.bp-part-thumb {
+  width: 44px; height: 44px; flex: 0 0 44px;
+  border-radius: 8px;
+  background:
+    radial-gradient(120% 120% at 30% 25%, rgba(255,255,255,0.06), rgba(0,0,0,0.12)),
+    color-mix(in srgb, var(--cat) 12%, #0e2038);
+  border: 1px solid color-mix(in srgb, var(--cat) 35%, var(--bp-line));
+  transition: transform .16s cubic-bezier(.2,.9,.25,1),
+              box-shadow .16s ease, border-color .16s ease;
+}
+.bp-part:hover .bp-part-thumb {
+  transform: scale(1.08) translateY(-1px);
+  border-color: color-mix(in srgb, var(--cat) 65%, #fff);
+  box-shadow: 0 0 14px -3px color-mix(in srgb, var(--cat) 70%, transparent);
+}
 .bp-part-tx { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .bp-part-nm { font-size: 13.5px; font-weight: 600; transition: color .16s ease; }
 .bp-part-mt { font-size: 10.5px; color: var(--bp-ink-dim); font-family: var(--bp-mono); }

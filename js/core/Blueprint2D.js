@@ -92,14 +92,26 @@
       row.className = 'bp-part';
       row.dataset.partId = part.id;
       row.style.setProperty('--cat', CATEGORY_COLOR[part.category] || '#888');
+      var PA = global.RS && global.RS.render && global.RS.render.PartArt;
       row.innerHTML =
-        '<span class="bp-part-ic">' + part.icon + '</span>' +
+        (PA ? '<canvas class="bp-part-thumb" width="72" height="72"></canvas>'
+            : '<span class="bp-part-ic">' + part.icon + '</span>') +
         '<span class="bp-part-tx">' +
           '<span class="bp-part-nm">' + esc(part.name) + '</span>' +
           '<span class="bp-part-mt">' + part.category + ' · ' +
             fmtMass(part.mass) + ' · ฿' + part.cost + '</span>' +
         '</span>';
       row.title = part.blurb || part.name;
+      if (PA) {
+        var tc = row.querySelector('.bp-part-thumb');
+        var tctx = tc && tc.getContext && tc.getContext('2d');
+        // fit the part's real proportions into the 72×72 thumb
+        if (tctx) {
+          var pw = part.size.w, ph = part.size.h, s = 60 / Math.max(pw, ph);
+          var dw = pw * s, dh = ph * s;
+          PA.draw(tctx, part, (72 - dw) / 2, (72 - dh) / 2, dw, dh, {});
+        }
+      }
       row.addEventListener('pointerdown', function (e) {
         e.preventDefault();
         self._startCarry(part, null, e);   // catalog already stores Part instances
@@ -534,6 +546,11 @@
 
   Blueprint2D.prototype._drawPartDraft = function (inst, selected) {
     var p = inst.part;
+    // Phase 25: the storybook PartArt silhouette now covers every part uniformly
+    // ("ประกอบแล้วเห็นภาพ") — the old cyan engineering-drawing draft for the 3
+    // original khom-loy parts made the catalog read as mixed styles. Keep the
+    // code, skip it whenever PartArt is available.
+    if (global.RS && global.RS.render && global.RS.render.PartArt) return false;
     if (!p || p.era !== '0-khomloy') return false;
 
     var ctx = this.ctx;
@@ -686,20 +703,25 @@
     var wpx = p.size.w * this.view.cell, hpx = p.size.h * this.view.cell;
     var col = CATEGORY_COLOR[p.category] || '#888';
 
-    ctx.fillStyle = hexA(col, 0.28);
-    ctx.strokeStyle = selected ? '#fff' : hexA(col, 0.95);
-    ctx.lineWidth = selected ? 2.5 : 1.5;
-    roundRect(ctx, a.x + 3, a.y + 3, wpx - 6, hpx - 6, 6);
-    ctx.fill(); ctx.stroke();
-
-    ctx.fillStyle = '#eaf1ff';
-    ctx.font = Math.min(wpx, hpx) * 0.4 + 'px system-ui, sans-serif';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(p.icon, a.x + wpx / 2, a.y + hpx / 2 - 2);
-
-    ctx.fillStyle = 'rgba(234,241,255,0.65)';
-    ctx.font = '10px system-ui, sans-serif';
-    ctx.fillText(p.name, a.x + wpx / 2, a.y + hpx - 9);
+    var PA = global.RS && global.RS.render && global.RS.render.PartArt;
+    if (PA) {
+      // a faint category-tinted bed behind the silhouette so the stack still
+      // reads by colour, then the real little picture on top
+      ctx.fillStyle = hexA(col, 0.14);
+      roundRect(ctx, a.x + 2, a.y + 2, wpx - 4, hpx - 4, 6);
+      ctx.fill();
+      PA.draw(ctx, p, a.x, a.y, wpx, hpx, { selected: selected });
+    } else {
+      ctx.fillStyle = hexA(col, 0.28);
+      ctx.strokeStyle = selected ? '#fff' : hexA(col, 0.95);
+      ctx.lineWidth = selected ? 2.5 : 1.5;
+      roundRect(ctx, a.x + 3, a.y + 3, wpx - 6, hpx - 6, 6);
+      ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#eaf1ff';
+      ctx.font = Math.min(wpx, hpx) * 0.4 + 'px system-ui, sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(p.icon, a.x + wpx / 2, a.y + hpx / 2 - 2);
+    }
 
     // node markers — a diamond for radial (side-mount) nodes, a dot for stack
     p.attachNodes.forEach(function (node) {
@@ -744,19 +766,21 @@
 
     var a = this._ghostPx;
     ctx.save();
-    ctx.globalAlpha = 0.75;
-    ctx.fillStyle = ok ? 'rgba(120,255,180,0.20)' : 'rgba(255,120,120,0.18)';
+    ctx.fillStyle = ok ? 'rgba(120,255,180,0.14)' : 'rgba(255,120,120,0.14)';
     ctx.strokeStyle = ok ? 'rgba(120,255,180,0.95)' : 'rgba(255,120,120,0.9)';
     ctx.lineWidth = 2;
     ctx.setLineDash([5, 4]);
     roundRect(ctx, a.x + 3, a.y + 3, wpx - 6, hpx - 6, 6);
     ctx.fill(); ctx.stroke();
     ctx.setLineDash([]);
-    ctx.globalAlpha = 1;
-    ctx.fillStyle = '#eaf1ff';
-    ctx.font = Math.min(wpx, hpx) * 0.4 + 'px system-ui, sans-serif';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(part.icon, a.x + wpx / 2, a.y + hpx / 2);
+    var PA = global.RS && global.RS.render && global.RS.render.PartArt;
+    if (PA) { PA.draw(ctx, part, a.x, a.y, wpx, hpx, { ghost: true }); }
+    else {
+      ctx.fillStyle = '#eaf1ff';
+      ctx.font = Math.min(wpx, hpx) * 0.4 + 'px system-ui, sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(part.icon, a.x + wpx / 2, a.y + hpx / 2);
+    }
     ctx.restore();
   };
 
