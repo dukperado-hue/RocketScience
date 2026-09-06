@@ -173,6 +173,15 @@
 
     this._buildParts(vehicle);
     RS.render.__f2 = this;   // debug handle
+
+    // an orbital coast runs for 15–20 min of trajectory with nothing to watch
+    // once ORBIT is reached — end the replay a beat after the payoff event
+    // (ORBIT for a launch, IMPACT for a lob) instead of playing the whole coast.
+    (sim.events || []).forEach(function (e) {
+      if (e.type === 'ORBIT') this.dur = Math.min(this.dur, e.time + 12);
+      if (e.type === 'IMPACT') this.dur = Math.min(this.dur, e.time + 4);
+    }, this);
+
     this._prepEvents(sim.events);
     this._prepTrail();
 
@@ -189,6 +198,10 @@
     this._shake = 0;
     this._autopsyShown = false;
     this._flameT = 0;
+    // per-flight caches — the instance is reused across launches / era switches,
+    // so a stale max-thrust or max-speed would bleed a V-2's numbers into a khom loy
+    this._vmax = 0;
+    this._mt = null;
     // launch zoom: frame ~34 m of world (rocket on the pad + tower + treeline).
     // From here the camera only ever zooms OUT — never in.
     this._mpp0 = clamp(34 / (this.H || 720), 0.03, 0.09);
@@ -601,13 +614,21 @@
   };
 
   P._drawGround = function (ctx, W, H) {
+    // the flat ground slab is a NEAR-field cue only. On a climb to space it must
+    // fade right out (15→45 km) or you get a brown band sitting across the
+    // planet limb at 90 km. Low flights (bang fai / khom loy) never reach the
+    // fade so this is a no-op for them.
+    var gAlpha = 1 - smooth(clamp((this.cur.altitude - 15000) / 30000, 0, 1));
     var g0 = this._w2s(0, 0);
-    if (g0.y < H) {
+    if (g0.y < H && gAlpha > 0.01) {
+      ctx.save();
+      ctx.globalAlpha = gAlpha;
       ctx.fillStyle = this.groundColor;
       ctx.fillRect(0, g0.y, W, H - g0.y + 2);
       ctx.strokeStyle = 'rgba(0,0,0,0.25)';
       ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(0, g0.y); ctx.lineTo(W, g0.y); ctx.stroke();
+      ctx.restore();
     }
     // near foreground grass/fence — very close parallax, world-locked at pad.
     // Drops out fairly fast: once you're a few hundred metres up a near layer
@@ -854,8 +875,14 @@
     // climbing?" is answered at a glance (total speed hid a stalled apogee
     // behind 50 m/s of sideways drift)
     var vv = st.velocity || 0;
-    var arrow = vv > 1 ? ' ▲' : (vv < -1 ? ' ▼' : '');
-    set('f2-vel', Math.round(Math.abs(vv)) + ' m/s' + arrow);
+    if (this.toSpace && st.altitude > 40000) {
+      // above the atmosphere the number that matters is total (orbital) speed,
+      // not the tiny radial rate — an ▲/▼ on a stable orbit just looks broken
+      set('f2-vel', Math.round(st.speed || Math.abs(vv)) + ' m/s');
+    } else {
+      var arrow = vv > 1 ? ' ▲' : (vv < -1 ? ' ▼' : '');
+      set('f2-vel', Math.round(Math.abs(vv)) + ' m/s' + arrow);
+    }
     this._vmax = Math.max(this._vmax || 0, st.speed || Math.abs(st.velocity));
     set('f2-vmax', Math.round(this._vmax) + ' m/s');
     set('f2-drift', fmtM(Math.abs(st.drift || 0)));
