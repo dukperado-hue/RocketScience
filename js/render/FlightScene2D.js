@@ -200,6 +200,28 @@
     this.buoy = maxBuo > maxThr;
     this.groundColor = this.toSpace ? '#4a3a2c' : '#3a2f26';
 
+    // a lantern doesn't fly alone — the whole village lets theirs go together.
+    // A drift of companion lanterns, varied in size / height / rise-rate, that
+    // fills the sky as the player's climbs. World-positioned so the camera and
+    // parallax carry them convincingly.
+    this._companions = [];
+    if (this.buoy) {
+      var ceilM = Math.max(160, this.apogee * 1.8);
+      var N = 26;
+      for (var ci = 0; ci < N; ci++) {
+        var rnd = function () { return Math.random(); };
+        this._companions.push({
+          x: (rnd() - 0.5) * 380,                 // ±190 m around the pad
+          y0: rnd() * ceilM - ceilM * 0.12,       // some already up, a few still low
+          rise: 0.7 + rnd() * 1.9,                // m/s
+          scale: 0.35 + rnd() * rnd() * 1.15,     // biased small — a few big ones near
+          phase: rnd() * TAU,
+          swayA: 0.5 + rnd() * 1.4,
+          warm: 0.75 + rnd() * 0.25
+        });
+      }
+    }
+
     this.smoke = [];
     this.bursts = [];
     this._toastUntil = 0;
@@ -544,6 +566,9 @@
     // ---- 3 · ground + pad prop
     this._drawGround(ctx, W, H);
 
+    // ---- 3.5 · companion lanterns (behind the hero, the whole village's khom loy)
+    if (this._companions && this._companions.length) this._drawCompanions(ctx);
+
     // ---- 4 · flight trail
     this._drawTrail(ctx);
 
@@ -868,6 +893,52 @@
       self._roundRect(ctx, p.x - p.w / 2, p.yBot, p.w, p.h, Math.min(p.w, p.h) * 0.18);
       ctx.fill(); ctx.stroke();
     });
+    ctx.restore();
+  };
+
+  // ------------------------------------------- the rest of the village's khom loy
+  P._drawCompanions = function (ctx) {
+    var t = this.t, list = this._companions;
+    ctx.save();
+    for (var i = 0; i < list.length; i++) {
+      var c = list[i];
+      var wy = c.y0 + c.rise * t;
+      if (wy < -20) continue;
+      var sway = Math.sin(t * 0.5 + c.phase) * c.swayA;
+      var p = this._w2s(c.x + sway, wy);
+      var R = clamp((0.9 * c.scale) / this._mpp, 3, 34);
+      if (p.x < -R * 4 || p.x > this.W + R * 4 || p.y < -R * 4 || p.y > this.H + R * 4) continue;
+      // depth haze: the small/far ones are dimmer and cooler
+      var far = clamp((1 - c.scale) * 0.55, 0, 0.5);
+      ctx.globalAlpha = 0.85 - far;
+      // glow
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      var g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, R * 2.6);
+      g.addColorStop(0, 'rgba(255,' + (180 - far * 60 | 0) + ',90,0.5)');
+      g.addColorStop(1, 'rgba(255,170,80,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(p.x - R * 2.6, p.y - R * 2.6, R * 5.2, R * 5.2);
+      ctx.restore();
+      // the onion
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y - R * 1.3);
+      ctx.bezierCurveTo(p.x + R * 1.05, p.y - R, p.x + R * 0.95, p.y + R * 0.5, p.x + R * 0.5, p.y + R * 1.05);
+      ctx.lineTo(p.x - R * 0.5, p.y + R * 1.05);
+      ctx.bezierCurveTo(p.x - R * 0.95, p.y + R * 0.5, p.x - R * 1.05, p.y - R, p.x, p.y - R * 1.3);
+      ctx.closePath();
+      var body = ctx.createLinearGradient(0, p.y - R * 1.3, 0, p.y + R * 1.1);
+      body.addColorStop(0, 'rgba(255,228,168,' + c.warm.toFixed(2) + ')');
+      body.addColorStop(1, 'rgba(255,150,80,' + (c.warm * 0.9).toFixed(2) + ')');
+      ctx.fillStyle = body;
+      ctx.fill();
+      // a spark of flame
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = 'rgba(255,240,200,0.9)';
+      ctx.beginPath(); ctx.arc(p.x, p.y + R * 0.9, R * 0.28, 0, TAU); ctx.fill();
+      ctx.globalCompositeOperation = 'source-over';
+    }
+    ctx.globalAlpha = 1;
     ctx.restore();
   };
 
