@@ -40,6 +40,8 @@
   var vehicle = new RS.Vehicle();
   var lastSim = null;
   var lastSimOpts = null;   // wind / NOTAM opts — reused for FlightScreen "launch next"
+  var lastFlightOpts = null;   // caller flightOpts (firework colour/box …) — reused for re-watch
+  var lastMissionResult = null; // scored mission result — fed to the 2D autopsy verdict
 
   var watchBtn = document.getElementById('bp-watch');
 
@@ -60,14 +62,36 @@
     }
   });
 
-  var flightScreen = RS.render.FlightScreen ? new RS.render.FlightScreen() : null;
+  var flightScreen = RS.render.FlightScreen ? new RS.render.FlightScreen() : null;   // 3D (hidden — kept for fallback)
+  var flightScene2D = RS.render.FlightScene2D ? new RS.render.FlightScene2D() : null; // 2D side-scroll — the DEFAULT
   var flight = new RS.render.FlightRenderer();   // legacy console handle
 
+  /** Reboot Phase 23 — 2D is the default flight view; 3D is the fallback if the
+   *  2D canvas ctx is unavailable. `extra.missionResult` feeds the 2D autopsy. */
+  function openFlight(sim, veh, mission, extra) {
+    extra = extra || {};
+    if (flightScene2D && flightScene2D.available) {
+      flightScene2D.open(sim, veh, mission, extra);
+      return true;
+    }
+    if (flightScreen && flightScreen.available) {
+      flightScreen.open(sim, veh, mission, extra);
+      return true;
+    }
+    return false;
+  }
+  function closeAnyFlight() {
+    if (flightScene2D && flightScene2D.root && !flightScene2D.root.hidden) flightScene2D.close();
+    if (flightScreen && flightScreen.root && !flightScreen.root.hidden) flightScreen.close();
+  }
+
   watchBtn.addEventListener('click', function () {
-    if (lastSim && lastSim.ok && flightScreen && flightScreen.available) {
+    if (lastSim && lastSim.ok) {
       ensureModels(vehicle).then(function () {
-        flightScreen.open(lastSim, vehicle, activeMission, {
+        openFlight(lastSim, vehicle, activeMission, {
           simOpts: lastSimOpts,
+          firework: lastFlightOpts && lastFlightOpts.firework,
+          missionResult: lastMissionResult,
           daylight: !!(lastSimOpts && lastSimOpts.target)
         });  // re-watch: no cinematic
       });
@@ -430,7 +454,7 @@
   }
 
   missionBtn.addEventListener('click', function () {
-    if (flightScreen && flightScreen.root && !flightScreen.root.hidden) flightScreen.close();
+    closeAnyFlight();
     var m = activeMission || RS.MissionEngine.firstUnfinished(currentEra);
     if (openFireworkFlow(currentEra)) return;
     openBriefing(m);
@@ -528,7 +552,7 @@
     // OLD flight's own mission-fail/verdict state re-surfacing once the new
     // screen was dismissed, looking exactly like "the new mission
     // auto-launched and instantly failed." Always close it first.
-    if (flightScreen && flightScreen.root && !flightScreen.root.hidden) flightScreen.close();
+    closeAnyFlight();
     if (!previewModal.hidden) closePreview();   // same leak risk for the 3D Assembly Bay
     RS.EraManager.unlock(eraId);
     RS.EraManager.setCurrent(eraId);
@@ -590,12 +614,15 @@
         renderDiagnostics(result.diagnostics);
         drawTrace(result.trajectory);
 
-        var cinematic = !!(result.ok && result.summary && result.summary.liftedOff &&
-          flightScreen && flightScreen.available);
+        var haveViewer = !!((flightScene2D && flightScene2D.available) ||
+                            (flightScreen && flightScreen.available));
+        var cinematic = !!(result.ok && result.summary && result.summary.liftedOff && haveViewer);
         watchBtn.disabled = !cinematic;
 
+        lastMissionResult = null;
         if (activeMission) {
           var mres = RS.MissionEngine.evaluate(activeMission, result, vehicle, extra.evalContext);
+          lastMissionResult = mres;
           renderMissionResult(mres);
           if (mres.passed && !RS.MissionEngine.isDone(activeMission.id)) {
             RS.MissionEngine.markComplete(activeMission.id);
@@ -605,10 +632,12 @@
         }
         console.log('[FIRE→ORBIT] SimulationResult v' + result.contractVersion, result);
 
+        lastFlightOpts = null;
         if (cinematic) {
-          var fo = { cinematic: true, simOpts: simOpts, daylight: isV2 };
+          var fo = { cinematic: true, simOpts: simOpts, daylight: isV2, missionResult: lastMissionResult };
           for (var f in (extra.flightOpts || {})) fo[f] = extra.flightOpts[f];
-          flightScreen.open(lastSim, vehicle, activeMission, fo);
+          lastFlightOpts = fo;
+          openFlight(lastSim, vehicle, activeMission, fo);
         } else {
           document.querySelector('.bp-sim').scrollIntoView({ behavior: 'smooth', block: 'start' });
         }

@@ -213,8 +213,11 @@
       // That giant side profile is also what a crosswind shoves around.
       aerodynamics: { dragCoefficient: 0.09, crossSectionArea: 0.10 },
       structural: { maxDynamicPressure: 40000 },
-      // the tail stick is what declares the launch rig angle for the whole stack
-      launchAngleDeg: 80,
+      // the tail stick is what declares the launch rig angle for the whole stack.
+      // Real festival scaffolds stand nearly plumb with just a few degrees of
+      // downrange lean (safety) — a steep 80° rail threw the stack 2 km sideways
+      // and read as "launched like a mortar", not a rocket climbing.
+      launchAngleDeg: 87,
       attachNodes: [
         { id: 'mountL', dx: 1, dy: 1, type: NODE.RADIAL, accepts: ['Structural'] },
         { id: 'mountR', dx: 0, dy: 1, type: NODE.RADIAL, accepts: ['Structural'] }
