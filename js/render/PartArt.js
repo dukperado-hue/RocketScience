@@ -77,39 +77,61 @@
 
   // --------------------------------------------------------------- part shapes
   var SHAPES = {
-    envelope: function (ctx, x, y, w, h) {
-      var cx = x + w / 2, topY = y + h * 0.06, mouthY = y + h * 0.86, mw = w * 0.30;
-      ctx.beginPath();
-      ctx.moveTo(cx, topY);
-      ctx.bezierCurveTo(x + w * 0.98, y + h * 0.16, x + w * 0.9, y + h * 0.62, cx + mw, mouthY);
-      ctx.lineTo(cx - mw, mouthY);
-      ctx.bezierCurveTo(x + w * 0.1, y + h * 0.62, x + w * 0.02, y + h * 0.16, cx, topY);
-      ctx.closePath();
-      var g = ctx.createLinearGradient(0, topY, 0, mouthY);
-      g.addColorStop(0, '#ffe7ad'); g.addColorStop(0.55, '#ffbb6d'); g.addColorStop(1, '#ff9448');
-      ctx.fillStyle = g;
-      ctx.shadowColor = 'rgba(255,170,80,0.8)'; ctx.shadowBlur = w * 0.12;
-      ctx.fill(); ctx.shadowBlur = 0;
-      ctx.strokeStyle = 'rgba(150,90,40,0.5)'; ctx.lineWidth = Math.max(1, w * 0.03);
-      ctx.stroke();
-      for (var k = -1; k <= 1; k++) {
+    envelope: function (ctx, x, y, w, h, _e, o) {
+      var dim = !!(o && o.dim);   // wax spent — cooled, dull paper, no flame
+      var cx = x + w / 2, topY = y + h * 0.03, mouthY = y + h * 0.92, mw = w * 0.30;
+      function paper() {
         ctx.beginPath();
-        ctx.moveTo(cx + k * w * 0.16, topY + h * 0.06);
-        ctx.quadraticCurveTo(cx + k * w * 0.42, y + h * 0.45, cx + k * mw * 0.8, mouthY);
+        ctx.moveTo(cx, topY);
+        ctx.bezierCurveTo(x + w * 1.00, y + h * 0.14, x + w * 0.92, y + h * 0.60, cx + mw, mouthY);
+        ctx.quadraticCurveTo(cx, mouthY + h * 0.045, cx - mw, mouthY);
+        ctx.bezierCurveTo(x + w * 0.08, y + h * 0.60, x, y + h * 0.14, cx, topY);
+        ctx.closePath();
+      }
+      paper();
+      var g = ctx.createLinearGradient(0, topY, 0, mouthY);
+      if (dim) { g.addColorStop(0, '#dccbaa'); g.addColorStop(0.5, '#c7ad86'); g.addColorStop(1, '#a88c65'); }
+      else     { g.addColorStop(0, '#fff0c9'); g.addColorStop(0.45, '#ffc879'); g.addColorStop(1, '#ff9a4e'); }
+      ctx.fillStyle = g; ctx.fill();
+      // inner light pool — a clean radial, no shadowBlur grey-bleed
+      if (!dim) {
+        ctx.save(); paper(); ctx.clip();
+        var lp = ctx.createRadialGradient(cx, mouthY - h * 0.14, 0, cx, mouthY - h * 0.14, h * 0.64);
+        lp.addColorStop(0, 'rgba(255,247,214,0.92)');
+        lp.addColorStop(0.5, 'rgba(255,209,130,0.34)');
+        lp.addColorStop(1, 'rgba(255,180,90,0)');
+        ctx.fillStyle = lp; ctx.fillRect(x, y, w, h);
+        ctx.restore();
+      }
+      // vertical paper-panel seams following the curve
+      ctx.strokeStyle = dim ? 'rgba(120,95,60,0.35)' : 'rgba(180,110,55,0.42)';
+      ctx.lineWidth = Math.max(1, w * 0.022);
+      for (var k = -2; k <= 2; k++) {
+        ctx.beginPath();
+        ctx.moveTo(cx + k * w * 0.085, topY + h * 0.04);
+        ctx.quadraticCurveTo(cx + k * w * 0.30, y + h * 0.44, cx + k * mw * 0.72, mouthY);
         ctx.stroke();
       }
-      ctx.strokeStyle = 'rgba(120,70,30,0.7)'; ctx.lineWidth = Math.max(1, w * 0.045);
-      ctx.beginPath(); ctx.moveTo(cx - mw, mouthY); ctx.lineTo(cx + mw, mouthY); ctx.stroke();
-      // little flame in the mouth
-      flame(ctx, cx, mouthY + h * 0.04, w * 0.13);
+      // paper edge
+      ctx.strokeStyle = dim ? 'rgba(110,88,55,0.7)' : 'rgba(150,88,40,0.72)';
+      ctx.lineWidth = Math.max(1, w * 0.02);
+      paper(); ctx.stroke();
+      // bamboo mouth ring
+      ctx.strokeStyle = '#9a6a34'; ctx.lineWidth = Math.max(1.5, w * 0.05);
+      ctx.beginPath();
+      ctx.moveTo(cx - mw, mouthY);
+      ctx.quadraticCurveTo(cx, mouthY + h * 0.045, cx + mw, mouthY);
+      ctx.stroke();
+      if (!dim) flame(ctx, cx, mouthY + h * 0.02, w * 0.12);
     },
-    fuelcell: function (ctx, x, y, w, h) {
+    fuelcell: function (ctx, x, y, w, h, _e, o) {
+      var dim = !!(o && o.dim);
       var cw = w * 0.44, cx = x + w / 2;
       tube(ctx, cx - cw / 2, y + h * 0.30, cw, h * 0.6, '#e7d3a6', '#7a5a2c', 2);
       // wax drips
       ctx.fillStyle = 'rgba(255,240,210,0.8)';
       ctx.beginPath(); ctx.arc(cx - cw * 0.3, y + h * 0.42, w * 0.03, 0, TAU); ctx.fill();
-      flame(ctx, cx, y + h * 0.30, w * 0.16);
+      if (!dim) flame(ctx, cx, y + h * 0.30, w * 0.16);
     },
     hoop: function (ctx, x, y, w, h) {
       var cx = x + w / 2, cy = y + h * 0.52;
@@ -279,7 +301,7 @@
     x += pad; y += pad; w -= pad * 2; h -= pad * 2;
     var kind = pick(part);
     var fn = SHAPES[kind] || SHAPES.body;
-    try { fn(ctx, x, y, w, h, kind === 'bell'); }
+    try { fn(ctx, x, y, w, h, kind === 'bell', opts); }
     catch (e) { /* never let art break the builder */ }
     if (opts.selected) {
       ctx.strokeStyle = 'rgba(255,255,255,0.95)';

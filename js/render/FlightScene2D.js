@@ -206,18 +206,21 @@
     // parallax carry them convincingly.
     this._companions = [];
     if (this.buoy) {
-      var ceilM = Math.max(160, this.apogee * 1.8);
-      var N = 26;
+      // climb at roughly the HERO's pace so the whole drift stays coherent —
+      // a few lag below, a few slip past above, none rocket off the top of frame
+      var apo = this.apogee;
+      var pace = apo / Math.max(20, this.dur * 0.45);   // ≈ the hero's ascent rate
+      var N = 22;
       for (var ci = 0; ci < N; ci++) {
-        var rnd = function () { return Math.random(); };
+        var r0 = Math.random(), r1 = Math.random(), r2 = Math.random();
         this._companions.push({
-          x: (rnd() - 0.5) * 380,                 // ±190 m around the pad
-          y0: rnd() * ceilM - ceilM * 0.12,       // some already up, a few still low
-          rise: 0.7 + rnd() * 1.9,                // m/s
-          scale: 0.35 + rnd() * rnd() * 1.15,     // biased small — a few big ones near
-          phase: rnd() * TAU,
-          swayA: 0.5 + rnd() * 1.4,
-          warm: 0.75 + rnd() * 0.25
+          x: (r0 - 0.5) * Math.max(260, apo * 1.7),      // spread wide around the pad
+          y0: r1 * r1 * apo * 0.55 - apo * 0.04,          // biased LOW — near the ground
+          rise: pace * (0.45 + r2 * 0.8),                 // 0.45×–1.25× the hero's pace
+          scale: 0.4 + Math.random() * Math.random() * 1.0,
+          phase: Math.random() * TAU,
+          swayA: 0.6 + Math.random() * 1.5,
+          warm: 0.78 + Math.random() * 0.22
         });
       }
     }
@@ -239,6 +242,7 @@
     this._mpp = this._mpp0;
     this._camX = 0;
     this._camY = (this.bodyH || 3) * 0.5;
+    this._camSeed = false;   // first buoy frame snaps the locked wide shot (no ease-in dip)
 
     this._mecoT = null;
     for (var ee = 0; ee < (sim.events || []).length; ee++) {
@@ -343,6 +347,8 @@
         bodyMaxGY = Math.max(bodyMaxGY, i.gy + p.size.h);
       }
       self.parts.push({
+        part: p,                 // the real part — drawn by the shared PartArt silhouettes
+        id: p.id,
         // metres, rocket-local: origin = bottom-centre of the whole stack, +y up
         x: (i.gx + p.size.w / 2 - cx) * MPC,
         yBot: (maxGY - (i.gy + p.size.h)) * MPC,
@@ -696,20 +702,24 @@
     var ck = dt <= 0 ? 1 : (1 - Math.pow(0.02, dt));    // dt 0 (scrub) → snap; ~0.25 s TC
 
     if (this.buoy) {
-      // A LANTERN. The whole point is watching it pull away from the hills, so
-      // hold ONE near-fixed wide shot framed to the flight's own ceiling: the
-      // pad low, ~1.5× apogee of air above it. The lantern then visibly
-      // traverses the frame — no chase, no "the number moves but the picture
-      // doesn't". Only creep the camera up if it would clip the very top.
-      var span = Math.max(60, this.apogee * 1.5);
-      var fixedMpp = clamp(span / (this.H * 0.82), m0, 30);
-      this._mpp = lerp(this._mpp, fixedMpp, ck);
-      var topM = this._camY + this._mpp * this.H * 0.42;      // world-y at frame top
-      var wy = this._camY;
-      if (alt > topM - this._mpp * this.H * 0.12) wy = alt - this._mpp * this.H * 0.30;
-      wy = Math.max(wy, this._mpp * this.H * 0.30);           // keep the ground in shot
-      this._camY = lerp(this._camY, wy, ck);
-      this._camX = lerp(this._camX, drift * 0.5, ck);
+      // A LANTERN. Frame the whole release as ONE locked wide shot: the ground
+      // pinned near the bottom of the frame, ~1.35× the flight's apogee of air
+      // above it. The lantern then climbs MONOTONICALLY up through the frame
+      // against the fixed hills — no chase, no ease-in dip, no "the number
+      // moves but nothing on screen does". Only pan up if it tops the ceiling.
+      var span = Math.max(70, this.apogee * 1.35);
+      var fixedMpp = clamp(span / (this.H * 0.80), m0, 30);
+      var camYWant = 0.28 * this.H * fixedMpp;                // ground parked ~88% down
+      var ceilWorld = camYWant + fixedMpp * this.H * 0.52;    // world-y just under frame top
+      if (alt > ceilWorld) camYWant += (alt - ceilWorld);
+      if (!this._camSeed) {
+        this._mpp = fixedMpp; this._camY = camYWant; this._camX = drift * 0.32;
+        this._camSeed = true;
+      } else {
+        this._mpp = lerp(this._mpp, fixedMpp, ck);
+        this._camY = lerp(this._camY, camYWant, ck);
+        this._camX = lerp(this._camX, drift * 0.32, ck);
+      }
       return;
     }
 
@@ -1004,6 +1014,13 @@
     if (!this.parts || !this.parts.length) return;
     var base = this._w2s(st.drift || 0, st.altitude);
 
+    // The khom loy now flies as the SAME picture you pick in the catalog and
+    // assemble on the blueprint — RS.render.PartArt's glowing paper envelope,
+    // composed in lantern proportions. (Rockets keep the tuned vector stack
+    // below; their bang-fai / V-2 / orbit framing is already dialled in.)
+    var PA = RS.render.PartArt;
+    if (PA && this.buoy) { this._drawStackPA(ctx, st, base, PA); return; }
+
     // a hot-air lantern is not a rocket — draw the paper envelope glowing, not a
     // vector part stack
     if (this.buoy) { this._drawLantern(ctx, st, base); return; }
@@ -1132,9 +1149,157 @@
     ctx.restore();
   };
 
+  // ---- the shared part-silhouette stack : catalog · blueprint · flight -------
+  // Draws vehicle.instances via RS.render.PartArt so the flying craft is the
+  // SAME picture set as the catalog thumbnails and the blueprint canvas.
+  P._drawStackPA = function (ctx, st, base, PA) {
+    var buoy = this.buoy;
+    var crashed = this._crashed(st);
+    var dead = buoy && this.t > 1.5 && !(st.buoyancy > 0.05);   // wax spent — dull, no flame
+    var bH = this.bodyH || this.rocketH || 2;
+
+    var ang, bobPx = 0;
+    if (buoy) {
+      ang = Math.sin(this.t * 1.15) * 0.05 + Math.sin(this.t * 0.55 + 1) * 0.025;
+      bobPx = Math.sin(this.t * 0.9) * 3;
+    } else {
+      ang = (90 - (st.pitch != null ? st.pitch : 90)) * Math.PI / 180;
+      if (st.tumbling) ang += Math.sin(this.t * 6) * 0.5 + (st.roll || 0) * Math.PI / 180;
+    }
+
+    // ============================ LANTERN =====================================
+    // The build grid stacks a narrow envelope over a candle + tag. A real khom
+    // loy is a big wide paper envelope with a short candle-cross tucked at the
+    // mouth — so compose it from the SAME PartArt shapes, in lantern proportions.
+    if (buoy) {
+      var envPart = null, envPartH = 1, stem = [];
+      this.parts.forEach(function (p) {
+        var pp = p.part || { id: p.id, category: p.cat };
+        if (PA.kindOf(pp) === 'envelope') { if (!envPart || p.h > envPartH) { envPart = pp; envPartH = p.h; } }
+        else stem.push({ pp: pp, kind: PA.kindOf(pp) });
+      });
+      var eH = clamp(envPart ? envPartH : 1, 0.7, 2.4) * 150;   // px, ~150 for a 1 m envelope
+      var eW = eH * 1.18;
+      var hot = clamp((st.buoyancy || 0) / Math.max(1, this._maxThrust()), 0, 1);
+
+      ctx.save();
+      ctx.translate(base.x, base.y + bobPx);
+      ctx.rotate(ang);
+
+      // warm light it throws — a soft halo centred on the envelope
+      if (!dead && !crashed) {
+        var lr = eH * 1.0, lcy = -eH * 0.5;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        var lg = ctx.createRadialGradient(0, lcy, 0, 0, lcy, lr);
+        lg.addColorStop(0, 'rgba(255,196,110,' + (0.16 + 0.12 * hot).toFixed(3) + ')');
+        lg.addColorStop(0.5, 'rgba(255,178,86,' + (0.06 + 0.05 * hot).toFixed(3) + ')');
+        lg.addColorStop(1, 'rgba(255,170,70,0)');
+        ctx.fillStyle = lg;
+        ctx.fillRect(-lr, lcy - lr, lr * 2, lr * 2);
+        ctx.restore();
+      }
+
+      // the paper envelope (draws its own bamboo mouth ring + flame)
+      PA.draw(ctx, envPart || { id: 'cover_paper', category: 'Aerodynamics' },
+              -eW / 2, -eH, eW, eH, { dim: dead });
+
+      // A khom loy is almost entirely paper. The fuel cell shows as a small
+      // bright core right in the mouth; only the wish tag hangs free on a thread.
+      var mouthY = -eH * 0.06;
+      stem.forEach(function (s) {
+        if (s.kind === 'tag') {
+          ctx.strokeStyle = 'rgba(90,60,35,0.5)'; ctx.lineWidth = Math.max(1, eH * 0.012);
+          ctx.beginPath();
+          ctx.moveTo(0, mouthY);
+          ctx.lineTo(eW * 0.03, mouthY + eH * 0.14);
+          ctx.stroke();
+          PA.draw(ctx, s.pp, -eW * 0.085, mouthY + eH * 0.12, eW * 0.19, eH * 0.16, { dim: dead });
+        } else if (s.kind !== 'hoop') {             // fuel cell / candle — in the opening
+          PA.draw(ctx, s.pp, -eW * 0.07, mouthY - eH * 0.05, eW * 0.14, eH * 0.1, { dim: dead });
+        }
+      });
+
+      ctx.restore();
+      return;
+    }
+    // ============================ ROCKET ======================================
+    var MIN_PX = 54;
+    var pxPerM = Math.max(1 / this._mpp, MIN_PX / Math.max(1, bH));
+    var fatten = clamp(15 / Math.max(1e-3, (this.bodyW || 0.5) * pxPerM), 1, 4.5);
+
+    // tracking glow when the rocket is genuinely dwarfed by the zoom
+    var tiny = pxPerM > (1 / this._mpp) * 2.2;
+    if (tiny && st.thrust <= 0.5) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      var gr = MIN_PX * 1.1;
+      var gg = ctx.createRadialGradient(base.x, base.y, 0, base.x, base.y, gr);
+      gg.addColorStop(0, 'rgba(255,225,170,0.28)');
+      gg.addColorStop(1, 'rgba(255,225,170,0)');
+      ctx.fillStyle = gg;
+      ctx.fillRect(base.x - gr, base.y - gr, gr * 2, gr * 2);
+      ctx.restore();
+    }
+
+    // NB: PartArt draws in PIXEL space (its stroke-width floors assume it), so
+    // we translate + rotate but do NOT scale the ctx — every part is positioned
+    // and sized in screen px, +y DOWN so the silhouettes come out upright.
+    var sx = pxPerM * fatten, sy = pxPerM;   // px per metre, per axis
+    ctx.save();
+    ctx.translate(base.x, base.y + bobPx);
+    ctx.rotate(ang);
+
+    // exhaust flame first, under the stack — procedural teardrop
+    var lift = Math.max(st.thrust, st.buoyancy);
+    if (lift > 1 && !crashed && st.thrust > 0.5) {
+      var thr = clamp(lift / Math.max(1, this._maxThrust()), 0.22, 1.1);
+      var flick = 0.86 + 0.14 * Math.sin(this._flameT * 47) + (Math.random() - 0.5) * 0.1;
+      var flH = Math.min(bH * 2.0, bH * (0.5 + thr * 1.3)) * flick * sy;
+      var flW = bH * (0.16 + thr * 0.12) * sx;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      var go = ctx.createLinearGradient(0, 0, 0, flH);
+      go.addColorStop(0, 'rgba(255,180,60,0.9)');
+      go.addColorStop(0.55, 'rgba(255,110,30,0.6)');
+      go.addColorStop(1, 'rgba(255,90,20,0)');
+      ctx.fillStyle = go;
+      ctx.beginPath();
+      ctx.moveTo(-flW, 0);
+      ctx.quadraticCurveTo(-flW * 0.5, flH * 0.75, 0, flH);
+      ctx.quadraticCurveTo(flW * 0.5, flH * 0.75, flW, 0);
+      ctx.quadraticCurveTo(0, -flW * 0.5, -flW, 0);
+      ctx.closePath(); ctx.fill();
+      var gc = ctx.createLinearGradient(0, 0, 0, flH * 0.6);
+      gc.addColorStop(0, 'rgba(255,250,225,0.95)');
+      gc.addColorStop(1, 'rgba(255,230,150,0)');
+      ctx.fillStyle = gc;
+      ctx.beginPath();
+      ctx.moveTo(-flW * 0.5, 0);
+      ctx.quadraticCurveTo(-flW * 0.25, flH * 0.45, 0, flH * 0.6);
+      ctx.quadraticCurveTo(flW * 0.25, flH * 0.45, flW * 0.5, 0);
+      ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
+
+    // the stack — one part → one silhouette (screen px, bottom-anchored)
+    this.parts.forEach(function (p) {
+      var part = p.part || { id: p.id, category: p.cat };
+      PA.draw(ctx, part,
+              p.x * sx - (p.w * sx) / 2, -(p.yBot + p.h) * sy, p.w * sx, p.h * sy,
+              { dim: dead, alpha: dead ? 0.92 : 1 });
+    });
+
+    ctx.restore();
+  };
+
   // ------------------------------------------- the rest of the village's khom loy
+  // Same paper silhouette as the hero (RS.render.PartArt envelope), just small,
+  // hazed by depth, and carrying its own warm glow + flame spark.
   P._drawCompanions = function (ctx) {
     var t = this.t, list = this._companions;
+    var PA = RS.render.PartArt;
+    var COMP_PART = { id: 'cover_paper', category: 'Aerodynamics' };
     ctx.save();
     for (var i = 0; i < list.length; i++) {
       var c = list[i];
@@ -1142,36 +1307,41 @@
       if (wy < -20) continue;
       var sway = Math.sin(t * 0.5 + c.phase) * c.swayA;
       var p = this._w2s(c.x + sway, wy);
-      var R = clamp((0.9 * c.scale) / this._mpp, 3, 34);
+      var R = clamp((0.9 * c.scale) / this._mpp, 3, 30);
       if (p.x < -R * 4 || p.x > this.W + R * 4 || p.y < -R * 4 || p.y > this.H + R * 4) continue;
       // depth haze: the small/far ones are dimmer and cooler
       var far = clamp((1 - c.scale) * 0.55, 0, 0.5);
-      ctx.globalAlpha = 0.85 - far;
       // glow
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
-      var g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, R * 2.6);
-      g.addColorStop(0, 'rgba(255,' + (180 - far * 60 | 0) + ',90,0.5)');
+      var g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, R * 2.8);
+      g.addColorStop(0, 'rgba(255,' + (180 - far * 60 | 0) + ',90,' + (0.42 - far * 0.5).toFixed(3) + ')');
       g.addColorStop(1, 'rgba(255,170,80,0)');
       ctx.fillStyle = g;
-      ctx.fillRect(p.x - R * 2.6, p.y - R * 2.6, R * 5.2, R * 5.2);
+      ctx.fillRect(p.x - R * 2.8, p.y - R * 2.8, R * 5.6, R * 5.6);
       ctx.restore();
-      // the onion
-      ctx.beginPath();
-      ctx.moveTo(p.x, p.y - R * 1.3);
-      ctx.bezierCurveTo(p.x + R * 1.05, p.y - R, p.x + R * 0.95, p.y + R * 0.5, p.x + R * 0.5, p.y + R * 1.05);
-      ctx.lineTo(p.x - R * 0.5, p.y + R * 1.05);
-      ctx.bezierCurveTo(p.x - R * 0.95, p.y + R * 0.5, p.x - R * 1.05, p.y - R, p.x, p.y - R * 1.3);
-      ctx.closePath();
-      var body = ctx.createLinearGradient(0, p.y - R * 1.3, 0, p.y + R * 1.1);
-      body.addColorStop(0, 'rgba(255,228,168,' + c.warm.toFixed(2) + ')');
-      body.addColorStop(1, 'rgba(255,150,80,' + (c.warm * 0.9).toFixed(2) + ')');
-      ctx.fillStyle = body;
-      ctx.fill();
-      // a spark of flame
+      // the paper — shared silhouette, tinted down for the far ones
+      ctx.globalAlpha = 0.9 - far;
+      if (PA) {
+        PA.draw(ctx, COMP_PART, p.x - R, p.y - R * 1.25, R * 2, R * 2.5, { dim: true });
+      } else {
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y - R * 1.3);
+        ctx.bezierCurveTo(p.x + R * 1.05, p.y - R, p.x + R * 0.95, p.y + R * 0.5, p.x + R * 0.5, p.y + R * 1.05);
+        ctx.lineTo(p.x - R * 0.5, p.y + R * 1.05);
+        ctx.bezierCurveTo(p.x - R * 0.95, p.y + R * 0.5, p.x - R * 1.05, p.y - R, p.x, p.y - R * 1.3);
+        ctx.closePath();
+        var body = ctx.createLinearGradient(0, p.y - R * 1.3, 0, p.y + R * 1.1);
+        body.addColorStop(0, 'rgba(255,228,168,' + c.warm.toFixed(2) + ')');
+        body.addColorStop(1, 'rgba(255,150,80,' + (c.warm * 0.9).toFixed(2) + ')');
+        ctx.fillStyle = body;
+        ctx.fill();
+      }
+      // a spark of flame at the mouth
       ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.9 - far;
       ctx.fillStyle = 'rgba(255,240,200,0.9)';
-      ctx.beginPath(); ctx.arc(p.x, p.y + R * 0.9, R * 0.28, 0, TAU); ctx.fill();
+      ctx.beginPath(); ctx.arc(p.x, p.y + R * 0.95, R * 0.26, 0, TAU); ctx.fill();
       ctx.globalCompositeOperation = 'source-over';
     }
     ctx.globalAlpha = 1;
@@ -1359,6 +1529,7 @@
     this._vmax = 0; this._autopsyShown = false;
     this._mpp = this._mpp0 || 0.04;
     this._camX = 0; this._camY = (this.bodyH || 3) * 0.5;
+    this._camSeed = false;
     this._syncPlayBtn();
     this._hideAutopsy();
   };
