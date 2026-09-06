@@ -132,9 +132,12 @@
   var BREAKUP_DRAG_MULT = 6.5;  // Cd·A blow-up when a traditional Bang Fai breaks up at apogee
 
   // --- hot-air buoyancy: a lantern floats, it never "launches" ----------------
-  var BUOY_RISE_MAX = 1.5;        // m/s — the graceful ceiling on rise rate
-  var BUOY_SINK_MAX = 2.0;        // m/s — gentle descent as the flame dies
-  var BUOY_ACCEL_UP = 0.85;       // m/s^2 — how briskly it may gain rise speed
+  //  A real khom loy climbs at ~2-4 m/s and flies for minutes — a well-built one
+  //  reaches several hundred metres before the cell burns through. The old
+  //  1.5 m/s cap kept a 55 s burn under ~90 m, which read as "it barely moves".
+  var BUOY_RISE_MAX = 3.4;        // m/s — the graceful ceiling on rise rate
+  var BUOY_SINK_MAX = 2.4;        // m/s — gentle descent as the flame dies
+  var BUOY_ACCEL_UP = 1.3;        // m/s^2 — how briskly it may gain rise speed
   var BUOY_ACCEL_DOWN = 2.4;      // m/s^2
 
   // --- MIDAIR_BURN: a lantern carried hard sideways tilts until the flame
@@ -333,9 +336,14 @@
     var propRemaining = state.propRemaining - burned;
     var mass = Math.max(model.dryMass + propRemaining, 1e-6);
 
-    // Hot-air buoyancy scales with ambient density: thinner air aloft = less
-    // lift for the same temperature delta, so a lantern naturally levels off.
-    buoyancy *= rho / RHO0;
+    // Hot-air buoyancy scales with ambient density (thinner air aloft = less
+    // lift, so a lantern naturally levels off) AND with the ENVELOPE volume it
+    // has to fill — the wax sets the temperature delta, the paper shell sets how
+    // much hot air that delta acts on. `buoyEnvelope` is this vehicle's envelope
+    // area relative to the standard shell (1.0); a big festival โคม lifts more.
+    var envF = model.buoyEnvelope > 0
+      ? clamp(Math.pow(model.buoyEnvelope, 1.35), 0.30, 3.4) : 1;
+    buoyancy *= (rho / RHO0) * envF;
 
     // ---- STATIC INERTIA · THE PAD LOCK --------------------------------
     // A vehicle is welded to y=0 with v=0 until its net UPWARD force

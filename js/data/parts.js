@@ -53,6 +53,50 @@
       ]
     },
     {
+      id: 'fuel_cell',
+      name: 'กระบอกเชื้อเพลิง (มาตรฐาน)',
+      category: C.PROPULSION,
+      icon: '🕯️',
+      era: '0-khomloy',
+      blurb: 'กระบอกกระดาษชุบขี้ผึ้ง/พาราฟิน แบบที่งานวัดใช้ — เปลวแรงและนานกว่าก้อนเล็กมาก ลอยได้หลายร้อยเมตร',
+      mass: 0.020,
+      cost: 11,
+      size: { w: 1, h: 1 },
+      aerodynamics: { dragCoefficient: 0.9, crossSectionArea: 0.003 },
+      structural: { maxDynamicPressure: 400 },
+      propulsion: {
+        mode: 'buoyancy',
+        thrust: 5.6, burnTime: 62, specificImpulse: 0, propellantMass: 0.016,
+        spoolTime: 4.5, coolingTime: 10
+      },
+      attachNodes: [
+        { id: 'top',    dx: 0.5, dy: 0, type: NODE.STACK, accepts: ['Structural', 'Propulsion'] },
+        { id: 'bottom', dx: 0.5, dy: 1, type: NODE.STACK, accepts: ['Payload', 'Propulsion'] }
+      ]
+    },
+    {
+      id: 'fuel_cell_big',
+      name: 'กระบอกเชื้อเพลิงงานใหญ่',
+      category: C.PROPULSION,
+      icon: '🔆',
+      era: '0-khomloy',
+      blurb: 'กระบอกยาวสองชั้น เปลวโหมนานเป็นนาที ๆ — สำหรับโคมยักษ์ที่ต้องการทั้งแรงยกและเวลา แต่หนักและเปลืองพื้นที่',
+      mass: 0.045,
+      cost: 22,
+      size: { w: 1, h: 2 },
+      aerodynamics: { dragCoefficient: 0.9, crossSectionArea: 0.004 },
+      structural: { maxDynamicPressure: 380 },
+      propulsion: {
+        mode: 'buoyancy',
+        thrust: 9.2, burnTime: 118, specificImpulse: 0, propellantMass: 0.036,
+        spoolTime: 6.0, coolingTime: 16
+      },
+      attachNodes: [
+        { id: 'top',    dx: 0.5, dy: 0, type: NODE.STACK, accepts: ['Structural', 'Propulsion'] },
+        { id: 'bottom', dx: 0.5, dy: 2, type: NODE.STACK, accepts: ['Payload', 'Propulsion'] }
+      ]
+    },
+    {
       id: 'frame_bamboo',
       name: 'โครงไม้ไผ่',
       category: C.STRUCTURAL,
@@ -70,19 +114,51 @@
       ]
     },
     {
+      id: 'cover_paper_s',
+      name: 'เปลือกเล็ก (โคมเด็ก)',
+      category: C.AERODYNAMICS,
+      icon: '🪔',
+      era: '0-khomloy',
+      blurb: 'ซองกระดาษสาใบเล็ก กักอากาศร้อนได้น้อย แรงยกจึงน้อยกว่า — แต่เบา ต้านลมต่ำ เหมาะกับเปลวก้อนเล็กและเที่ยวบินเตี้ย ๆ',
+      mass: 0.004,
+      cost: 7,
+      size: { w: 1, h: 2 },
+      aerodynamics: { dragCoefficient: 1.0, crossSectionArea: 0.14 },
+      structural: { maxDynamicPressure: 55 },
+      attachNodes: [
+        { id: 'bottom', dx: 0.5, dy: 2, type: NODE.STACK, accepts: ['Structural'] }
+      ]
+    },
+    {
       id: 'cover_paper',
-      name: 'เปลือกกระดาษสา',
+      name: 'เปลือกกระดาษสา (มาตรฐาน)',
       category: C.AERODYNAMICS,
       icon: '🏮',
       era: '0-khomloy',
-      blurb: 'ซองกระดาษสาบางเบา กักอากาศร้อนไว้ — ยิ่งใหญ่ยิ่งลอย แต่ก็ยิ่งต้านลม',
+      blurb: 'ซองกระดาษสาขนาดงานวัดทั่วไป — สมดุลระหว่างแรงยก น้ำหนัก และแรงต้านลม',
       mass: 0.006,
       cost: 12,
       size: { w: 1, h: 2 },
-      aerodynamics: { dragCoefficient: 1.1, crossSectionArea: 0.28 }, // big soft envelope
+      aerodynamics: { dragCoefficient: 1.1, crossSectionArea: 0.28 }, // the 1.0× reference envelope
       structural: { maxDynamicPressure: 45 },    // Pa — thin sa paper tears easily
       attachNodes: [
         { id: 'bottom', dx: 0.5, dy: 2, type: NODE.STACK, accepts: ['Structural'] }
+      ]
+    },
+    {
+      id: 'cover_paper_l',
+      name: 'เปลือกยักษ์ (โคมประเพณี)',
+      category: C.AERODYNAMICS,
+      icon: '🎆',
+      era: '0-khomloy',
+      blurb: 'ซองใบมหึมาแบบโคมแห่ประเพณี กักอากาศร้อนได้มาก แรงยกสูงลิ่ว ลอยได้สูงและไกล — แต่หนัก ต้านลมมโหฬาร และกระดาษบางฉีกง่ายเมื่อโดนลมแรง',
+      mass: 0.014,
+      cost: 26,
+      size: { w: 1, h: 3 },
+      aerodynamics: { dragCoefficient: 0.82, crossSectionArea: 0.62 },
+      structural: { maxDynamicPressure: 32 },    // even more fragile — huge thin surface
+      attachNodes: [
+        { id: 'bottom', dx: 0.5, dy: 3, type: NODE.STACK, accepts: ['Structural'] }
       ]
     },
     {

@@ -198,7 +198,7 @@
       dryMass: 0, propellantMass: 0, totalMass: 0, cost: 0, guided: false,
       com: { x: 0, y: 0 }, cop: { x: 0, y: 0 },
       totalThrust: 0, totalBuoyancy: 0, motorMode: 'none',
-      dragArea: 0, refArea: 0,
+      dragArea: 0, refArea: 0, envelopeArea: 0,
       burnTime: 0, structuralLimitPa: Infinity,
       minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity
     };
@@ -242,6 +242,10 @@
       s.refArea += A;
       areaMomentX += A * c.x;
       areaMomentY += A * c.y;
+      // a hot-air envelope (an Aerodynamics part big enough to trap air — a khom
+      // loy shell, not a fin or nose cone) sets how much air the flame's heat
+      // acts on. Sum its area; Physics divides by the standard 0.28 m² shell.
+      if (p.category === 'Aerodynamics' && A >= 0.05) s.envelopeArea += A;
 
       if (p.propulsion && p.propulsion.thrust > 0) {
         if (p.propulsion.mode === 'buoyancy') {
@@ -439,6 +443,9 @@
       dragArea: s.dragArea * s.noseDragMult,
       dragAreaRaw: s.dragArea,       // Σ Cd·A  (m^2), before the nose factor
       refArea: s.refArea,            // Σ A     (m^2)
+      // hot-air envelope volume relative to the standard 0.28 m² khom loy shell
+      // — Physics multiplies buoyancy by this (bigger โคม lifts more)
+      buoyEnvelope: s.envelopeArea > 0 ? s.envelopeArea / 0.28 : 1,
       noseCd: s.noseCd,
       noseDragMult: s.noseDragMult,
       // gyroscopic spin — canted fins spin the vehicle up for rigidity

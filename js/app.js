@@ -529,12 +529,16 @@
         [{ node: 'mountR', toIid: lao.iid, toNode: 'tailL' }]);
       builder._afterEdit('บั้งไฟอีสานตัวอย่าง (โหวด·เลา·หมื่อ·หาง) — กด ▶ ยิงจากฐานเฉียง · ลองถอด "หาง" ออกแล้วจะเห็นมันคว้าง');
     } else {
+      // envelope (มาตรฐาน) · frame · fuel cell (มาตรฐาน) · wish tag — a solid
+      // ~250 m flight. Swap the เปลือก or เชื้อเพลิง for a bigger one to go higher.
       var paper = vehicle.addInstance(C.get('cover_paper'), 0, 0, []);
       var frame = vehicle.addInstance(C.get('frame_bamboo'), 0, 2,
         [{ node: 'top', toIid: paper.iid, toNode: 'bottom' }]);
-      vehicle.addInstance(C.get('fuel_wax'), 0, 3,
+      var fuel = vehicle.addInstance(C.get('fuel_cell'), 0, 3,
         [{ node: 'top', toIid: frame.iid, toNode: 'bottom' }]);
-      builder._afterEdit('วางโคมลอยตัวอย่างให้แล้ว — กด ▶ จำลองการบิน');
+      vehicle.addInstance(C.get('payload_tag'), 0, 4,
+        [{ node: 'top', toIid: fuel.iid, toNode: 'bottom' }]);
+      builder._afterEdit('โคมลอยตัวอย่าง (เปลือกมาตรฐาน · กระบอกเชื้อเพลิง · ป้ายอธิษฐาน) — กด ▶ · ลองเปลี่ยนเป็นเปลือกยักษ์/กระบอกงานใหญ่ให้สูงขึ้น');
     }
   }
   sampleBtn.addEventListener('click', function () { buildSample(currentEra); });
