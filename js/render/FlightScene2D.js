@@ -151,11 +151,15 @@
     }
     this._onKey = function (e) {
       if (!self._open) return;
+      if (self._cutscene && self._cutscene.t > 1) { self._endCutscene(); return; }
       if (e.key === 'Escape') { self.close(); }
       else if (e.key === ' ') { e.preventDefault(); self._togglePlay(); }
       else if (e.key === 'r' || e.key === 'R') { self._restart(); }
     };
     document.addEventListener('keydown', this._onKey);
+    if (this.canvas) this.canvas.addEventListener('click', function () {
+      if (self._cutscene && self._cutscene.t > 1) self._endCutscene();
+    });
     window.addEventListener('resize', function () { if (self._open) self._resize(); });
   };
 
@@ -232,6 +236,17 @@
     this._shake = 0;
     this._autopsyShown = false;
     this._flameT = 0;
+    this._groundFire = null;      // a khom loy comes down with its candle lit → dry grass
+    this._cutscene = null;
+    this._cutsceneDone = false;
+    // Did the lantern DRIFT OUT of a NOTAM no-fly zone? That airspace is a small
+    // airfield's approach — a cutscene shows why the rule exists (it flies into
+    // a plane) before the autopsy.
+    var _sz = (this.mission && this.mission.constraints && this.mission.constraints.safeZoneRadius) || 0;
+    var _md = (sim.summary && (sim.summary.maxDrift != null ? sim.summary.maxDrift
+              : Math.abs(sim.summary.impactX || 0))) || 0;
+    this._notamPending = !!(this.buoy && _sz > 0 && _md > _sz);
+    this._notamRadius = _sz;
     // per-flight caches — the instance is reused across launches / era switches,
     // so a stale max-thrust or max-speed would bleed a V-2's numbers into a khom loy
     this._vmax = 0;
@@ -294,8 +309,15 @@
         if (self.t >= self.dur) { self.t = self.dur; self.playing = false; self._syncPlayBtn(); }
       }
       self._step(dt);
-      self._drawFrame();
-      if (self.t >= self.dur && !self._autopsyShown && self.bursts.length === 0) self._showAutopsy();
+      if (self._cutscene) {
+        self._advanceCutscene(dt);
+      } else {
+        self._drawFrame();
+        if (self.t >= self.dur && !self._autopsyShown && self.bursts.length === 0) {
+          if (self._notamPending && !self._cutsceneDone) self._startCutscene();
+          else self._showAutopsy();
+        }
+      }
       self._raf = requestAnimationFrame(loop);
     };
     this._raf = requestAnimationFrame(loop);
@@ -692,6 +714,13 @@
       this.bursts[m].age += dt;
       if (this.bursts[m].age >= 1.6) this.bursts.splice(m, 1);
     }
+    if (this._groundFire) {
+      if (st.altitude > 6) this._groundFire = null;   // scrubbed back before touchdown
+      else {
+        this._groundFire.t += dt;
+        this._groundFire.peak = Math.min(1, this._groundFire.peak + dt * 0.7);
+      }
+    }
 
     // ---- camera : follow the rocket, zoom out as it climbs (SFS-style).
     // The zoom ceiling scales with THIS flight's apogee so the whole climb uses
@@ -745,6 +774,17 @@
       if (!this.buoy && this.sound && this.sound.play) { try { this.sound.play('liftoff', 0.7); } catch (x) {} }
     }
     if (e.type === 'IMPACT' || e.type === 'APOGEE_BREAKUP' || e.type === 'LOSS_OF_CONTROL') this._shake = Math.max(this._shake, 0.8);
+    // a khom loy touches down with its wax candle still alight — on a thatch
+    // roof or dry grass that is exactly how the festival starts a fire.
+    if (e.type === 'IMPACT' && this.buoy && this.cur && !this._groundFire) {
+      this._groundFire = { x: this.cur.drift || 0, t: 0, embers: [], peak: 0 };
+      var tf = $('f2-toast');
+      if (tf) {
+        tf.textContent = 'โคมตกทั้งที่ไฟยังติด — ไฟไหม้พื้น!';
+        tf.style.color = '#ff7a3a'; tf.hidden = false;
+        this._toastUntil = this.t + 3.0;
+      }
+    }
     if (e.type === 'SEPARATE_STAGE') this._shake = Math.max(this._shake, 0.5);
     if (e.type === 'BURST' && this.cur) {
       this.bursts.push({ x: this.cur.drift || 0, y: this.cur.altitude, age: 0, dud: false });
@@ -823,6 +863,9 @@
 
     // ---- 6 · the rocket
     this._drawRocket(ctx, st);
+
+    // ---- 6.5 · the fire a fallen khom loy started (in front of the dull husk)
+    if (this._groundFire) this._drawGroundFire(ctx);
 
     // ---- 7 · firework bursts (in front)
     this._drawBursts(ctx);
@@ -1348,6 +1391,243 @@
     ctx.restore();
   };
 
+  // ------------------------------------ the fire a fallen khom loy started
+  P._drawGroundFire = function (ctx) {
+    var gf = this._groundFire;
+    var g0 = this._w2s(gf.x, 0);
+    if (g0.x < -80 || g0.x > this.W + 80) return;
+    var grow = smooth(clamp(gf.t / 2.2, 0, 1)) * (0.6 + 0.4 * gf.peak);
+    // fixed screen size — the lantern camera zoom is very wide, so an
+    // mpp-scaled fire would be a couple of pixels
+    var baseW = 50 * (0.5 + grow);
+    var flH = baseW * (1.9 + 0.5 * Math.sin(gf.t * 9));
+    var fx = g0.x;
+    var fy = Math.min(g0.y - baseW * 0.7, this.H - 12);   // sit at the resting lantern's base
+
+    // scorched ground + glow pool
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    var pool = ctx.createRadialGradient(fx, fy, 0, fx, fy, baseW * 2.4);
+    pool.addColorStop(0, 'rgba(255,150,60,' + (0.32 * grow).toFixed(3) + ')');
+    pool.addColorStop(1, 'rgba(255,120,40,0)');
+    ctx.fillStyle = pool;
+    ctx.fillRect(fx - baseW * 2.4, fy - baseW * 2.4, baseW * 4.8, baseW * 4.8);
+    ctx.restore();
+
+    // a few flame tongues
+    var tongues = 4;
+    for (var i = 0; i < tongues; i++) {
+      var off = (i - (tongues - 1) / 2) * baseW * 0.42;
+      var wob = Math.sin(gf.t * (7 + i * 2) + i) * baseW * 0.16;
+      var hh = flH * (0.6 + 0.5 * Math.abs(Math.sin(gf.t * 4 + i * 1.7)));
+      var fg = ctx.createLinearGradient(0, fy, 0, fy - hh);
+      fg.addColorStop(0, 'rgba(255,190,70,0.95)');
+      fg.addColorStop(0.5, 'rgba(255,110,35,0.75)');
+      fg.addColorStop(1, 'rgba(255,90,20,0)');
+      ctx.fillStyle = fg;
+      ctx.beginPath();
+      ctx.moveTo(fx + off - baseW * 0.24, fy);
+      ctx.quadraticCurveTo(fx + off + wob - baseW * 0.1, fy - hh * 0.6, fx + off + wob, fy - hh);
+      ctx.quadraticCurveTo(fx + off + wob + baseW * 0.1, fy - hh * 0.6, fx + off + baseW * 0.24, fy);
+      ctx.closePath();
+      ctx.fill();
+    }
+    // white-hot base
+    ctx.fillStyle = 'rgba(255,246,210,' + (0.8 * grow).toFixed(2) + ')';
+    ctx.beginPath();
+    ctx.ellipse(fx, fy, baseW * 0.5, baseW * 0.2, 0, 0, TAU);
+    ctx.fill();
+
+    // smoke column drifting with the wind
+    var puffs = 5;
+    for (var p2 = 0; p2 < puffs; p2++) {
+      var age = ((gf.t * 0.5 + p2 / puffs) % 1);
+      var sy2 = fy - age * baseW * 5.5 - flH;
+      var sx2 = fx + age * baseW * 1.6 + Math.sin(gf.t + p2) * baseW * 0.3;
+      var sr = baseW * (0.4 + age * 1.3);
+      ctx.fillStyle = 'rgba(50,44,42,' + ((1 - age) * 0.28 * grow).toFixed(3) + ')';
+      ctx.beginPath(); ctx.arc(sx2, sy2, sr, 0, TAU); ctx.fill();
+    }
+  };
+
+  // ============================ NOTAM cutscene ==============================
+  // The lantern drifted OUT of the no-fly zone. That airspace is a small
+  // airfield's approach path — this watch-only beat shows a plane meeting the
+  // festival's lanterns, then the LEGAL VIOLATION card, before the autopsy.
+  P._startCutscene = function () {
+    var lanterns = [];
+    for (var i = 0; i < 20; i++) {
+      lanterns.push({
+        x: (Math.random() - 0.5) * this.W * 1.05,
+        y0: this.H * (0.6 + Math.random() * 0.5),
+        rise: this.H * (0.07 + Math.random() * 0.10),   // px/s
+        s: 11 + Math.random() * Math.random() * 22,
+        ph: Math.random() * TAU,
+        hit: 0
+      });
+    }
+    this._cutscene = { t: 0, lanterns: lanterns, planeY: this.H * 0.34, hits: 0, flash: 0 };
+    // stow the flight HUD / toast / hint for the beat
+    var root = this.root;
+    this._hud = [root.querySelector('.f2-hud'), $('f2-toast'), root.querySelector('.f2-hint')];
+    this._hud.forEach(function (el) { if (el) el.style.visibility = 'hidden'; });
+    if (this.sound && this.sound.play) { try { this.sound.play('ignite', 0.4); } catch (e) {} }
+  };
+
+  P._advanceCutscene = function (dt) {
+    var cs = this._cutscene;
+    cs.t += dt;
+    if (!this.cur) this.cur = this._sample(this.dur);
+    var ctx = this.ctx, W = this.W, H = this.H, T = cs.t;
+    // still the night sky behind it
+    this._drawSky(ctx, W, H, 200);
+    this._drawGround(ctx, W, H);
+
+    // plane crosses left → right, entering at ~0.6 s, mid-screen at ~3.5 s
+    var px = lerp(-W * 0.2, W * 1.2, clamp((T - 0.5) / 5.5, 0, 1));
+    var bank = 0;
+
+    // rising festival lanterns
+    ctx.save();
+    for (var i = 0; i < cs.lanterns.length; i++) {
+      var L = cs.lanterns[i];
+      var ly = L.y0 - L.rise * T;
+      var lx = W / 2 + L.x + Math.sin(T * 0.8 + L.ph) * 10;
+      // collision when the plane sweeps over a lantern near its altitude
+      if (!L.hit && T > 1 && Math.abs(lx - px) < L.s * 2.4 && Math.abs(ly - cs.planeY) < H * 0.075) {
+        L.hit = T; cs.hits++; cs.flash = 1; this._shake = 1.1;
+        if (this.sound && this.sound.play) { try { this.sound.play('liftoff', 0.5); } catch (e) {} }
+      }
+      var hitK = L.hit ? clamp((T - L.hit) / 0.5, 0, 1) : 0;
+      if (hitK >= 1) continue;
+      var R = L.s * (1 + hitK * 1.8);
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      var g = ctx.createRadialGradient(lx, ly, 0, lx, ly, R * 2.6);
+      g.addColorStop(0, 'rgba(255,' + (hitK ? 120 : 185) + ',90,' + (0.55 * (1 - hitK)).toFixed(3) + ')');
+      g.addColorStop(1, 'rgba(255,170,80,0)');
+      ctx.fillStyle = g; ctx.fillRect(lx - R * 2.6, ly - R * 2.6, R * 5.2, R * 5.2);
+      ctx.restore();
+      var PA = RS.render.PartArt;
+      ctx.globalAlpha = 1 - hitK;
+      if (PA && !hitK) PA.draw(ctx, { id: 'cover_paper', category: 'Aerodynamics' },
+        lx - R, ly - R * 1.2, R * 2, R * 2.4, {});
+      else { ctx.fillStyle = 'rgba(255,150,80,' + (1 - hitK) + ')'; ctx.beginPath(); ctx.arc(lx, ly, R, 0, TAU); ctx.fill(); }
+      ctx.globalAlpha = 1;
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+
+    // shake
+    ctx.save();
+    if (this._shake > 0) { var s = this._shake * 8; ctx.translate((Math.random() - 0.5) * s, (Math.random() - 0.5) * s); this._shake *= Math.pow(0.02, dt); if (this._shake < 0.05) this._shake = 0; }
+    bank = cs.hits ? Math.sin(T * 18) * 0.08 * clamp(1.5 - (T - 3), 0, 1) : 0;
+    this._drawPlane(ctx, px, cs.planeY, Math.min(W, H) * 0.06, bank);
+    ctx.restore();
+
+    // red danger flash
+    if (cs.flash > 0) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(255,40,30,' + (cs.flash * 0.35).toFixed(3) + ')';
+      ctx.fillRect(0, 0, W, H);
+      ctx.restore();
+      cs.flash = Math.max(0, cs.flash - dt * 1.6);
+    }
+
+    // label early, verdict card after the pass
+    ctx.textAlign = 'center';
+    if (T < 3.2) {
+      ctx.globalAlpha = clamp(1.4 - Math.abs(T - 1.6), 0, 1);
+      ctx.fillStyle = '#ffd24a';
+      ctx.font = '600 ' + Math.round(H * 0.03) + 'px system-ui, sans-serif';
+      ctx.fillText('เขตห้ามบิน · NOTAM — รัศมี ' + Math.round(this._notamRadius) + ' ม.', W / 2, H * 0.12);
+      ctx.globalAlpha = 1;
+    }
+    if (T > 4.6) {
+      var k = clamp((T - 4.6) / 0.7, 0, 1);
+      ctx.fillStyle = 'rgba(6,8,16,' + (0.82 * k).toFixed(3) + ')';
+      ctx.fillRect(0, 0, W, H);
+      ctx.globalAlpha = k;
+      ctx.fillStyle = '#ff5a4a';
+      ctx.font = '800 ' + Math.round(H * 0.06) + 'px system-ui, sans-serif';
+      ctx.fillText('⚠ LEGAL VIOLATION', W / 2, H * 0.4);
+      ctx.fillStyle = '#e8eef7';
+      ctx.font = '600 ' + Math.round(H * 0.032) + 'px system-ui, sans-serif';
+      ctx.fillText('โคมลอยหลุดเขตห้ามบิน เข้าเส้นทางร่อนลงของสนามบิน', W / 2, H * 0.5);
+      ctx.fillStyle = '#9db4d8';
+      ctx.font = '400 ' + Math.round(H * 0.026) + 'px system-ui, sans-serif';
+      ctx.fillText('ปล่อยโคมช่วงเทศกาลต้องยื่นขอ NOTAM ล่วงหน้า กำหนดพื้นที่และเพดานบิน', W / 2, H * 0.57);
+      ctx.fillText('ถ่วงน้ำหนักโคมให้พอดี อย่าให้ลมพัดหลุดเขต', W / 2, H * 0.61);
+      ctx.fillStyle = '#6f8099';
+      ctx.font = '400 ' + Math.round(H * 0.022) + 'px system-ui, sans-serif';
+      ctx.fillText('แตะเพื่อดูผลการบิน', W / 2, H * 0.72);
+      ctx.globalAlpha = 1;
+    }
+
+    if (T > 8.5) this._endCutscene();
+  };
+
+  P._endCutscene = function () {
+    this._cutscene = null;
+    this._cutsceneDone = true;
+    this._shake = 0;
+    (this._hud || []).forEach(function (el) { if (el) el.style.visibility = ''; });
+  };
+
+  P._drawPlane = function (ctx, x, y, s, bank) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(bank || 0);
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    ctx.lineWidth = Math.max(2, s * 0.11);
+    ctx.strokeStyle = '#1c2029';
+    // tail fin
+    ctx.beginPath();
+    ctx.moveTo(-s * 1.15, -s * 0.05);
+    ctx.lineTo(-s * 1.7, -s * 1.0);
+    ctx.lineTo(-s * 0.95, -s * 0.35);
+    ctx.closePath();
+    ctx.fillStyle = '#f0b93e'; ctx.fill(); ctx.stroke();
+    // far wing
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.05, -s * 0.05);
+    ctx.lineTo(-s * 0.7, -s * 1.05);
+    ctx.lineTo(s * 0.55, -s * 0.8);
+    ctx.closePath();
+    ctx.fillStyle = '#d99a2f'; ctx.fill(); ctx.stroke();
+    // fuselage
+    ctx.fillStyle = '#e8534e';
+    ctx.beginPath();
+    ctx.moveTo(-s * 1.5, 0);
+    ctx.quadraticCurveTo(-s * 1.5, -s * 0.44, -s * 0.15, -s * 0.5);
+    ctx.lineTo(s * 1.1, -s * 0.3);
+    ctx.quadraticCurveTo(s * 1.75, -s * 0.12, s * 1.75, 0);
+    ctx.quadraticCurveTo(s * 1.75, s * 0.12, s * 1.1, s * 0.3);
+    ctx.lineTo(-s * 0.15, s * 0.5);
+    ctx.quadraticCurveTo(-s * 1.5, s * 0.44, -s * 1.5, 0);
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    // near wing
+    ctx.beginPath();
+    ctx.moveTo(-s * 0.05, s * 0.08);
+    ctx.lineTo(-s * 0.75, s * 1.15);
+    ctx.lineTo(s * 0.7, s * 0.95);
+    ctx.closePath();
+    ctx.fillStyle = '#f0b93e'; ctx.fill(); ctx.stroke();
+    // windows
+    ctx.fillStyle = '#8fd3f4';
+    for (var i = 0; i < 4; i++) {
+      ctx.beginPath(); ctx.arc(-s * 0.55 + i * s * 0.42, -s * 0.04, s * 0.13, 0, TAU);
+      ctx.fill(); ctx.stroke();
+    }
+    // nose + prop
+    ctx.fillStyle = '#1c2029';
+    ctx.beginPath(); ctx.arc(s * 1.5, 0, s * 0.22, 0, TAU); ctx.fill();
+    ctx.strokeStyle = 'rgba(28,32,41,0.45)'; ctx.lineWidth = s * 0.13;
+    ctx.beginPath(); ctx.moveTo(s * 1.5, -s * 0.7); ctx.lineTo(s * 1.5, s * 0.7); ctx.stroke();
+    ctx.restore();
+  };
+
   // ------------------------------------------------------ the khom loy itself
   P._drawLantern = function (ctx, st, base) {
     // hot-air lantern: a glowing sa-paper onion, an open mouth with a flame,
@@ -1527,6 +1807,7 @@
     this.t = 0; this.playing = true; this._last = performance.now();
     this.smoke = []; this.bursts = []; this._lastEvIdx = -1; this._shake = 0;
     this._vmax = 0; this._autopsyShown = false;
+    this._groundFire = null; this._cutscene = null; this._cutsceneDone = false;
     this._mpp = this._mpp0 || 0.04;
     this._camX = 0; this._camY = (this.bodyH || 3) * 0.5;
     this._camSeed = false;
@@ -1560,10 +1841,17 @@
     }).join('');
 
     var dl = $('f2-ap-diag');
-    if (dl) dl.innerHTML = (this.sim.diagnostics || []).map(function (d) {
-      return '<li><span class="f2-chip ' + d.status + '">' + d.status + '</span>' +
-        '<span>' + esc(d.message) + (d.detail ? ' — ' + esc(d.detail) : '') + '</span></li>';
-    }).join('');
+    if (dl) {
+      var extra = '';
+      if (this._groundFire) extra += '<li><span class="f2-chip FAIL">FAIL</span><span>' +
+        'โคมตกทั้งที่เปลวเทียนยังติด → ไฟไหม้พื้น — โคมลอยเป็นเหตุเพลิงไหม้ที่พบบ่อยในเทศกาล</span></li>';
+      if (this._cutsceneDone) extra += '<li><span class="f2-chip FAIL">FAIL</span><span>' +
+        'โคมหลุดเขต NOTAM เข้าห้วงอากาศสนามบิน — ต้องยื่นขออนุญาต/กำหนดเพดานก่อนปล่อย</span></li>';
+      dl.innerHTML = extra + (this.sim.diagnostics || []).map(function (d) {
+        return '<li><span class="f2-chip ' + d.status + '">' + d.status + '</span>' +
+          '<span>' + esc(d.message) + (d.detail ? ' — ' + esc(d.detail) : '') + '</span></li>';
+      }).join('');
+    }
 
     var v = $('f2-ap-verdict');
     var mr = this.opts.missionResult;
