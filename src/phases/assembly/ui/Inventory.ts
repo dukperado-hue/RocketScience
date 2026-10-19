@@ -53,6 +53,7 @@ export class Inventory {
       <header class="inv-head"><h2>Parts</h2><p>Drag onto the grid — or tap to attach.</p>
         <button type="button" class="inv-campaign" data-goto-missions></button></header>
       <div class="inv-scroll">
+        <div class="inv-quick" aria-label="Blueprints"></div>
         ${ERAS.map((era) => `
           <details class="inv-cat inv-era era-${era.id}" data-era="${era.id}" ${era.id === 'space' ? '' : 'open'}>
             <summary>${era.title}<small>${era.th}</small></summary>
@@ -112,6 +113,16 @@ export class Inventory {
         body.querySelectorAll<HTMLElement>('[data-soon]').forEach((b) => b.addEventListener('click', () => this.hooks.onMissionLocked(`${b.dataset.soon}: ${cap!.label}. This Early Access build covers Tier 0–2.`)));
       }
     }
+    // phones: the ready-to-fly blueprints sit at the very top (the era lists are far down a long page)
+    const quick = this.el.querySelector<HTMLElement>('.inv-quick')!;
+    quick.innerHTML = '<h4 class="inv-sub">Blueprints<small>แบบสำเร็จรูป · ready to fly</small></h4>';
+    const row = document.createElement('div'); row.className = 'presets';
+    for (const pre of PRESETS.filter((p) => !cap || presetTier(p) <= cap.maxTier)) {
+      const b = this.presetButton(pre, bench);
+      delete b.dataset.preset; b.dataset.quickPreset = pre.id;   // the era list keeps data-preset (one per blueprint)
+      row.appendChild(b);
+    }
+    quick.appendChild(row);
     const pay = this.el.querySelector('[data-list="zombies"]')!;
     pay.innerHTML = '';
     for (const id of ZOMBIE_IDS) pay.appendChild(this.zombieCard(id));

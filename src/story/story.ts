@@ -11,6 +11,8 @@
  */
 import { CREW, type CrewId } from '@/phases/launch/capcom';
 import { mountDisclaimer } from '@/ui/softLaunchUI';
+import { bus } from '@/core/EventBus';
+import { FIRSTRUN_KEY } from '@/game/firstRun';
 import { campaign } from '@/campaign/missionManager';
 
 import './story.css';
@@ -163,7 +165,8 @@ function prologue() {
       <div class="pr-actions"><button type="button" class="primary" data-pr="watch">▶ Watch the legend (10 s)</button><button type="button" class="ghost" data-pr="skip">Start building</button></div></div>`;
   mountDisclaimer(el.querySelector<HTMLElement>(':scope > div')!, 'briefing');
   document.body.appendChild(el);
-  const done = () => { store.set('rs.prologue.seen', '1'); el.remove(); };
+  // first time only: hand the player a ready Mission 1 build (the Factory decides whether it still applies)
+  const done = () => { store.set('rs.prologue.seen', '1'); store.set(FIRSTRUN_KEY, '1'); el.remove(); bus.emit('firstrun:start', {}); };
   el.querySelector('img')!.addEventListener('error', () => el.querySelector('figure')!.remove());
   el.querySelector('[data-pr="skip"]')!.addEventListener('click', done);
   el.querySelector('[data-pr="watch"]')!.addEventListener('click', () => { done(); void playCutscene(CUTSCENES[1]); });

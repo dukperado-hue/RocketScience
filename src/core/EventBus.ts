@@ -12,6 +12,8 @@ export interface GameEvents {
   'law:event': LawEvent;
   /** Campaign mode or progress changed (Missions tab, Factory locks re-render) */
   'campaign:changed': { mode: 'campaign' | 'sandbox' };
+  /** The title card was dismissed for the first time: the Factory may start the Mission 1 coach */
+  'firstrun:start': Record<string, never>;
   /** A campaign mission was just completed */
   'campaign:complete': { id: string };
 }

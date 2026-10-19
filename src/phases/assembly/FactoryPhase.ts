@@ -25,6 +25,8 @@ import { TelemetryPanel } from './ui/TelemetryPanel';
 import { Inspector, type InspectorAction } from './ui/Inspector';
 import { ZOMBIES, type ZombieId } from '@/payload/zombies';
 import { captureForRetry, quickRetry } from '@/game/retrySession';
+import { safeKV } from '@/core/safeStorage';
+import { COACH_KEY, FIRSTRUN_KEY, shouldCoachM1 } from '@/game/firstRun';
 import './factory.css';
 
 export class FactoryPhase implements Phase {
@@ -83,6 +85,9 @@ export class FactoryPhase implements Phase {
     this.cleanup.push(this.store.on(() => { if (this.store.parts !== lastParts) { lastParts = this.store.parts; quickRetry.invalidate(); } }));
     this.cleanup.push(bus.on('campaign:changed', () => this.inventory.render()));
     sync();
+    // first run: Khom loi is loaded and "Roll out" is pointed at (see game/firstRun.ts)
+    this.cleanup.push(bus.on('firstrun:start', () => this.firstRun()));
+    if (safeKV.getItem(FIRSTRUN_KEY) === '1') this.firstRun();
 
     const onKey = (e: KeyboardEvent) => this.onKey(e);
     window.addEventListener('keydown', onKey);
@@ -97,6 +102,31 @@ export class FactoryPhase implements Phase {
     this.inspector.dispose();
     clearTimeout(this.toastTimer);
     this.root.innerHTML = '';
+  }
+
+  /* ---------- First-run coach ---------- */
+
+  private firstRun() {
+    safeKV.removeItem(FIRSTRUN_KEY);
+    if (!shouldCoachM1({ sandbox: campaign.sandbox, currentMissionId: campaign.current()?.id ?? null, partCount: this.store.parts.length, coached: safeKV.getItem(COACH_KEY) === '1' })) return;
+    this.loadPreset('khom-loi');
+    const card = document.createElement('aside');
+    card.className = 'coach';
+    card.setAttribute('role', 'note');
+    card.innerHTML = `<button type="button" class="coach-x" aria-label="Close">✕</button>
+      <b>ภารกิจที่ 1 · Mission 1</b>
+      <p lang="th">ปล่อยโคมลอยจากเกาะพะงัน (ในเกมเท่านั้น) เราโหลดแบบ “Khom loi” ให้แล้ว</p>
+      <p lang="en">Launch a sky lantern from Koh Phangan. The Khom loi blueprint is already loaded.</p>
+      <p class="coach-go"><span lang="th">กด “Roll out to the pad” ได้เลย</span> <span lang="en">Press “Roll out to the pad”.</span></p>`;
+    card.querySelector('.coach-x')!.addEventListener('click', () => this.endCoach());
+    this.root.querySelector('.build')!.appendChild(card);
+    this.root.querySelector('.launch')?.classList.add('coach-pulse');
+  }
+
+  private endCoach() {
+    safeKV.setItem(COACH_KEY, '1');
+    this.root.querySelector('.coach')?.remove();
+    this.root.querySelector('.launch')?.classList.remove('coach-pulse');
   }
 
   /* ---------- Actions ---------- */
@@ -182,6 +212,7 @@ export class FactoryPhase implements Phase {
       this.toast(`Campaign: ${locked.map((id) => PART[id].name).join(', ')} ${locked.length > 1 ? 'are' : 'is'} locked until Mission ${m.label} · ${m.title}. Remove ${locked.length > 1 ? 'them' : 'it'}, or switch to Sandbox in Missions.`);
       return;
     }
+    this.endCoach();
     const payload = { parts: st.active, telemetry: this.store.telemetry, bench: this.bench };
     // lanterns start on bare ground, everything else on a rail/ramp (LaunchPhase.defaultSite picks the exact site)
     const lantern = st.active.some((p) => PART[p.defId].envelope);
