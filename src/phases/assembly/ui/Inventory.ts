@@ -16,14 +16,16 @@ import { PART } from '../model/catalog';
 import { LANNA_MANUAL } from '../model/lannaManual';
 import { bus } from '@/core/EventBus';
 
+import { gradeLock, lockForPart, missionLock, spaceAgeLock, type LockInfo } from '@/game/lockInfo';
+
 export interface InventoryHooks {
   bench: () => BenchState;
   onGrab: (defId: string, e: PointerEvent) => void;
   onTap: (defId: string) => void;
-  onLocked: (grade: GradeId) => void;
+  /** A locked part or blueprint was tapped: explain where it unlocks and take the player there */
+  onLock: (info: LockInfo) => void;
   onPreset: (id: string) => void;
   /** A part (or blueprint) the campaign has not unlocked yet */
-  onMissionLocked: (why: string) => void;
   /** Seat a zombie (in the selected seat, or the first seat on the vehicle) */
   onRider: (id: ZombieId) => void;
 }
@@ -51,7 +53,8 @@ export class Inventory {
   constructor(private el: HTMLElement, private hooks: InventoryHooks) {
     el.innerHTML = `
       <header class="inv-head"><h2>Parts</h2><p>Drag onto the grid — or tap to attach.</p>
-        <button type="button" class="inv-campaign" data-goto-missions></button></header>
+        <button type="button" class="inv-campaign" data-goto-missions></button>
+        <button type="button" class="inv-lockinfo" hidden></button></header>
       <div class="inv-scroll">
         <div class="inv-quick" aria-label="Blueprints"></div>
         ${ERAS.map((era) => `
@@ -110,7 +113,7 @@ export class Inventory {
       if (soon) {
         const pres = PRESETS.filter((pre) => presetTier(pre) > cap!.maxTier);
         if (pres.length) body.insertAdjacentHTML('beforeend', `<h4 class="inv-sub">Blueprints<small>แบบสำเร็จรูป</small></h4><div class="presets soon-presets">${pres.map((pre) => `<button type="button" class="preset mission-locked soon" data-soon="${esc(pre.name)}"><b>${esc(pre.name)}</b><small>🚀 ${cap!.label}</small></button>`).join('')}</div>`);
-        body.querySelectorAll<HTMLElement>('[data-soon]').forEach((b) => b.addEventListener('click', () => this.hooks.onMissionLocked(`${b.dataset.soon}: ${cap!.label}. This Early Access build covers Tier 0–2.`)));
+        body.querySelectorAll<HTMLElement>('[data-soon]').forEach((b) => b.addEventListener('click', () => this.hooks.onLock(spaceAgeLock(b.dataset.soon!, cap!.label, cap!.labelTh))));
       }
     }
     // phones: the ready-to-fly blueprints sit at the very top (the era lists are far down a long page)
@@ -126,10 +129,17 @@ export class Inventory {
     const pay = this.el.querySelector('[data-list="zombies"]')!;
     pay.innerHTML = '';
     for (const id of ZOMBIE_IDS) pay.appendChild(this.zombieCard(id));
+    // powder parts are locked by the Mixing bench in every mode, including Sandbox — say so, and go there on tap
+    const need = new Set<GradeId>();
+    for (const d of CATALOG) { const g = requiredGrade(d); if (g && !campaign.lockReason(d.id) && bench.crafted[g] === undefined) need.add(g); }
+    const info = this.el.querySelector<HTMLButtonElement>('.inv-lockinfo')!;
+    info.hidden = need.size === 0;
+    info.innerHTML = need.size ? `<b>Still locked in every mode:</b><small>parts that burn powder — craft ${[...need].map((g) => GRADES[g].name.toLowerCase()).join(' / ')} at the Mixing bench ›</small>` : '';
+    info.onclick = () => this.openChemistry();
     const strip = this.el.querySelector<HTMLElement>('.inv-campaign')!;
     const cur = campaign.current();
     strip.classList.toggle('sandbox', campaign.sandbox);
-    strip.innerHTML = campaign.sandbox ? `<b>Sandbox</b><small>${campaign.cap ? 'Every Tier 0–2 part unlocked' : 'Every part unlocked'} · switch in Missions</small>`
+    strip.innerHTML = campaign.sandbox ? `<b>Sandbox · mission locks are off</b><small>${campaign.cap ? 'Tier 3–4 stay locked: Early Access cap.' : ''} Switch back in Missions ›</small>`
       : campaign.earlyAccessDone ? '<b>Early Access complete</b><small>Tier 0–2 unlocked · Space Age Update coming ›</small>'
       : campaign.complete ? '<b>Campaign complete</b><small>Every tier unlocked</small>'
       : `<b>Tier ${campaign.unlockedTier()} unlocked</b><small>Next: Mission ${cur!.label} · ${cur!.title} ›</small>`;
@@ -142,9 +152,9 @@ export class Inventory {
     b.type = 'button';
     b.className = `preset${lockedBy ? ' mission-locked' : ''}`;
     b.dataset.preset = pre.id;
-    b.disabled = missing.length > 0 && !lockedBy;
-    b.innerHTML = `<b>${pre.name}</b><small>${lockedBy ? `🔒 Mission ${lockedBy.label} · ${lockedBy.title}` : missing.length ? `Craft ${missing.map((g) => GRADES[g].name.toLowerCase()).join(', ')} first` : pre.nameTh}</small>`;
-    b.addEventListener('click', () => lockedBy ? this.hooks.onMissionLocked(`${pre.name} needs parts from Mission ${lockedBy.label} · ${lockedBy.title}.`) : this.hooks.onPreset(pre.id));
+    if (missing.length && !lockedBy) b.classList.add('grade-locked');
+    b.innerHTML = `<b>${pre.name}</b><small>${lockedBy ? `🔒 Mission ${lockedBy.label} · ${lockedBy.title}` : missing.length ? `🔒 Craft ${missing.map((g) => GRADES[g].name.toLowerCase()).join(', ')} at the Mixing bench ›` : pre.nameTh}</small>`;
+    b.addEventListener('click', () => lockedBy ? this.hooks.onLock(missionLock(pre.name, lockedBy.label, lockedBy.title)) : missing.length ? this.hooks.onLock(gradeLock(pre.name, missing[0])) : this.hooks.onPreset(pre.id));
     return b;
   }
 
@@ -220,7 +230,7 @@ export class Inventory {
     const es = engineStats(def);
     const meta = soon ? `🚀 ${mission}` : mission ? `🔒 ${mission}`
       : locked
-      ? `Craft ${GRADES[grade!].name.toLowerCase()} first`
+      ? `🔒 Mixing bench: craft ${GRADES[grade!].name.toLowerCase()} ›`
       : `${fmtMass(dryMass(def) + propellantMass(def))}${es && es.thrust > 0 ? ` · ${fmtForce(es.thrust)}` : ''}`;
     b.insertAdjacentHTML('beforeend', `<span class="pc-text"><b>${def.name}</b><small>${def.nameTh}</small><em>${meta}</em></span>`);
     if (manual && !soon) {
@@ -240,12 +250,12 @@ export class Inventory {
 
     if (soon) {
       b.setAttribute('aria-label', `${def.name} — ${mission}`);
-      b.addEventListener('click', () => this.hooks.onMissionLocked(`${def.name}: ${mission}. This Early Access build covers Tier 0–2.`));
+      b.addEventListener('click', () => this.hooks.onLock(lockForPart(def, campaign as never, bench.crafted)!));
     } else if (mission) {
       b.setAttribute('aria-label', `${def.name} — locked, complete ${mission}`);
-      b.addEventListener('click', () => this.hooks.onMissionLocked(`${def.name} unlocks with ${mission}.`));
+      b.addEventListener('click', () => this.hooks.onLock(lockForPart(def, campaign as never, bench.crafted)!));
     } else if (locked) {
-      b.addEventListener('click', () => this.hooks.onLocked(grade!));
+      b.addEventListener('click', () => this.hooks.onLock(gradeLock(def.name, grade!)));
     } else {
       b.addEventListener('pointerdown', (e) => { if (e.button === 0) { e.preventDefault(); this.hooks.onGrab(def.id, e); } });
       b.addEventListener('click', () => this.hooks.onTap(def.id));

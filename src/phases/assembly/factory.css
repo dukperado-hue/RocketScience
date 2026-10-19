@@ -325,3 +325,13 @@ body.factory-dragging, body.factory-dragging * { cursor: grabbing !important; us
 .inv-era > summary small { grid-column: 2; }
 .inv-era .presets { padding: 0 2px 8px 18px; }
 .lanna-tip .lt-kicker { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Locks that tell you where to go */
+.preset.grade-locked { opacity: 0.85; border-style: dashed; }
+.preset.grade-locked small { color: #a4570f; }
+.inv-lockinfo { display: flex; flex-direction: column; align-items: flex-start; width: 100%; margin-top: 6px; padding: 6px 10px; border: 1px dashed #e2b26a; border-radius: 8px; background: #fff7e8; color: #6b4a0f; text-align: left; cursor: pointer; font: inherit; }
+.inv-lockinfo b { font-size: 12px; }
+.inv-lockinfo small { font-size: 11.5px; }
+.toast.has-action { pointer-events: auto; }
+.toast .toast-th { margin-top: 3px; font-weight: 400; opacity: 0.9; }
+.toast .toast-act { display: block; margin-top: 8px; padding: 6px 12px; border: 0; border-radius: 8px; background: var(--f-fire); color: #fff; font: inherit; font-weight: 700; cursor: pointer; }

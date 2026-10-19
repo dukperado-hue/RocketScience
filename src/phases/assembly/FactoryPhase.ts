@@ -11,7 +11,7 @@
  */
 import type { Phase } from '@/core/PhaseManager';
 import { bus } from '@/core/EventBus';
-import { GRADES, loadBench, recordCraft, saveBench, type BenchState } from '@/chemistry/mixingBench';
+import { loadBench, recordCraft, saveBench, type BenchState } from '@/chemistry/mixingBench';
 import { MATERIALS } from '@/data/materials';
 import { VehicleStore } from './store';
 import { analyse, autoAttach } from './model/vehicle';
@@ -25,6 +25,7 @@ import { TelemetryPanel } from './ui/TelemetryPanel';
 import { Inspector, type InspectorAction } from './ui/Inspector';
 import { ZOMBIES, type ZombieId } from '@/payload/zombies';
 import { captureForRetry, quickRetry } from '@/game/retrySession';
+import type { LockInfo } from '@/game/lockInfo';
 import { retryContext } from '@/game/retryContext';
 import { safeKV } from '@/core/safeStorage';
 import { COACH_ACTIVE_KEY, COACH_KEY, FIRSTRUN_KEY, shouldCoachM1 } from '@/game/firstRun';
@@ -52,9 +53,8 @@ export class FactoryPhase implements Phase {
       bench: () => this.bench,
       onGrab: (id, e) => this.canvas.beginNewDrag(id, e),
       onTap: (id) => this.tapAdd(id),
-      onLocked: (g) => { this.inventory.openChemistry(); this.toast(`Craft ${GRADES[g].name.toLowerCase()} at the Mixing Bench to unlock this part.`); },
+      onLock: (info) => this.lockToast(info),
       onPreset: (id) => this.loadPreset(id),
-      onMissionLocked: (why) => this.toast(`${why} Open Missions to see how — or switch to Sandbox.`),
       onRider: (id) => this.seatZombie(id),
     });
     this.benchUI = new MixingBenchUI(this.inventory.benchMount, () => this.bench, (g, quality) => {
@@ -250,12 +250,21 @@ export class FactoryPhase implements Phase {
     }
   }
 
-  private toast(msg: string) {
+  /** A locked item was tapped: say where it unlocks (EN + TH) and go there — the bench opens here, Missions is one tap away */
+  private lockToast(info: LockInfo) {
+    if (info.where === 'bench') this.inventory.openChemistry();
+    this.toast(info.en, info.th, info.where === 'missions' ? { label: 'เปิด Missions · Open Missions ›', go: () => bus.emit('phase:request', { phase: 'mission' }) } : undefined);
+  }
+
+  private toast(msg: string, th?: string, action?: { label: string; go: () => void }) {
     const t = this.root.querySelector('.toast') as HTMLElement;
     t.textContent = msg;
+    if (th) { const p = document.createElement('div'); p.lang = 'th'; p.className = 'toast-th'; p.textContent = th; t.appendChild(p); }
+    if (action) { const b = document.createElement('button'); b.type = 'button'; b.className = 'toast-act'; b.textContent = action.label; b.addEventListener('click', action.go); t.appendChild(b); }
+    t.classList.toggle('has-action', !!action);
     t.classList.add('on');
     clearTimeout(this.toastTimer);
-    this.toastTimer = window.setTimeout(() => t.classList.remove('on'), 3200);
+    this.toastTimer = window.setTimeout(() => t.classList.remove('on'), action || th ? 7000 : 3200);
   }
 }
 
