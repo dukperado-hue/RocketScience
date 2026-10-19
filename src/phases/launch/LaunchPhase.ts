@@ -64,6 +64,7 @@ import './launch.css';
 import { safeKV } from '@/core/safeStorage';
 import { keyOwner } from '@/ui/keyFocus';
 import { ffAllowed, fastForward } from '@/game/fastForward';
+import { eaNext } from '@/game/earlyAccessFlow';
 import { objectiveBannerText, missionCompleteTh } from '@/game/missionBanner';
 import { ensureRetrySnapshot, quickRetry, rememberLaunchChoice } from '@/game/retrySession';
 import { siteFromChoice, type LaunchChoice } from '@/game/launchChoice';
@@ -292,6 +293,8 @@ export class LaunchPhase implements Phase {
   private node: { at: NodeAt; dv: number } = { at: 'apo', dv: 0 };
   private seamWarned = false;
   private summaryBusy = false;
+  /** A full-screen card (End of Early Access) is open: the flight waits behind it */
+  private modalOpen = false;
   /** Fast-forward is running (only while no engine burns; the physics is the same steps, more per frame) */
   private ff = false;
   private lastRender = 0;
@@ -818,7 +821,7 @@ export class LaunchPhase implements Phase {
     this.view.juice = this.director.camera();
     this.view.timeScale = ts;
     // Physics at a fixed step, warped
-    if (f.ignited) {
+    if (f.ignited && !this.modalOpen) {
       // On rails the whole warp is exact; otherwise physics, capped so a frame can't stall
       const rails = f.onRailsOk;
       const w = rails ? this.warp : Math.min(this.warp, PHYS_WARP_CAP);
@@ -1094,11 +1097,12 @@ export class LaunchPhase implements Phase {
   private missionDone(m: Mission) {
     const f = this.flight;
     if (campaign.cap?.finale === m.id) {
-      // Early Access finale: celebrate now, the End of Early Access screen comes when the flight ends
+      // Early Access finale: the End of Early Access card comes up right now (Keep flying hides it until the flight ends)
       this.eaPending = true;
-      this.logLine({ t: f.t, kind: 'milestone', text: `MISSION ${m.label} COMPLETE — ${m.title}. You have reached space. That is the end of Early Access: finish the flight for a message from Zombie Control.` });
-      this.milestoneCard(`Mission ${m.label} complete · ${m.title}`, 'Space! Finish the flight — Zombie Control has something to say.', 'assets/zombie/zombie_zero_g.png');
+      this.setFf(false);
+      this.logLine({ t: f.t, kind: 'milestone', text: `MISSION ${m.label} COMPLETE — ${m.title}. You have reached space. That is the end of Early Access.` });
       this.capcom.say('zombie', 'The void. We are touching the void. It is cold and it does not taste of anything.', 3, 'happy');
+      void this.earlyAccessEnd(true);
       return;
     }
     this.logLine({ t: f.t, kind: 'milestone', text: `MISSION ${m.label} COMPLETE — ${m.title}. Unlocked: ${m.rewards.text}.` });
@@ -1558,9 +1562,13 @@ export class LaunchPhase implements Phase {
   /** Mission 2.5 done: the End of Early Access screen, then wherever the player chose */
   private eaPending = false;
   private finaleShown = false;
-  private async earlyAccessEnd(): Promise<void> {
-    this.eaPending = false; this.finaleShown = true;
-    const x = await showEarlyAccessEnd({ apogeeKm: this.flight.result().maxAlt / 1000 });
+  private async earlyAccessEnd(midFlight = false): Promise<void> {
+    this.modalOpen = true;
+    const x = await showEarlyAccessEnd({ apogeeKm: this.flight.result().maxAlt / 1000 }, { midFlight });
+    this.modalOpen = false;
+    const next = eaNext(x);
+    this.eaPending = next.again; this.finaleShown = next.settled;
+    if (x === 'keep') return;
     if (x === 'sandbox') { campaign.setMode('sandbox'); this.logLine({ t: this.flight.t, kind: 'info', text: 'Sandbox on: every Tier 0–2 part, every range, nothing recorded. Fly something silly.' }); }
     else if (x === 'factory') bus.emit('phase:request', { phase: 'assembly' });
     else openGallery('log');

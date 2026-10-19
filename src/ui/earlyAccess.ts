@@ -8,6 +8,7 @@
 import { EARLY_ACCESS } from '@/core/earlyAccess';
 import { CREW, portrait, zombify } from '@/phases/launch/capcom';
 import { sfx } from '@/juice/proceduralAudio';
+import { eaDismissChoice } from '@/game/earlyAccessFlow';
 import './earlyAccess.css';
 
 export function applyEarlyAccessShell(doc: Document = document) {
@@ -22,13 +23,14 @@ export function applyEarlyAccessShell(doc: Document = document) {
   }
 }
 
-export type EarlyAccessExit = 'sandbox' | 'factory' | 'story';
+export type EarlyAccessExit = 'sandbox' | 'factory' | 'story' | 'keep';
 
 const LINE = 'We have touched the void. Now we build bigger rockets. See you in the next update.';
 const LINE_TH = 'เราได้แตะความว่างเปล่าแล้ว ต่อไปเราจะสร้างจรวดที่ใหญ่กว่านี้ แล้วพบกันในอัปเดตหน้า';
 
 /** Resolves with the player's choice. Esc / the backdrop = 'factory'. */
-export function showEarlyAccessEnd(stats: { apogeeKm: number; flights?: number } = { apogeeKm: 100 }): Promise<EarlyAccessExit> {
+export function showEarlyAccessEnd(stats: { apogeeKm: number; flights?: number } = { apogeeKm: 100 }, opts: { midFlight?: boolean } = {}): Promise<EarlyAccessExit> {
+  const mid = !!opts.midFlight;
   return new Promise((resolve) => {
     const z = CREW.zombie;
     const wrap = document.createElement('div');
@@ -57,7 +59,8 @@ export function showEarlyAccessEnd(stats: { apogeeKm: number; flights?: number }
           <li class="soon">🚀 Orbit, ZomSat-1 and the first zombie spacewalk — ${EARLY_ACCESS.label}</li>
         </ul>
         <div class="ea-actions">
-          <button type="button" class="ea-btn primary" data-x="sandbox">Keep flying in Sandbox</button>
+          ${mid ? '<button type="button" class="ea-btn primary" data-x="keep"><span lang="th">บินต่อ</span> · Keep flying</button>' : ''}
+          <button type="button" class="ea-btn${mid ? '' : ' primary'}" data-x="sandbox">Keep flying in Sandbox</button>
           <button type="button" class="ea-btn" data-x="factory">Back to the Factory</button>
           <button type="button" class="ea-btn ghost" data-x="story">Read the Story log</button>
         </div>
@@ -76,12 +79,12 @@ export function showEarlyAccessEnd(stats: { apogeeKm: number; flights?: number }
       clearInterval(typer); window.removeEventListener('keydown', onKey, true);
       wrap.classList.add('out'); setTimeout(() => wrap.remove(), 250); resolve(x);
     };
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); done('factory'); } };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); done(eaDismissChoice(mid)); } };
     window.addEventListener('keydown', onKey, true);
     wrap.addEventListener('click', (e) => {
       const b = (e.target as HTMLElement).closest<HTMLElement>('[data-x]');
       if (b) done(b.dataset.x as EarlyAccessExit);
-      else if (!(e.target as HTMLElement).closest('.ea-card')) reveal();
+      else if (!(e.target as HTMLElement).closest('.ea-card')) { if (mid) done('keep'); else reveal(); }
     });
     wrap.querySelector<HTMLButtonElement>('.ea-btn.primary')!.focus();
   });
