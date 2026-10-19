@@ -45,7 +45,9 @@ export function checks(t: Telemetry, partCount: number, nameOf: (uid: number) =>
   else if (t.twr < 1.3) out.push({ sev: 'warn', msg: `Thrust-to-weight ${t.twr.toFixed(2)} — it will lift off slowly.` });
   if (t.atRisk.length === 1) out.push({ sev: 'warn', msg: `${nameOf(t.atRisk[0])} is likely to fail. Click it to see why.` });
   else if (t.atRisk.length > 1) out.push({ sev: 'warn', msg: `${t.atRisk.length} parts are likely to fail. Click one to see why.` });
-  if (t.engines > 0 && t.cpAboveCom > 0.02) out.push({ sev: 'warn', msg: `Centre of pressure is ${(t.cpAboveCom * 100).toFixed(0)} cm above the centre of mass — it will tumble once it’s moving fast. Add fins low down.` });
+  // the centre-of-pressure number is pure geometry; a gimbal engine with SAS on can still hold the rocket straight
+  const steered = defIds.some((id) => ((PART[id]?.engine as { gimbalDeg?: number } | undefined)?.gimbalDeg ?? 0) > 0);
+  if (t.engines > 0 && t.cpAboveCom > 0.02) out.push({ sev: 'warn', msg: `Centre of pressure is ${(t.cpAboveCom * 100).toFixed(0)} cm above the centre of mass — ${steered ? 'it tumbles once it’s moving fast unless SAS steers it with the gimbal engine. Keep SAS ON (T), or add fins low down for real stability.' : 'it will tumble once it’s moving fast. Add fins low down.'}` });
   else if (t.engines > 0 && t.cpAboveComLate > 0.02) out.push({ sev: 'warn', msg: `Stable now, but past Mach 3 with empty tanks the centre of pressure is ${(t.cpAboveComLate * 100).toFixed(0)} cm above the centre of mass — it will flip late in the climb. Bigger fins, lower down.` });
   if (t.rider && t.engines > 0) { const f = zombieForecast(t.rider.zombie, t.burnoutG); if (f) out.push({ sev: 'warn', msg: f }); }
   if (t.engines > 0 && t.thrustOffset > 0.03) out.push({ sev: 'warn', msg: `Thrust is ${(t.thrustOffset * 100).toFixed(0)} cm off the centre of mass — it will turn.` });

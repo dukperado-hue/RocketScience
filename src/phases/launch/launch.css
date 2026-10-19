@@ -163,6 +163,9 @@
 .hud-orbit dd.good { color: var(--l-good); }
 .hud-orbit dd.warn { color: var(--l-warn); }
 .flight-view.in-map .hud-site { display: none; }
+/* SAS shows its state in words and colour: ON is green, OFF is plain */
+.hud-bar [data-act='sas'][aria-pressed='true'] { background: #e6f6ed; border-color: #9fd8b6; color: #1b7a44; font-weight: 700; }
+.hud-bar [data-act='sas'][aria-pressed='false'] { color: #7a8294; }
 .hud-bar [data-act='map'][aria-pressed='true'] { background: #1b2230; color: #fff; }
 .hud-log li.milestone { border-left-color: #d8a83a; background: #fff8e6; font-weight: 600; }
 @media (max-height: 640px) { .hud-orbit { top: auto; bottom: 72px; } }

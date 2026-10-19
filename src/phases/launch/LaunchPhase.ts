@@ -217,7 +217,7 @@ const TEMPLATE = `
 
   <nav class="hud-bar" aria-label="Flight controls">
     <button type="button" class="btn-go" data-act="go" title="Ignition / stage (Space)">IGNITION</button>
-    <button type="button" data-act="sas" title="SAS — gimbal attitude hold (T)" aria-pressed="false">SAS</button>
+    <button type="button" data-act="sas" title="SAS — gimbal attitude hold (T)" aria-pressed="false">SAS OFF</button>
     <button type="button" data-act="chute" title="Deploy parachutes (P)">Chute</button>
     <button type="button" data-act="mode" title="SAS mode: hold pitch / prograde / retrograde (M)">Hold</button>
     <button type="button" data-act="rcs" title="RCS thrusters on/off (F)" aria-pressed="true">RCS <small data-k="mono"></small></button>
@@ -589,6 +589,7 @@ export class LaunchPhase implements Phase {
         break;
       case 'sas':
         f.controls.sas = !f.controls.sas;
+        this.logLine({ t: f.t, kind: 'info', text: f.controls.sas ? 'SAS ON — the gimbal holds the attitude.' : 'SAS OFF — manual steering.' });
         if (f.controls.sas) f.controls.target = f.vehicle.pitch;   // hold the current attitude
         if (f.controls.sas && !f.vehicle.gimbals.length) this.logLine({ t: f.t, kind: 'info', text: 'SAS on — but nothing on this vehicle can gimbal. Liquid engines can.' });
         break;
@@ -820,6 +821,7 @@ export class LaunchPhase implements Phase {
     const gs = v.gimbals;
     const sasBtn = this.q('[data-act="sas"]');
     sasBtn.setAttribute('aria-pressed', String(f.controls.sas));
+    sasBtn.textContent = f.controls.sas ? 'SAS ON' : 'SAS OFF';
     this.q('[data-act="turn"]').setAttribute('aria-pressed', String(f.controls.turnRate > 0));
     this.k('sasline').textContent = gs.length
       ? `${f.controls.sas ? 'SAS hold' : 'Manual'} · gimbal ${(gs[0].engine!.delta * 180 / Math.PI).toFixed(1)}° of ±${(gs[0].engine!.gimbal * 180 / Math.PI).toFixed(0)}°`

@@ -149,8 +149,8 @@ export const MISSIONS: Mission[] = [
       { id: 'liquid', text: 'Fly a liquid-fuel engine (LV-45, pressure-fed or turbopump)', textTh: 'ใช้เครื่องยนต์เชื้อเพลิงเหลว (LV-45 ป้อนด้วยแรงดัน หรือเทอร์โบปั๊ม)', check: { kind: 'uses-any', parts: ['engine-lv45', 'engine-pf', 'engine-tp'] } },
       { id: 'karman', text: 'Cross the Kármán line (100 km)', textTh: 'ข้ามเส้นคาร์มาน (100 กม.)', check: { kind: 'karman' } },
     ],
-    hint: 'Sounding-rocket blueprint: big nose, two tanks, LV-45, fins. Turn SAS on (T) and go straight up.',
-    hintTh: 'แบบสำเร็จรูปจรวดตรวจอากาศ: หัวใหญ่ ถังสองใบ LV-45 ครีบ เปิด SAS (T) แล้วขึ้นตรง ๆ',
+    hint: 'Sounding-rocket blueprint: big nose, two tanks, LV-45, fins. SAS starts ON with this blueprint — leave it on (T switches it off and on) and go straight up.',
+    hintTh: 'แบบสำเร็จรูปจรวดตรวจอากาศ: หัวใหญ่ ถังสองใบ LV-45 ครีบ SAS เปิดอยู่แล้วตั้งแต่เริ่ม ปล่อยให้เปิดไว้ (กด T = สลับเปิด/ปิด) แล้วขึ้นตรง ๆ',
     rewards: { tier: 3, parts: partsOfTier(3), text: 'Tier 3: vacuum engine, XL tanks, boosters, Mk1 pod, ZomSat-1, heat shield', textTh: 'Tier 3: เครื่องยนต์สุญญากาศ ถัง XL บูสเตอร์ ห้องโดยสาร Mk1 ดาวเทียมซอมบี้ โล่กันความร้อน' },
     story: {
       id: 'm2b', crew: 'owl', image: 'assets/capcom/capcom_owl_professor_full.png',
