@@ -1219,7 +1219,9 @@ export class Flight {
     }
     if (b === this.vehicle && lead && b.vUp < 0 && v / speedOfSound(Math.max(0, b.alt)) > 5 && flux > 1e7 && !this.flags.has('plasma')) {
       this.flags.add('plasma');
-      this.ev('plasma', `Re-entry plasma: ${(flux / 1e6).toFixed(0)} MW/m² of flow energy hitting the ${lead.name.toLowerCase()}.${shielded ? ' The heat shield is doing its job.' : ' Nothing is shielding it.'}`);
+      // wording only: plasma and radio blackout belong to orbital-speed re-entry (several km/s); below that it is hypersonic heating
+      const head = v >= 3000 ? 'Re-entry plasma' : `Hypersonic heating (Mach ${(v / speedOfSound(Math.max(0, b.alt))).toFixed(1)})`;
+      this.ev('plasma', `${head}: ${(flux / 1e6).toFixed(0)} MW/m² of flow energy hitting the ${lead.name.toLowerCase()}.${shielded ? ' The heat shield is doing its job.' : ' Nothing is shielding it.'}`);
     }
     if (b === this.vehicle && this.zombie) {
       const seat = b.items.find((i) => i.uid === this.seatUid);

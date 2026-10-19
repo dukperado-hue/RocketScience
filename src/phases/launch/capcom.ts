@@ -240,6 +240,12 @@ export class Capcom {
     if (e.kind === 'chute' && /shredded/.test(e.text)) { this.say('capybara', '…that was the parachute. That was our only parachute.', 3, 'angry'); return; }
     if (e.kind === 'burnout' && !/Solid|Bang Fai/.test(e.text)) { this.say('lee', 'Engine cut-off.', 0); return; }
     if (e.kind === 'ignition' && !/^Upper stage/.test(e.text)) return;
+    if (e.kind === 'plasma' && /^Hypersonic heating/.test(e.text)) {
+      // below orbital speed there is no plasma sheath and no blackout: only (very hot) air
+      if (/shield is doing/.test(e.text)) this.say('owl', 'Hypersonic heating, and the heat shield is holding. Good.', 3, 'serious');
+      else this.say('lee', 'Hypersonic heating. Skin temperatures climbing — watch the leading edge.', 3, 'serious');
+      return;
+    }
     const opts = ON[e.kind];
     if (!opts) return;
     const [who, lines] = pick(opts, this.rand);

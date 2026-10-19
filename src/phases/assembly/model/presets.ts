@@ -111,7 +111,7 @@ function boosters(): PlacedPart[] {
  *   stage 2: core of two tank-xl + turbopump engine
  *   stage 3: tank-l + vacuum engine under an interstage
  *   capsule: Mk1 pod, heat shield, 18 m parachute, one fat zombie
- * Fly it with SAS and a gravity turn (Auto-turn): ~80° keeps re-entry survivable.
+ * Fly it with SAS and a pitch program (Auto-turn): ~80° keeps re-entry survivable.
  */
 function nagaHeavy(): PlacedPart[] {
   const p: PlacedPart[] = [{ uid: 1, defId: 'pod-mk1', x: 0, y: 0, rot: 0, rider: 'fat' }];

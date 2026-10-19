@@ -225,7 +225,7 @@ const TEMPLATE = `
     <button type="button" data-act="chute" title="Deploy parachutes (P)">Chute</button>
     <button type="button" data-sec data-act="mode" title="SAS mode: hold pitch / prograde / retrograde (M)">Hold</button>
     <button type="button" data-sec data-act="rcs" title="RCS thrusters on/off (F)" aria-pressed="true">RCS <small data-k="mono"></small></button>
-    <button type="button" data-sec data-act="turn" title="Auto gravity turn: lean 1°/s to 80° (G)" aria-pressed="false">Auto-turn</button>
+    <button type="button" data-sec data-act="turn" title="Pitch program: lean the nose 1°/s toward 80° (G) — a fixed schedule, not a true zero-angle-of-attack gravity turn (try SAS prograde for that)" aria-pressed="false">Auto-turn</button>
     <button type="button" data-sec data-act="assist" title="Ascent assist: off → guide → autopilot (V)">Assist: <span data-k="amode">Off</span></button>
     <label class="thr" data-sec title="Throttle (Shift/Ctrl, Z full, X cut)">Thr<input type="range" min="0" max="100" step="5" value="100" data-in="thr"></label>
     <span class="sep"></span>
@@ -684,7 +684,7 @@ export class LaunchPhase implements Phase {
         if (c.turnRate > 0) { c.turnRate = 0; break; }
         if (!f.vehicle.gimbals.length) { this.logLine({ t: f.t, kind: 'info', text: 'Auto-turn steers with the gimbals — this vehicle has none.' }); break; }
         c.sas = true; c.turnRate = Math.PI / 180; c.turnTo = 80 * Math.PI / 180;
-        this.logLine({ t: f.t, kind: 'info', text: 'Gravity turn: leaning 1°/s toward 80°.' });
+        this.logLine({ t: f.t, kind: 'info', text: 'Pitch program: leaning 1°/s toward 80° (a fixed schedule — SAS prograde follows the flight path instead).' });
         break;
       }
       case 'map':
