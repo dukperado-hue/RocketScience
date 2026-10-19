@@ -5,6 +5,8 @@
  */
 export const FIRSTRUN_KEY = 'rs.firstrun.pending';
 export const COACH_KEY = 'rs.coach.m1';
+/** the coach is on screen and not yet acted on: it comes back if the player visits another tab and returns */
+export const COACH_ACTIVE_KEY = 'rs.coach.active';
 
 export interface FirstRunState {
   sandbox: boolean;

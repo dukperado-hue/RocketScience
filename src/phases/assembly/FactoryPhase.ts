@@ -27,7 +27,7 @@ import { ZOMBIES, type ZombieId } from '@/payload/zombies';
 import { captureForRetry, quickRetry } from '@/game/retrySession';
 import { retryContext } from '@/game/retryContext';
 import { safeKV } from '@/core/safeStorage';
-import { COACH_KEY, FIRSTRUN_KEY, shouldCoachM1 } from '@/game/firstRun';
+import { COACH_ACTIVE_KEY, COACH_KEY, FIRSTRUN_KEY, shouldCoachM1 } from '@/game/firstRun';
 import './factory.css';
 
 export class FactoryPhase implements Phase {
@@ -89,6 +89,7 @@ export class FactoryPhase implements Phase {
     // first run: Khom loi is loaded and "Roll out" is pointed at (see game/firstRun.ts)
     this.cleanup.push(bus.on('firstrun:start', () => this.firstRun()));
     if (safeKV.getItem(FIRSTRUN_KEY) === '1') this.firstRun();
+    else if (safeKV.getItem(COACH_ACTIVE_KEY) === '1' && safeKV.getItem(COACH_KEY) !== '1' && !campaign.sandbox) this.showCoach();   // came back from another tab before pressing Roll out
 
     const onKey = (e: KeyboardEvent) => this.onKey(e);
     window.addEventListener('keydown', onKey);
@@ -111,6 +112,11 @@ export class FactoryPhase implements Phase {
     safeKV.removeItem(FIRSTRUN_KEY);
     if (!shouldCoachM1({ sandbox: campaign.sandbox, currentMissionId: campaign.current()?.id ?? null, partCount: this.store.parts.length, coached: safeKV.getItem(COACH_KEY) === '1' })) return;
     this.loadPreset('khom-loi');
+    safeKV.setItem(COACH_ACTIVE_KEY, '1');
+    this.showCoach();
+  }
+
+  private showCoach() {
     const card = document.createElement('aside');
     card.className = 'coach';
     card.setAttribute('role', 'note');
@@ -125,7 +131,7 @@ export class FactoryPhase implements Phase {
   }
 
   private endCoach() {
-    safeKV.setItem(COACH_KEY, '1');
+    safeKV.setItem(COACH_KEY, '1'); safeKV.removeItem(COACH_ACTIVE_KEY);
     this.root.querySelector('.coach')?.remove();
     this.root.querySelector('.launch')?.classList.remove('coach-pulse');
   }
