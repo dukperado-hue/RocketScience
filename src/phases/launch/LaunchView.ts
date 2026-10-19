@@ -74,6 +74,11 @@ export class LaunchView {
   /** Player zoom on top of the automatic framing */
   zoom = 1;
   private cam = { x: 0, y: 0, k: 40 };
+  /** Phones: pixels to lift the vehicle so it sits in the free sky between the top cards and the bottom dock (rendering only) */
+  shiftPx = 0;
+  /** Phones: fraction of the view the vehicle may use (the rest is under the dock) */
+  fitScale = 1;
+  private shiftNow = 0;
   private ctx: CanvasRenderingContext2D;
   private w = 1; private h = 1; private dpr = 1;
   private ro: ResizeObserver;
@@ -191,10 +196,13 @@ export class LaunchView {
     const decay = Math.exp(-realDt * 4);
     this.off.x *= decay; this.off.y *= decay;
     this.cam.x = fx + this.off.x; this.cam.y = fy + this.off.y;
-    let kWant = this.autoK(f) * this.zoom;
+    let kWant = this.autoK(f) * this.zoom * this.fitScale;
     if (performance.now() < this.burstUntil) kWant = Math.min(kWant, this.burstK);
     this.cam.k += (kWant - this.cam.k) * (1 - Math.exp(-realDt * 3));
     const k = this.cam.k;
+    this.shiftNow += (this.shiftPx - this.shiftNow) * (1 - Math.exp(-realDt * 6));
+    const shift = this.shiftNow / k;
+    this.cam.y -= shift;          // lower camera = scene (and vehicle) higher on screen
     this.flicker += realDt;
 
     const t0 = performance.now();
@@ -240,6 +248,7 @@ export class LaunchView {
     // adapt: keep the whole frame under ~12 ms on this device
     this.frameMs += (performance.now() - t0 - this.frameMs) * 0.1;
     env.quality = Math.max(0.35, Math.min(1, env.quality + (this.frameMs > 12 ? -0.02 : this.frameMs < 7 ? 0.01 : 0)));
+    this.cam.y += shift;
   }
 
   /** First frame a body comes to rest: sea → spray, rings, shark, sinking; always → onTouch */

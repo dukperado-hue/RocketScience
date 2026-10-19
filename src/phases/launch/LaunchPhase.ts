@@ -65,6 +65,7 @@ import { safeKV } from '@/core/safeStorage';
 import { keyOwner } from '@/ui/keyFocus';
 import { ffAllowed, fastForward } from '@/game/fastForward';
 import { eaNext } from '@/game/earlyAccessFlow';
+import { phoneFit } from '@/game/phoneFit';
 import { objectiveBannerText, missionCompleteTh } from '@/game/missionBanner';
 import { ensureRetrySnapshot, quickRetry, rememberLaunchChoice } from '@/game/retrySession';
 import { siteFromChoice, type LaunchChoice } from '@/game/launchChoice';
@@ -373,9 +374,14 @@ export class LaunchPhase implements Phase {
       const head = (e.target as HTMLElement).closest('.hud-site > h3, .hud-radar > header, .hud-capcom .cc-body');
       if (head) (head.closest('.hud-card') as HTMLElement).classList.toggle('min');
     });
-    const fit = () => view.style.setProperty('--bar-h', `${bar.offsetHeight}px`);
+    // the vehicle sits in the free sky between the stats card and the dock, not behind the dock
+    const fit = () => {
+      view.style.setProperty('--bar-h', `${bar.offsetHeight}px`);
+      const vr = view.getBoundingClientRect(), fit = phoneFit(vr.height, dock.getBoundingClientRect().top - vr.top - 8);
+      this.view.shiftPx = fit.shiftPx; this.view.fitScale = fit.scale;
+    };
     fit();
-    if (typeof ResizeObserver !== 'undefined') { const ro = new ResizeObserver(fit); ro.observe(bar); this.cleanup.push(() => ro.disconnect()); }
+    if (typeof ResizeObserver !== 'undefined') { const ro = new ResizeObserver(fit); ro.observe(bar); ro.observe(dock); this.cleanup.push(() => ro.disconnect()); }
   }
 
   /** The launch screen's current choices (remembered at ignition for Quick Retry) */
