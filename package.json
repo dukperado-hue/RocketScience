@@ -1,7 +1,7 @@
 {
   "name": "rocketscience",
   "private": true,
-  "version": "0.22.1",
+  "version": "0.22.3",
   "description": "From Rocket Chair to Outer Space — a historical, physics-grounded space exploration game",
   "type": "module",
   "scripts": {
