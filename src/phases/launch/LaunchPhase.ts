@@ -23,7 +23,9 @@
 import type { Phase } from '@/core/PhaseManager';
 import { bus, type LaunchPayload } from '@/core/EventBus';
 import { PART } from '@/phases/assembly/model/catalog';
-import { analyse, type PlacedPart } from '@/phases/assembly/model/vehicle';
+import { analyse, telemetry, type PlacedPart } from '@/phases/assembly/model/vehicle';
+import { loadBench } from '@/chemistry/mixingBench';
+import { retryContext } from '@/game/retryContext';
 import { VehicleStore } from '@/phases/assembly/store';
 import { Flight, SITES, toLocal, R_EARTH, MU_EARTH, stagedDeltaV, LEO_DV, type LaunchSite } from '@/physics/flight2d';
 import { timeTo } from '@/orbit/kepler';
@@ -60,7 +62,7 @@ const SITE_STATE = new Map<string, { terrain: Heightfield; wrecks: Wreck[]; mark
 import type { Weather } from '@/vfx/environment';
 import './launch.css';
 import { safeKV } from '@/core/safeStorage';
-import { quickRetry, rememberLaunchChoice } from '@/game/retrySession';
+import { ensureRetrySnapshot, quickRetry, rememberLaunchChoice } from '@/game/retrySession';
 import { siteFromChoice, type LaunchChoice } from '@/game/launchChoice';
 import { mountRetryButton } from '@/ui/softLaunchUI';
 
@@ -1357,6 +1359,8 @@ export class LaunchPhase implements Phase {
   private startCountdown() {
     if (!this.parts.length) return;
     this.countdown = { start: performance.now(), said: -1 };
+    // however the player reached the pad (Roll out button or the Launch tab), Retry has this design
+    ensureRetrySnapshot({ parts: this.parts, telemetry: telemetry(this.parts), bench: loadBench() }, retryContext(this.parts));
     rememberLaunchChoice(this.choice());
     this.q('.hud-site').hidden = true;
     this.capcom.say('lee', 'All stations, final poll. We are go for launch.', 4);

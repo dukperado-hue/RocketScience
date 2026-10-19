@@ -25,6 +25,7 @@ import { TelemetryPanel } from './ui/TelemetryPanel';
 import { Inspector, type InspectorAction } from './ui/Inspector';
 import { ZOMBIES, type ZombieId } from '@/payload/zombies';
 import { captureForRetry, quickRetry } from '@/game/retrySession';
+import { retryContext } from '@/game/retryContext';
 import { safeKV } from '@/core/safeStorage';
 import { COACH_KEY, FIRSTRUN_KEY, shouldCoachM1 } from '@/game/firstRun';
 import './factory.css';
@@ -214,9 +215,7 @@ export class FactoryPhase implements Phase {
     }
     this.endCoach();
     const payload = { parts: st.active, telemetry: this.store.telemetry, bench: this.bench };
-    // lanterns start on bare ground, everything else on a rail/ramp (LaunchPhase.defaultSite picks the exact site)
-    const lantern = st.active.some((p) => PART[p.defId].envelope);
-    captureForRetry(payload, { missionId: campaign.sandbox ? null : campaign.current()?.id ?? null, siteId: 'default', useRail: !lantern });
+    captureForRetry(payload, retryContext(st.active));
     bus.emit('phase:request', { phase: 'launch', payload });
   }
 

@@ -11,6 +11,8 @@ import { QuickRetry } from './quickRetry';
 let loaded: LaunchPayload | null = null;
 let captured: LaunchPayload | null = null;
 let lastChoice: LaunchChoice | null = null;
+let snapshotKey: string | null = null;
+const designKey = (p: LaunchPayload) => JSON.stringify(p.parts);
 
 export const quickRetry = new QuickRetry<LaunchPayload>({
   serializeAssembly: () => captured!,
@@ -23,6 +25,7 @@ export const quickRetry = new QuickRetry<LaunchPayload>({
 /** LAUNCH pressed in the Factory: snapshot the design, then the caller goes to the pad. */
 export function captureForRetry(payload: LaunchPayload, ctx: Parameters<QuickRetry<LaunchPayload>['captureAtLaunch']>[0]) {
   captured = payload;
+  snapshotKey = designKey(payload);
   lastChoice = null;                 // a fresh LAUNCH from the Factory: default site until the player picks one
   quickRetry.captureAtLaunch(ctx);
   captured = null;
@@ -30,3 +33,13 @@ export function captureForRetry(payload: LaunchPayload, ctx: Parameters<QuickRet
 
 /** The launch screen's choices at ignition; the next retry restores them. */
 export function rememberLaunchChoice(c: LaunchChoice) { lastChoice = { ...c }; }
+
+/**
+ * Called at ignition by the launch phase, so every way of reaching the pad (the Factory's Roll out
+ * button, the top Launch tab, a retry) ends up with a snapshot of the design that actually flew.
+ * Keeps the existing one when it is already this design (the attempt count carries on).
+ */
+export function ensureRetrySnapshot(payload: LaunchPayload, ctx: Parameters<QuickRetry<LaunchPayload>['captureAtLaunch']>[0]) {
+  if (quickRetry.canRetry && snapshotKey === designKey(payload)) return;
+  captureForRetry(payload, ctx);
+}

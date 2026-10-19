@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { bus, type LaunchPayload } from '@/core/EventBus';
 import { SITES } from '@/physics/flight2d';
-import { captureForRetry, quickRetry, rememberLaunchChoice } from './retrySession';
+import { captureForRetry, ensureRetrySnapshot, quickRetry, rememberLaunchChoice } from './retrySession';
 import { siteFromChoice, type LaunchChoice } from './launchChoice';
 
 const payload = (): LaunchPayload => ({ parts: [{ uid: 1, defId: 'bang-fai', x: 0, y: 0, rot: 0 }], telemetry: {} as LaunchPayload['telemetry'], bench: { crafted: {} } });
@@ -38,5 +38,36 @@ describe('quick retry remembers the launch site', () => {
     expect(retryAndCatch().site?.siteId).toBe('ground');
     captureForRetry(payload(), ctx);
     expect(retryAndCatch().site).toBeUndefined();
+  });
+});
+
+describe('quick retry covers every route to the pad', () => {
+  const other = (): LaunchPayload => ({ ...payload(), parts: [{ uid: 1, defId: 'wooden-chair', x: 0, y: 0, rot: 0 }] });
+
+  it('via the Factory Roll out button: the snapshot exists and ignition keeps it (attempt count carries on)', () => {
+    quickRetry.invalidate();
+    captureForRetry(payload(), ctx);
+    expect(quickRetry.canRetry).toBe(true);
+    expect(quickRetry.attempt).toBe(1);
+    ensureRetrySnapshot(payload(), ctx);            // the launch phase igniting the same design
+    expect(quickRetry.attempt).toBe(1);
+    expect(retryAndCatch().parts).toEqual(payload().parts);
+  });
+
+  it('via the top Launch tab (no Roll out): ignition makes the snapshot, and Retry works', () => {
+    quickRetry.invalidate();                          // fresh page / the design was edited: nothing captured
+    expect(quickRetry.canRetry).toBe(false);
+    ensureRetrySnapshot(payload(), ctx);
+    expect(quickRetry.canRetry).toBe(true);
+    const p = retryAndCatch();
+    expect(p.parts).toEqual(payload().parts);
+    expect(quickRetry.attempt).toBe(2);
+  });
+
+  it('a different design than the stored snapshot replaces it', () => {
+    quickRetry.invalidate();
+    captureForRetry(payload(), ctx);
+    ensureRetrySnapshot(other(), ctx);               // went to the Launch tab with another build loaded
+    expect(retryAndCatch().parts).toEqual(other().parts);
   });
 });
