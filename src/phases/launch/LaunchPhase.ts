@@ -219,28 +219,30 @@ const TEMPLATE = `
     <button type="button" class="btn-go" data-act="go" title="Ignition / stage (Space)">IGNITION</button>
     <button type="button" data-act="sas" title="SAS — gimbal attitude hold (T)" aria-pressed="false">SAS OFF</button>
     <button type="button" data-act="chute" title="Deploy parachutes (P)">Chute</button>
-    <button type="button" data-act="mode" title="SAS mode: hold pitch / prograde / retrograde (M)">Hold</button>
-    <button type="button" data-act="rcs" title="RCS thrusters on/off (F)" aria-pressed="true">RCS <small data-k="mono"></small></button>
-    <button type="button" data-act="turn" title="Auto gravity turn: lean 1°/s to 80° (G)" aria-pressed="false">Auto-turn</button>
-    <button type="button" data-act="assist" title="Ascent assist: off → guide → autopilot (V)">Assist: <span data-k="amode">Off</span></button>
-    <label class="thr" title="Throttle (Shift/Ctrl, Z full, X cut)">Thr<input type="range" min="0" max="100" step="5" value="100" data-in="thr"></label>
+    <button type="button" data-sec data-act="mode" title="SAS mode: hold pitch / prograde / retrograde (M)">Hold</button>
+    <button type="button" data-sec data-act="rcs" title="RCS thrusters on/off (F)" aria-pressed="true">RCS <small data-k="mono"></small></button>
+    <button type="button" data-sec data-act="turn" title="Auto gravity turn: lean 1°/s to 80° (G)" aria-pressed="false">Auto-turn</button>
+    <button type="button" data-sec data-act="assist" title="Ascent assist: off → guide → autopilot (V)">Assist: <span data-k="amode">Off</span></button>
+    <label class="thr" data-sec title="Throttle (Shift/Ctrl, Z full, X cut)">Thr<input type="range" min="0" max="100" step="5" value="100" data-in="thr"></label>
     <span class="sep"></span>
     <button type="button" data-hold="-1" title="Pitch left (A / ←)">◀</button>
     <span class="bar-read" data-k="target">0°</span>
     <button type="button" data-hold="1" title="Pitch right (D / →)">▶</button>
     <span class="sep"></span>
     <span class="warp" role="radiogroup" aria-label="Time warp"></span>
-    <button type="button" data-act="map" title="Orbital map (Tab) — after the Kármán line" disabled>Map</button>
-    <button type="button" data-act="eva" title="Spacewalk (E): in orbit, engines off" hidden>EVA</button>
-    <button type="button" data-act="kit" title="EVA kit (K)" hidden>Kit: <span data-k="kit">Extinguisher</span></button>
+    <button type="button" data-sec data-act="map" title="Orbital map (Tab) — after the Kármán line" disabled>Map</button>
+    <button type="button" data-sec data-act="eva" title="Spacewalk (E): in orbit, engines off" hidden>EVA</button>
+    <button type="button" data-sec data-act="kit" title="EVA kit (K)" hidden>Kit: <span data-k="kit">Extinguisher</span></button>
     <span class="sep"></span>
-    <button type="button" data-act="cam" title="Camera target (C)">Cam: <span data-k="cam">Vehicle</span></button>
-    <button type="button" data-act="sound" title="Sound on/off (U)" aria-pressed="true"><span data-k="sound">🔊</span></button>
-    <button type="button" data-act="zout" title="Zoom out (−)">−</button>
-    <button type="button" data-act="zin" title="Zoom in (+)">+</button>
+    <button type="button" data-sec data-act="cam" title="Camera target (C)">Cam: <span data-k="cam">Vehicle</span></button>
+    <button type="button" data-sec data-act="sound" title="Sound on/off (U)" aria-pressed="true"><span data-k="sound">🔊</span></button>
+    <button type="button" data-sec data-act="zout" title="Zoom out (−)">−</button>
+    <button type="button" data-sec data-act="zin" title="Zoom in (+)">+</button>
     <span class="sep"></span>
     <button type="button" data-act="again" title="Relaunch (R)">↺</button>
-    <button type="button" data-act="back" title="Back to the factory (Esc)">Factory</button>
+    <button type="button" data-sec data-act="back" title="Back to the factory (Esc)">Factory</button>
+    <button type="button" class="bar-more" data-act="more" aria-expanded="false" title="More controls">More ⋯</button>
+    <span class="bar-break b1" aria-hidden="true"></span><span class="bar-break b2" aria-hidden="true"></span>
   </nav>
 
   <section class="hud-card hud-summary" hidden aria-live="polite">
@@ -332,6 +334,7 @@ export class LaunchPhase implements Phase {
     this.view = new LaunchView(this.q('.sky-canvas'));
     this.map = new MapView(this.q('.map-canvas'));
     this.radar = new RadarView(this.q('.radar-canvas'));
+    this.phoneLayout();
     this.wire();
     this.newFlight();
     this.last = performance.now();
@@ -342,6 +345,28 @@ export class LaunchPhase implements Phase {
       try { this.tick(now); } catch (e) { if (!warned) { warned = true; console.error('[RocketScience] frame error (game keeps running)', e); } }
     };
     this.raf = requestAnimationFrame(loop);
+  }
+
+  /**
+   * Phones (<=760 px): the site card, radar and CAPCOM share one bottom dock above the control bar instead of
+   * floating on top of each other; the radar starts collapsed and the cards fold up when their header is tapped.
+   */
+  private phoneLayout() {
+    if (typeof matchMedia === 'undefined' || !matchMedia('(max-width: 760px)').matches) return;
+    const view = this.q('.flight-view'), bar = this.q('.hud-bar');
+    const dock = document.createElement('div');
+    dock.className = 'hud-dock';
+    const cards = ['.hud-site', '.hud-radar', '.hud-capcom'].map((sel) => this.q(sel));
+    for (const c of cards) dock.appendChild(c);
+    cards[1].classList.add('min');
+    view.insertBefore(dock, bar);
+    dock.addEventListener('click', (e) => {
+      const head = (e.target as HTMLElement).closest('.hud-site > h3, .hud-radar > header, .hud-capcom .cc-body');
+      if (head) (head.closest('.hud-card') as HTMLElement).classList.toggle('min');
+    });
+    const fit = () => view.style.setProperty('--bar-h', `${bar.offsetHeight}px`);
+    fit();
+    if (typeof ResizeObserver !== 'undefined') { const ro = new ResizeObserver(fit); ro.observe(bar); this.cleanup.push(() => ro.disconnect()); }
   }
 
   /** The launch screen's current choices (remembered at ignition for Quick Retry) */
@@ -667,6 +692,12 @@ export class LaunchPhase implements Phase {
       case 'cam': this.cycleCam(); break;
       case 'zin': this.view.zoom *= 1.4; this.clampZoom(); break;
       case 'zout': this.view.zoom /= 1.4; this.clampZoom(); break;
+      case 'more': {
+        const bar = this.q('.hud-bar'), open = !bar.classList.contains('more-open');
+        bar.classList.toggle('more-open', open);
+        this.q('[data-act="more"]').setAttribute('aria-expanded', String(open));
+        break;
+      }
       case 'again':
         // mid-flight R / the ↺ button share the summary's Retry: same snapshot, attempt count and flight_retry event
         if (!quickRetry.canRetry || !quickRetry.retry()) this.newFlight();
@@ -1294,6 +1325,7 @@ export class LaunchPhase implements Phase {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, cv.width, cv.height);
     (this.q('.z-frame') as HTMLElement).hidden = !z;
+    this.q('.hud-zombie').classList.toggle('empty', !z);
     if (!z) {
       this.k('zname').textContent = 'No payload';
       this.k('zstate').textContent = f.seat === 'none' ? 'No seat on this vehicle.' : 'Empty seat.';

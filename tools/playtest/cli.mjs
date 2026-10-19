@@ -37,6 +37,7 @@ const HELP = `RocketScience playtest harness
   newtab                                  close the tab and open the game again (same browser profile: saves persist, unless --private); prints load time
   reload                                  reload the page; prints load time
   perf                                    page load timings (ms)
+  fit                                     controls that are outside the viewport width or smaller than 44 px (touch), and horizontal scroll
 Sessions are per persona, so several can run at once. Add  --persona <name>  (or -p <name>)  to every command after start
 (optional when only one session is running).
   screenshot [label]                      save a PNG to playtest/runs/<persona>/ and print its path
@@ -211,6 +212,18 @@ async function daemon({ persona, viewport, priv }) {
     })), minutesPlayed: +((Date.now() - startedAt) / 60000).toFixed(1) }, null, 1),
     newtab: async () => { const old = page; const ms = await openPage(); await old.close(); return `new tab ready in ${ms} ms`; },
     reload: async () => { const t0 = Date.now(); await page.reload({ waitUntil: 'load' }); await page.waitForSelector('#app[data-phase]', { timeout: 20000 }); return `reloaded in ${Date.now() - t0} ms`; },
+    fit: async () => JSON.stringify(await page.evaluate(() => {
+      const min = 44, bad = [];
+      for (const b of document.querySelectorAll('button, [role=button], input[type=range], select, a[href]')) {
+        const r = b.getBoundingClientRect(), cs = getComputedStyle(b);
+        if (!r.width || !r.height || cs.visibility === 'hidden' || cs.display === 'none' || b.closest('[hidden]')) continue;
+        const why = [];
+        if (r.left < -0.5 || r.right > innerWidth + 0.5) why.push('outside the viewport width');
+        if (b.tagName === 'BUTTON' && (r.height < min - 0.5 || r.width < min - 0.5)) why.push(`touch target ${Math.round(r.width)}x${Math.round(r.height)} < ${min}px`);
+        if (why.length) bad.push({ el: (b.textContent || b.getAttribute('aria-label') || b.className).trim().replace(/\s+/g, ' ').slice(0, 24), why: why.join('; ') });
+      }
+      return { viewport: `${innerWidth}x${innerHeight}`, horizontalScroll: document.documentElement.scrollWidth > innerWidth, problems: bad };
+    }), null, 1),
     perf: async () => JSON.stringify(await page.evaluate(() => { const n = performance.getEntriesByType('navigation')[0]; return { domContentLoadedMs: Math.round(n.domContentLoadedEventEnd), loadMs: Math.round(n.loadEventEnd), transferKB: Math.round((n.transferSize || 0) / 1024) }; })),
     console: async () => consoleLog.join('\n') || '(no console output)',
     eval: async (a) => JSON.stringify(await page.evaluate(a.join(' ')), null, 1),

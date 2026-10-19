@@ -292,3 +292,52 @@
 .site-clean { margin-top: 8px; font: inherit; font-size: 12px; font-weight: 600; padding: 5px 10px; border-radius: 8px; border: 1px dashed #c9b28a; background: #fbf6ec; color: #6b4a1f; cursor: pointer; width: 100%; }
 .site-clean:hover:not(:disabled) { background: #f6ecd8; }
 .site-clean:disabled { opacity: 0.5; cursor: default; }
+
+/* ---------- Phones: every control reachable at 390 px, nothing stacked on anything ---------- */
+.bar-more, .bar-break { display: none; }
+@media (max-width: 760px) {
+  /* control bar: two rows always visible (go, SAS, chute, again, More / pitch, warp); the rest sits under "More" */
+  .hud-bar { flex-wrap: wrap; justify-content: center; gap: 6px; padding: 8px; overflow: visible; left: 8px; right: 8px; bottom: 8px; max-width: none; transform: none; }
+  .hud-bar button { min-width: 44px; height: 44px; padding: 0 10px; }
+  .hud-bar .sep { display: none; }
+  .hud-bar .btn-go { order: 1; flex: 1 1 84px; min-width: 84px; padding: 0 8px; }
+  .hud-bar [data-act='sas'] { order: 2; min-width: 70px; padding: 0 8px; }
+  .hud-bar [data-act='chute'] { order: 3; }
+  .hud-bar > [data-act='again'] { order: 4; }
+  .hud-bar .bar-more { padding: 0 8px; display: inline-flex; align-items: center; justify-content: center; order: 5; }
+  .hud-bar .bar-break { display: block; flex-basis: 100%; height: 0; }
+  .hud-bar .b1 { order: 6; }
+  .hud-bar [data-hold='-1'] { order: 7; }
+  .hud-bar .bar-read { order: 8; min-width: 40px; text-align: center; }
+  .hud-bar [data-hold='1'] { order: 9; }
+  .hud-bar .warp { order: 10; display: flex; gap: 6px; }
+  .hud-bar .b2 { order: 19; display: none; }
+  .hud-bar.more-open .b2 { display: block; }
+  .hud-bar [data-sec] { display: none; order: 20; }
+  .hud-bar.more-open [data-sec]:not([hidden]) { display: inline-flex; align-items: center; justify-content: center; }
+  .hud-bar.more-open label.thr[data-sec] { display: flex; flex: 1 1 100%; gap: 8px; align-items: center; }
+  .hud-bar.more-open label.thr input { flex: 1; }
+
+  /* the dock: site card, radar and CAPCOM in one column above the bar */
+  .hud-dock { position: absolute; left: 8px; right: 8px; bottom: calc(var(--bar-h, 60px) + 16px); display: flex; flex-direction: column; gap: 6px;
+    max-height: calc(100% - var(--bar-h, 60px) - 190px); overflow-y: auto; pointer-events: none; }
+  .hud-dock > .hud-card { position: static; width: auto; transform: none; margin: 0; pointer-events: auto; }
+  .hud-dock > .hud-card[hidden] { display: none; }
+  .hud-dock .hud-site { max-height: 190px; overflow-y: auto; }
+  .hud-dock .hud-site .seg button { min-height: 44px; }
+  .hud-dock .hud-site > h3, .hud-dock .hud-radar > header { cursor: pointer; }
+  .hud-dock .hud-site > h3::after, .hud-dock .hud-radar > header h3::after { content: ' \25BE'; color: var(--l-muted); }
+  .hud-dock .hud-card.min > :not(h3):not(header):not(.cc-avatar):not(.cc-body) { display: none; }
+  .hud-dock .hud-card.min > h3::after, .hud-dock .hud-card.min > header h3::after { content: ' \25B8'; }
+  .hud-dock .hud-radar .radar-canvas { max-height: 170px; width: 100%; }
+  .hud-dock .hud-capcom { padding: 6px 8px; gap: 8px; }
+  .hud-dock .hud-capcom .cc-avatar { width: 38px; height: 38px; }
+  .hud-dock .hud-capcom .cc-text { font-size: 12.5px; min-height: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .hud-dock .hud-capcom.min .cc-text { -webkit-line-clamp: 1; }
+  .hud-dock .hud-capcom .cc-trans { font-size: 11.5px; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+
+  /* top cards: only what matters in flight; the empty payload card disappears */
+  .hud-flight dl div:nth-child(3), .hud-flight dl div:nth-child(6), .hud-flight dl div:nth-child(7), .hud-flight dl div:nth-child(8) { display: none; }
+  .hud-flight .hud-sas { display: none; }
+  .hud-zombie.empty { display: none; }
+}
