@@ -27,7 +27,7 @@ document.querySelectorAll<HTMLButtonElement>('[data-goto]').forEach((btn) => {
 });
 
 // read-only handles for playtest tooling (tools/playtest) and the console; nothing in the game reads them
-Object.assign(window, { __rs: { campaign, quickRetry, safeKV, phase: () => phases.active } });
+Object.assign(window, { __rs: { campaign, quickRetry, safeKV, phase: () => phases.active, audio: () => sfx.context?.state ?? 'not-created' } });
 
 void phases.go('assembly');
 

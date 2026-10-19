@@ -6,7 +6,9 @@ Code: `tools/playtest/cli.mjs`. Output: `playtest/runs/<persona>/` (git-ignored)
 One-time setup: `npm install` then `npx playwright install chromium`.
 
 ```
-node tools/playtest/cli.mjs start <persona> [--viewport desktop|mobile] [--rebuild]   # desktop 1366x768 · mobile 390x844 touch
+node tools/playtest/cli.mjs start <persona> [--viewport desktop|mobile] [--private] [--rebuild]   # desktop 1366x768 · mobile 390x844 touch
+                                                       # --private: localStorage throws (Safari Private Mode)
+node tools/playtest/cli.mjs newtab | reload | perf  # close the tab and come back (saves persist) · reload · load timings
 node tools/playtest/cli.mjs screenshot [label]      # -> playtest/runs/<persona>/NNN-label.png (view it with an image reader)
 node tools/playtest/cli.mjs click 640 400           # viewport pixels (tap on mobile)
 node tools/playtest/cli.mjs tap "[data-act=go]"     # click by CSS selector, or  tap "text=Fly again"
@@ -21,6 +23,9 @@ node tools/playtest/cli.mjs console    # browser console + page errors
 node tools/playtest/cli.mjs eval "document.title"
 node tools/playtest/cli.mjs stop
 ```
+
+Sessions are per persona, so several run in parallel; add `--persona <name>` (or `-p`) to every command after `start`
+(optional when only one session is running). Build once first (`start … --rebuild`) — parallel starts must not rebuild.
 
 `start` builds the game into `dist-playtest/` the first time (use `--rebuild` after code changes) and serves it
 with Vite preview. The session runs in a background process; each command is a separate call.

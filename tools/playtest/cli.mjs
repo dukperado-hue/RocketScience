@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const RUNS = path.join(ROOT, 'playtest', 'runs');
-const SESSION = path.join(RUNS, '.session.json');
+const sessionFile = (persona) => path.join(RUNS, `.session-${persona}.json`);
 const DIST = 'dist-playtest';
 
 const VIEWPORTS = {
@@ -31,8 +31,14 @@ const VIEWPORTS = {
 };
 
 const HELP = `RocketScience playtest harness
-  start <persona> [--viewport desktop|mobile] [--rebuild] [--fresh]   open the game (desktop 1366x768, mobile 390x844 touch)
+  start <persona> [--viewport desktop|mobile] [--private] [--rebuild]  open the game (desktop 1366x768, mobile 390x844 touch)
+                                          --private: localStorage throws like Safari Private Mode (saves live in memory only)
   stop                                    close the browser and the preview server
+  newtab                                  close the tab and open the game again (same browser profile: saves persist, unless --private); prints load time
+  reload                                  reload the page; prints load time
+  perf                                    page load timings (ms)
+Sessions are per persona, so several can run at once. Add  --persona <name>  (or -p <name>)  to every command after start
+(optional when only one session is running).
   screenshot [label]                      save a PNG to playtest/runs/<persona>/ and print its path
   click <x> <y>                           mouse click (touch tap on mobile) at viewport pixels
   drag <x1> <y1> <x2> <y2>                press, move, release (Factory part placement)
@@ -43,7 +49,7 @@ const HELP = `RocketScience playtest harness
   wait <seconds>                          real-time wait
   log                                     flight log lines, CAPCOM line, toast and summary card text
   events                                  window.__rsEvents (analytics buffer)
-  state                                   phase, mission, T+, state, altitude, velocity, apogee, retry attempt, storage mode
+  state                                   phase, mission, T+, state, altitude, velocity, apogee, retry attempt, storage mode, audio, minutes played
   console                                 browser console messages and page errors since start
   eval <js expression>                    evaluate JavaScript in the page and print the JSON result
 Every command prints plain text/JSON. Exit code 1 on error.`;
@@ -51,6 +57,8 @@ Every command prints plain text/JSON. Exit code 1 on error.`;
 /* ------------------------------------------------------------------ client */
 
 const args = process.argv.slice(2);
+let personaFlag = null;
+for (const f of ['--persona', '-p']) { const i = args.indexOf(f); if (i >= 0) { personaFlag = args[i + 1]; args.splice(i, 2); } }
 const cmd = args[0];
 
 if (cmd === '__daemon') await daemon(JSON.parse(args[1]));
@@ -59,15 +67,15 @@ else if (cmd === 'start') await start(args.slice(1));
 else await send(cmd, args.slice(1));
 
 async function start(a) {
-  const persona = a.find((x) => !x.startsWith('--') && a[a.indexOf(x) - 1] !== '--viewport');
+  const persona = personaFlag ?? a.find((x) => !x.startsWith('--') && a[a.indexOf(x) - 1] !== '--viewport');
   if (!persona) fail('usage: start <persona> [--viewport desktop|mobile] [--rebuild] [--fresh]');
   const vi = a.indexOf('--viewport');
   const viewport = vi >= 0 ? a[vi + 1] : 'desktop';
   if (!VIEWPORTS[viewport]) fail(`unknown viewport "${viewport}" (desktop | mobile)`);
-  if (fs.existsSync(SESSION)) {
-    const old = readSession();
-    if (old && (await ping(old.port))) fail(`a session is already running (persona "${old.persona}", port ${old.port}). Run: stop`);
-    fs.rmSync(SESSION, { force: true });
+  if (fs.existsSync(sessionFile(persona))) {
+    const old = readSession(persona);
+    if (old && (await ping(old.port))) fail(`persona "${persona}" already has a running session (port ${old.port}). Run: stop --persona ${persona}`);
+    fs.rmSync(sessionFile(persona), { force: true });
   }
   fs.mkdirSync(path.join(RUNS, persona), { recursive: true });
   const indexHtml = path.join(ROOT, DIST, 'index.html');
@@ -77,7 +85,7 @@ async function start(a) {
       cwd: ROOT, stdio: 'inherit', env: { ...process.env, VITE_BASE: '/' },
     });
   }
-  const opts = JSON.stringify({ persona, viewport, fresh: a.includes('--fresh') });
+  const opts = JSON.stringify({ persona, viewport, priv: a.includes('--private') });
   const child = spawn(process.execPath, [fileURLToPath(import.meta.url), '__daemon', opts], {
     cwd: ROOT, detached: true, stdio: ['ignore', fs.openSync(path.join(RUNS, persona, 'daemon.log'), 'w'), fs.openSync(path.join(RUNS, persona, 'daemon.log'), 'a')],
     windowsHide: true,
@@ -85,22 +93,28 @@ async function start(a) {
   child.unref();
   for (let i = 0; i < 100; i++) {
     await sleep(300);
-    const s = readSession();
+    const s = readSession(persona);
     if (s && (await ping(s.port))) { console.log(`ready: persona=${persona} viewport=${viewport} ${VIEWPORTS[viewport].viewport.width}x${VIEWPORTS[viewport].viewport.height} url=${s.url}\nscreenshots -> ${path.join('playtest', 'runs', persona)}`); return; }
   }
   fail(`the session did not start; see playtest/runs/${persona}/daemon.log`);
 }
 
 async function send(command, rest) {
-  const s = readSession();
-  if (!s || !(await ping(s.port))) fail('no running session. Start one: node tools/playtest/cli.mjs start <persona> [--viewport desktop|mobile]');
+  let persona = personaFlag;
+  if (!persona) {
+    const all = fs.existsSync(RUNS) ? fs.readdirSync(RUNS).filter((f) => /^\.session-.+\.json$/.test(f)).map((f) => f.slice(9, -5)) : [];
+    if (all.length === 1) persona = all[0];
+    else fail(all.length ? `several sessions are running (${all.join(', ')}): add --persona <name>` : 'no running session. Start one: node tools/playtest/cli.mjs start <persona> [--viewport desktop|mobile]');
+  }
+  const s = readSession(persona);
+  if (!s || !(await ping(s.port))) fail(`no running session for "${persona}". Start one: node tools/playtest/cli.mjs start ${persona}`);
   const res = await post(s.port, { command, args: rest });
   if (res.error) fail(res.error);
-  if (command === 'stop') fs.rmSync(SESSION, { force: true });
+  if (command === 'stop') fs.rmSync(sessionFile(persona), { force: true });
   console.log(res.out);
 }
 
-function readSession() { try { return JSON.parse(fs.readFileSync(SESSION, 'utf8')); } catch { return null; } }
+function readSession(persona) { try { return JSON.parse(fs.readFileSync(sessionFile(persona), 'utf8')); } catch { return null; } }
 function fail(msg) { console.error(msg); process.exit(1); }
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 function post(port, body) {
@@ -116,29 +130,42 @@ async function ping(port) { try { return (await post(port, { command: 'ping', ar
 
 /* ------------------------------------------------------------------ daemon */
 
-async function daemon({ persona, viewport, fresh }) {
+async function freePort() {
+  const net = await import('node:net');
+  return new Promise((resolve) => { const srv = net.createServer(); srv.listen(0, '127.0.0.1', () => { const p = srv.address().port; srv.close(() => resolve(p)); }); });
+}
+
+async function daemon({ persona, viewport, priv }) {
+  const startedAt = Date.now();
   const { chromium } = await import('playwright');
   const { preview } = await import('vite');
   process.env.VITE_BASE = '/';
   const dir = path.join(RUNS, persona);
-  const server = await preview({ root: ROOT, base: '/', configFile: path.join(ROOT, 'vite.config.ts'), build: { outDir: DIST }, preview: { port: 4173, strictPort: false, host: '127.0.0.1' } });
+  const server = await preview({ root: ROOT, base: '/', configFile: path.join(ROOT, 'vite.config.ts'), build: { outDir: DIST }, preview: { port: await freePort(), strictPort: true, host: '127.0.0.1' } });
   const url = server.resolvedUrls.local[0];
   const browser = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required', '--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
   const context = await browser.newContext(VIEWPORTS[viewport]);
-  const page = await context.newPage();
+  // --private: reading window.localStorage throws, as in Safari Private Mode / blocked site data
+  if (priv) await context.addInitScript(() => { Object.defineProperty(window, 'localStorage', { get() { throw new DOMException('The operation is insecure.', 'SecurityError'); } }); });
+  let page;
   const consoleLog = [];
-  page.on('console', (m) => consoleLog.push(`[${m.type()}] ${m.text()}`));
-  page.on('pageerror', (e) => consoleLog.push(`[pageerror] ${e.message}`));
-  if (fresh) await context.clearCookies();
-  await page.goto(url, { waitUntil: 'load' });
-  await page.waitForSelector('#app[data-phase]', { timeout: 20000 });
-  let shot = 0;
+  async function openPage() {
+    page = await context.newPage();
+    page.on('console', (m) => consoleLog.push(`[${m.type()}] ${m.text()}`));
+    page.on('pageerror', (e) => consoleLog.push(`[pageerror] ${e.message}`));
+    const t0 = Date.now();
+    await page.goto(url, { waitUntil: 'load' });
+    await page.waitForSelector('#app[data-phase]', { timeout: 20000 });
+    return Date.now() - t0;
+  }
+  await openPage();
+  const nextShot = () => { const n = fs.readdirSync(dir).map((f) => parseInt(f, 10)).filter((x) => !Number.isNaN(x)); return (n.length ? Math.max(...n) : 0) + 1; };
   const touch = VIEWPORTS[viewport].hasTouch;
 
   const handlers = {
     ping: async () => 'pong',
     screenshot: async ([label = 'shot']) => {
-      const file = path.join(dir, `${String(++shot).padStart(3, '0')}-${label.replace(/[^\w.-]+/g, '_')}.png`);
+      const file = path.join(dir, `${String(nextShot()).padStart(3, '0')}-${viewport}-${label.replace(/[^\w.-]+/g, '_')}.png`);
       await page.screenshot({ path: file });
       return file;
     },
@@ -166,7 +193,7 @@ async function daemon({ persona, viewport, fresh }) {
       }, null, 1);
     }),
     events: async () => JSON.stringify(await page.evaluate(() => window.__rsEvents ?? []), null, 1),
-    state: async () => JSON.stringify(await page.evaluate(() => {
+    state: async () => JSON.stringify({ ...(await page.evaluate(() => {
       const t = (k) => document.querySelector(`[data-k="${k}"]`)?.textContent?.trim() ?? null;
       const rs = window.__rs;
       const cur = rs?.campaign?.current?.();
@@ -178,9 +205,13 @@ async function daemon({ persona, viewport, fresh }) {
         t: t('t'), flight: t('state'), altitude: t('alt'), velocity: t('vel'), vertical: t('vy'), apogee: t('apo'), throttle: t('thr'),
         retryAttempt: rs?.quickRetry?.attempt ?? null, canRetry: rs?.quickRetry?.canRetry ?? null,
         storageMemoryOnly: rs?.safeKV?.memoryOnly ?? null,
+        audio: rs?.audio?.() ?? null,
         summaryOpen: !!document.querySelector('.hud-summary:not([hidden])'),
       };
-    }), null, 1),
+    })), minutesPlayed: +((Date.now() - startedAt) / 60000).toFixed(1) }, null, 1),
+    newtab: async () => { const old = page; const ms = await openPage(); await old.close(); return `new tab ready in ${ms} ms`; },
+    reload: async () => { const t0 = Date.now(); await page.reload({ waitUntil: 'load' }); await page.waitForSelector('#app[data-phase]', { timeout: 20000 }); return `reloaded in ${Date.now() - t0} ms`; },
+    perf: async () => JSON.stringify(await page.evaluate(() => { const n = performance.getEntriesByType('navigation')[0]; return { domContentLoadedMs: Math.round(n.domContentLoadedEventEnd), loadMs: Math.round(n.loadEventEnd), transferKB: Math.round((n.transferSize || 0) / 1024) }; })),
     console: async () => consoleLog.join('\n') || '(no console output)',
     eval: async (a) => JSON.stringify(await page.evaluate(a.join(' ')), null, 1),
     stop: async () => { setTimeout(shutdown, 100); return 'stopping'; },
@@ -208,6 +239,7 @@ async function daemon({ persona, viewport, fresh }) {
   });
   await new Promise((r) => control.listen(0, '127.0.0.1', r));
   fs.mkdirSync(RUNS, { recursive: true });
-  fs.writeFileSync(SESSION, JSON.stringify({ port: control.address().port, pid: process.pid, persona, viewport, url }));
+  fs.writeFileSync(sessionFile(persona), JSON.stringify({ port: control.address().port, pid: process.pid, persona, viewport, url }));
   browser.on('disconnected', () => process.exit(0));
+  process.on('SIGTERM', shutdown);
 }
