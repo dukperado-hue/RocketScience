@@ -348,3 +348,13 @@
 @media (max-width: 760px) {
   .hud-bar .btn-ff { order: 11; flex: 1 1 100%; }
 }
+
+/* Objective-done banner (bilingual) */
+.rs-banner { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 6; width: min(460px, calc(100% - 24px)); padding: 8px 12px; border-radius: 12px;
+  background: #e8f7ee; border: 2px solid #2f9e5f; color: #12331f; box-shadow: 0 10px 28px rgba(16, 24, 40, 0.25); display: flex; flex-direction: column; gap: 1px; animation: rs-rise 0.3s ease-out; }
+.rs-banner b { font-size: 13px; }
+.rs-banner span[lang='en'] { font-size: 12px; opacity: 0.8; }
+.rs-banner.below-alert { top: 96px; }
+.rs-banner.out { opacity: 0; transition: opacity 0.4s; }
+.rs-milestone [lang='th'] { margin-top: 4px; display: block; }
+@media (max-width: 760px) { .rs-banner { top: 8px; } }

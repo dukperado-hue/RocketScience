@@ -64,6 +64,7 @@ import './launch.css';
 import { safeKV } from '@/core/safeStorage';
 import { keyOwner } from '@/ui/keyFocus';
 import { ffAllowed, fastForward } from '@/game/fastForward';
+import { objectiveBannerText, missionCompleteTh } from '@/game/missionBanner';
 import { ensureRetrySnapshot, quickRetry, rememberLaunchChoice } from '@/game/retrySession';
 import { siteFromChoice, type LaunchChoice } from '@/game/launchChoice';
 import { mountRetryButton } from '@/ui/softLaunchUI';
@@ -1080,7 +1081,7 @@ export class LaunchPhase implements Phase {
         this.logLine({ t: f.t, kind: 'info', text: `Mission ${cur.label} · ${cur.title}: ${cur.objectives.map((o, i) => `${prog[i] ? '✓' : '○'} ${o.text}`).join(' · ')}` });
         cur.objectives.forEach((o, i) => { if (prog[i]) this.objSeen.add(o.id); });
       } else cur.objectives.forEach((o, i) => {
-        if (prog[i] && !this.objSeen.has(o.id)) { this.objSeen.add(o.id); this.logLine({ t: f.t, kind: 'milestone', text: `Mission ${cur.label} · ✓ ${o.text}` }); progressed = true; }
+        if (prog[i] && !this.objSeen.has(o.id)) { this.objSeen.add(o.id); this.logLine({ t: f.t, kind: 'milestone', text: `Mission ${cur.label} · ✓ ${o.text}` }); this.objectiveBanner(cur, o); progressed = true; }
       });
     }
     for (const m of campaign.evaluate(rep, f.t)) { this.missionDone(m); this.objSeen.add('#done'); progressed = true; }
@@ -1106,10 +1107,10 @@ export class LaunchPhase implements Phase {
         'm1-lantern': 'Mission complete. The paperwork is enormous. We do not have pockets. Next: bigger fire, in Yasothon.',
         'm2-ballistics': 'Five kilometres. Zombie Control is satisfied. Rockets are boring now. The animals may have their microphone back.',
       };
-      this.milestoneCard(`Mission ${m.label} complete · ${m.title}`, `Zombie Control approves. Unlocked: ${m.rewards.text}.`, 'assets/zombie/zombie_zero_g.png');
+      this.milestoneCard(`Mission ${m.label} complete · ${m.title}`, `Zombie Control approves. Unlocked: ${m.rewards.text}.`, 'assets/zombie/zombie_zero_g.png', missionCompleteTh(m, true));
       this.capcom.say('zombie', z[m.id] ?? 'Mission complete. More brains. More rockets.', 3, 'happy');
     } else {
-      this.milestoneCard(`Mission ${m.label} complete · ${m.title}`, `Unlocked: ${m.rewards.text}. New entry in the Story log.`, m.story.image);
+      this.milestoneCard(`Mission ${m.label} complete · ${m.title}`, `Unlocked: ${m.rewards.text}. New entry in the Story log.`, m.story.image, missionCompleteTh(m, false));
       this.capcom.say(m.story.crew, m.story.text.split(/(?<=[.!?])\s/)[0], 3, 'happy');
     }
   }
@@ -1581,14 +1582,31 @@ export class LaunchPhase implements Phase {
     });
   }
 
-  private milestoneCard(title: string, text: string, img = 'assets/story/crew_lineup_hangar4.jpg') {
+  /** An objective just passed: a short bilingual banner, one CAPCOM line, and the log line already written */
+  private objectiveBanner(m: Mission, o: Mission['objectives'][number]) {
+    this.root.querySelector('.rs-banner')?.remove();
+    const el = document.createElement('div');
+    el.className = `rs-banner${this.q('.law-alert').hidden ? '' : ' below-alert'}`;
+    el.setAttribute('role', 'status');
+    el.innerHTML = '<b></b><span lang="th"></span><span lang="en"></span>';
+    const t = objectiveBannerText(m, o);
+    el.querySelector('b')!.textContent = t.title;
+    el.querySelector('[lang="th"]')!.textContent = t.th;
+    el.querySelector('[lang="en"]')!.textContent = t.en;
+    this.q('.flight-view').appendChild(el);
+    setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 400); }, 5000);
+    this.capcom.say('lee', t.capcom, 3, 'happy');
+  }
+
+  private milestoneCard(title: string, text: string, img = 'assets/story/crew_lineup_hangar4.jpg', th?: { title: string; text: string }) {
     this.root.querySelector('.rs-milestone')?.remove();
     const el = document.createElement('div');
     el.className = `rs-milestone${this.q('.law-alert').hidden ? '' : ' below-alert'}`;
     el.setAttribute('role', 'status');
-    el.innerHTML = `<img src="${img}" alt=""><div><b></b><small></small></div>`;
+    el.innerHTML = `<img src="${img}" alt=""><div><b></b><small></small><b lang="th" hidden></b><small lang="th" hidden></small></div>`;
     el.querySelector('b')!.textContent = `🏆 ${title}`;
     el.querySelector('small')!.textContent = text;
+    if (th) { const tb = el.querySelector<HTMLElement>('b[lang="th"]')!, ts = el.querySelector<HTMLElement>('small[lang="th"]')!; tb.textContent = `🏆 ${th.title}`; ts.textContent = th.text; tb.hidden = ts.hidden = false; }
     el.querySelector('img')!.addEventListener('error', (e) => (e.target as HTMLElement).remove());
     if (/_full\.png$/.test(img)) el.querySelector('img')!.classList.add('portrait');
     el.addEventListener('click', () => el.remove());
