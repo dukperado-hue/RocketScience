@@ -48,7 +48,7 @@ export class AirspaceMonitor {
     if (!airborne || altAGL < 2) return fresh;
     if (inCTR(pos, altAGL)) {
       this.inside.add('ctr');
-      fresh.push(...this.once('ctr', t, 'violation', 'Unauthorised object in the Samui control zone',
+      fresh.push(...this.once('ctr', t, 'violation', 'Object in the Samui control zone',
         'วัตถุล้ำเข้าเขตควบคุมจราจรทางอากาศสมุย',
         `At ${altAGL.toFixed(0)} m, ${(this.distNdb(pos) / 1000).toFixed(1)} km from the Samui NDB — inside the 5 NM Class D zone (SFC–2,000 ft).`,
         'AIP Thailand AD 2 VTSM, AD 2.17 (ATS airspace)', 0));
@@ -69,9 +69,9 @@ export class AirspaceMonitor {
       this.fired.add('fine');
       const fine = 60_000;
       this.fines += fine;
-      fresh.push({ id: 'fine', t, severity: 'violation', title: 'No permit, no ATC notification', titleTh: 'ไม่ได้รับอนุญาต / ไม่ได้แจ้งหอบังคับการบิน',
-        detail: 'Sky lanterns need district approval and advance notice to the airport or ATC (date, time, place, number). Maximum penalty: 3 years and/or 60,000 THB.',
-        basis: 'CAAT public guidance on sky lanterns (NCPO Section 44 order) — verify current rules', fineTHB: fine });
+      fresh.push({ id: 'fine', t, severity: 'violation', title: 'Penalty recorded (game)', titleTh: 'บันทึกบทลงโทษในเกม',
+        detail: 'No permission or notice was logged for this lantern, so the game records a penalty. In real life, releasing lanterns near airports is against the law and can carry penalties. This is game text, not legal advice.',
+        basis: 'Game text — not an official source; check current official announcements.', fineTHB: fine });
     }
     this.alerts.push(...fresh);
     return fresh;

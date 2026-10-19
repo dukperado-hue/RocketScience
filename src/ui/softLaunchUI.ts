@@ -7,8 +7,8 @@
 import type { QuickRetry } from '../game/quickRetry';
 
 export const DISCLAIMER = {
-  en: 'Disclaimer: Releasing sky lanterns near airports is illegal and highly dangerous in real life. This is a physics simulation. Do not try this at home.',
-  th: 'คำเตือน: การปล่อยโคมลอยใกล้สนามบินในชีวิตจริงเป็นเรื่องผิดกฎหมายและอันตรายมาก เกมนี้เป็นเพียงการจำลองทางฟิสิกส์เท่านั้น',
+  en: 'Disclaimer: Releasing sky lanterns near airports is against the law and carries penalties in real life. This is a physics simulation, not legal advice. Do not try this at home.',
+  th: 'คำเตือน: การปล่อยโคมลอยใกล้สนามบินผิดกฎหมายและมีโทษ เกมนี้เป็นเพียงการจำลองทางฟิสิกส์ ไม่ใช่คำแนะนำทางกฎหมาย',
 } as const;
 
 /** Bottom-of-title-screen disclaimer. Also call with variant 'briefing' inside the M1 briefing card. */

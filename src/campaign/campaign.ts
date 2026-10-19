@@ -99,22 +99,22 @@ export const MISSIONS: Mission[] = [
   {
     id: 'm1-lantern', order: 1, label: '1', codename: 'PAPER MOON',
     title: 'Full Moon Festival of the Dead', titleTh: 'เทศกาลพระจันทร์เต็มดวงแห่งความตาย',
-    brief: 'Launch a sky lantern from Koh Phangan and drift it into Samui airspace. On purpose. For science. Then read the fine.',
-    briefTh: 'ปล่อยโคมลอยจากเกาะพะงัน แล้วปล่อยให้ลมพาเข้าน่านฟ้าสมุย โดยตั้งใจ เพื่อวิทยาศาสตร์ แล้วค่อยอ่านใบสั่ง',
+    brief: 'Launch a sky lantern from Koh Phangan and drift it into Samui airspace. On purpose. For science. Then read the report.',
+    briefTh: 'ปล่อยโคมลอยจากเกาะพะงัน แล้วปล่อยให้ลมพาเข้าน่านฟ้าสมุย โดยตั้งใจ เพื่อวิทยาศาสตร์ แล้วค่อยอ่านรายงาน',
     requires: [],
     objectives: [
       { id: 'tier0', text: 'Fly a Tier 0 build (paper, bamboo, fire — nothing else)', textTh: 'ใช้ชิ้นส่วน Tier 0 เท่านั้น (กระดาษ ไม้ไผ่ ไฟ)', check: { kind: 'max-tier', tier: 0 } },
       { id: 'phangan', text: 'Launch from Koh Phangan (Haad Rin or Thong Sala)', textTh: 'ปล่อยจากเกาะพะงัน (หาดริ้นหรือท้องศาลา)', check: { kind: 'launch-island', island: 'phangan' } },
-      { id: 'violate', text: 'Trigger a Samui airspace violation (control zone or an approach path)', textTh: 'ทำให้เกิดการละเมิดน่านฟ้าสมุย (เขตควบคุมหรือแนวร่อนลง)', check: { kind: 'airspace', zones: ['ctr', 'app-17', 'app-35'] } },
+      { id: 'violate', text: 'Trigger a Samui airspace alert (control zone or an approach path)', textTh: 'ทำให้เกิดการแจ้งเตือนน่านฟ้าสมุย (เขตควบคุมหรือแนวร่อนลง)', check: { kind: 'airspace', zones: ['ctr', 'app-17', 'app-35'] } },
     ],
-    hint: 'Khom loi blueprint · Haad Rin · wind from 015° · leave the permit box empty · 10× warp.',
-    hintTh: 'แบบสำเร็จรูป Khom loi · หาดริ้น · ลมจาก 015° · ไม่ต้องติ๊ก permit · เร่งเวลา 10×',
+    hint: 'Khom loi blueprint · Haad Rin · wind from 015° · leave the “pretend permission” box empty · 10× warp.',
+    hintTh: 'แบบสำเร็จรูป Khom loi · หาดริ้น · ลมจาก 015° · ไม่ต้องติ๊กช่อง “สมมติว่าขออนุญาตแล้ว” · เร่งเวลา 10×',
     rewards: { tier: 1, parts: partsOfTier(1), ranges: ['yasothon'], text: 'Tier 1: gunpowder, Bang Fai tubes, the wooden chair · Yasothon range', textTh: 'Tier 1: ดินปืน บั้งไฟ เก้าอี้ไม้ · ลานปล่อยยโสธร' },
     story: {
       id: 'm1', crew: 'tortoise', image: 'assets/capcom/capcom_tortoise_clerk_full.png',
       title: 'Incident report, Haad Rin', titleTh: 'รายงานเหตุการณ์ หาดริ้น',
-      text: 'Full Moon night. One paper lantern entered the Samui control zone without a flight plan. Samui Tower was not amused. The fine came to ฿60,000. I have eaten the ticket. There is no ticket. There was never a ticket. Our lawyers advise that rockets are "a separate matter", so we are now building rockets — in Yasothon, far from any tower that can see us.',
-      textTh: 'คืนพระจันทร์เต็มดวง โคมกระดาษหนึ่งลูกหลุดเข้าเขตควบคุมสนามบินสมุยโดยไม่มีแผนการบิน หอบังคับการบินไม่ขำด้วย ค่าปรับ 60,000 บาท ข้าพเจ้ากินใบสั่งไปแล้ว ใบสั่งไม่มีอยู่จริง และไม่เคยมีมาก่อน ฝ่ายกฎหมายแนะนำว่าจรวดเป็น "อีกเรื่องหนึ่ง" เราจึงหันมาสร้างจรวด ที่ยโสธร ไกลจากหอบังคับการบินทุกแห่งที่มองเห็นเราได้',
+      text: 'Full Moon night. One paper lantern entered the Samui control zone without a flight plan. Samui Tower was not amused. I have written it all up. There is a form. There is always a form. Our colleagues suggest that rockets are "a separate matter", so we are now building rockets — in Yasothon, far from any tower that can see us.',
+      textTh: 'คืนพระจันทร์เต็มดวง โคมกระดาษหนึ่งลูกหลุดเข้าเขตควบคุมสนามบินสมุยโดยไม่มีแผนการบิน หอบังคับการบินไม่ขำด้วย ข้าพเจ้าบันทึกเหตุการณ์ไว้ครบแล้ว มีแบบฟอร์มเสมอ เพื่อนร่วมงานแนะนำว่าจรวดเป็น "อีกเรื่องหนึ่ง" เราจึงหันมาสร้างจรวด ที่ยโสธร ไกลจากหอบังคับการบินทุกแห่งที่มองเห็นเราได้',
     },
   },
   {
@@ -155,8 +155,8 @@ export const MISSIONS: Mission[] = [
     story: {
       id: 'm2b', crew: 'owl', image: 'assets/capcom/capcom_owl_professor_full.png',
       title: 'Above the air', titleTh: 'เหนืออากาศ',
-      text: 'Kármán line crossed. Technically we are astronauts; legally we are "a liquid-fuel incident". Above 100 km there is no air to steer with — only Newton, who does not take bribes. The sky up there is black at noon. Tortoise Clerk has asked for the form for leaving the atmosphere. There isn’t one. He is writing one.',
-      textTh: 'ข้ามเส้นคาร์มานแล้ว ในทางเทคนิคเราคือนักบินอวกาศ ในทางกฎหมายเราคือ "เหตุการณ์เกี่ยวกับเชื้อเพลิงเหลว" เหนือ 100 กม. ไม่มีอากาศให้บังคับเลี้ยว มีแต่นิวตัน ซึ่งไม่รับสินบน ท้องฟ้าข้างบนนั้นดำสนิทแม้ตอนเที่ยงวัน เสมียนเต่าขอแบบฟอร์มสำหรับ "ออกนอกชั้นบรรยากาศ" ซึ่งไม่มีอยู่จริง เขากำลังร่างขึ้นมาเอง',
+      text: 'Kármán line crossed. Technically we are astronauts; officially we are "a liquid-fuel incident". Above 100 km there is no air to steer with — only Newton, who does not take bribes. The sky up there is black at noon. Tortoise Clerk has asked for the form for leaving the atmosphere. There isn’t one. He is writing one.',
+      textTh: 'ข้ามเส้นคาร์มานแล้ว ในทางเทคนิคเราคือนักบินอวกาศ ในทางเอกสารเราคือ "เหตุการณ์เกี่ยวกับเชื้อเพลิงเหลว" เหนือ 100 กม. ไม่มีอากาศให้บังคับเลี้ยว มีแต่นิวตัน ซึ่งไม่รับสินบน ท้องฟ้าข้างบนนั้นดำสนิทแม้ตอนเที่ยงวัน เสมียนเต่าขอแบบฟอร์มสำหรับ "ออกนอกชั้นบรรยากาศ" ซึ่งไม่มีอยู่จริง เขากำลังร่างขึ้นมาเอง',
     },
   },
   {

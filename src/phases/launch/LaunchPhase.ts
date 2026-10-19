@@ -191,7 +191,7 @@ const TEMPLATE = `
     <div class="law-site" data-only="lowtier">
       <label>Location <select data-in="lsite">${LANTERN_SITES.map((s) => `<option value="${s.id}">${s.name}</option>`).join('')}<option value="yasothon">Yasothon (Bang Fai festival)</option></select></label>
       <label data-samui>Wind from <select data-in="wdir">${[0, 15, 45, 90, 135, 180, 225, 270, 315].map((d) => `<option value="${d}">${String(d).padStart(3, '0')}° ${['N', 'NNE', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][[0, 15, 45, 90, 135, 180, 225, 270, 315].indexOf(d)]}</option>`).join('')}</select></label>
-      <label class="chk" data-samui><input type="checkbox" data-in="permit"> District permit + Samui Tower notified</label>
+      <label class="chk" data-samui><input type="checkbox" data-in="permit"> Pretend permission + notice were given (game option) · สมมติว่าขออนุญาตแล้ว</label>
       <small data-k="sitenote"></small>
     </div>
   </section>
@@ -1054,7 +1054,7 @@ export class LaunchPhase implements Phase {
     this.logLine({ t: f.t, kind: 'milestone', text: `MISSION ${m.label} COMPLETE — ${m.title}. Unlocked: ${m.rewards.text}.` });
     if (this.capcom.zombieControl) {
       const z: Record<string, string> = {
-        'm1-lantern': 'Mission complete. The fine is sixty thousand baht. We do not have pockets. Next: bigger fire, in Yasothon.',
+        'm1-lantern': 'Mission complete. The paperwork is enormous. We do not have pockets. Next: bigger fire, in Yasothon.',
         'm2-ballistics': 'Five kilometres. Zombie Control is satisfied. Rockets are boring now. The animals may have their microphone back.',
       };
       this.milestoneCard(`Mission ${m.label} complete · ${m.title}`, `Zombie Control approves. Unlocked: ${m.rewards.text}.`, 'assets/zombie/zombie_zero_g.png');
@@ -1083,17 +1083,17 @@ export class LaunchPhase implements Phase {
     const last = m.track[m.track.length - 1];
     if (this.frameNo % 6 === 0) {
       const bad = m.inside.size > 0;
-      this.k('radarstate').textContent = bad ? 'VIOLATION' : m.alerts.length ? 'Logged' : 'Clear';
+      this.k('radarstate').textContent = bad ? 'ALERT' : m.alerts.length ? 'Logged' : 'Clear';
       this.k('radarstate').className = `pill ${bad ? 'bad' : m.alerts.length ? 'live' : 'good'}`;
       this.k('radarpos').textContent = last ? `${last.pos.lat.toFixed(4)}°N ${last.pos.lon.toFixed(4)}°E · ${Math.round(last.alt)} m AGL · drift ${(Math.abs(v.downrange) / 1000).toFixed(2)} km` : `${this.lanternSite.name}`;
-      this.k('radarfine').textContent = m.fines ? `Fines: ฿${m.fines.toLocaleString()}` : '';
+      this.k('radarfine').textContent = m.fines ? 'Penalty recorded (game)' : '';
     }
     if (this.alertTimer && now > this.alertTimer) { this.q('.law-alert').hidden = true; this.alertTimer = 0; }
   }
 
   private lawAlert(a: AirspaceAlert, now: number) {
     const box = this.q('.law-alert');
-    box.querySelector('b')!.textContent = `⚠ REGULATORY VIOLATION · ${a.title}`;
+    box.querySelector('b')!.textContent = `⚠ AIRSPACE ALERT · ${a.title}`;
     box.querySelector('span')!.textContent = a.detail;
     box.querySelector('small')!.textContent = a.basis;
     box.hidden = false;
@@ -1106,7 +1106,7 @@ export class LaunchPhase implements Phase {
       ctr: ['Samui control zone! Class D! Nobody filed anything! Where is my stamp? WHERE IS MY STAMP?', 'That is inside five nautical miles of Samui. I am drafting the incident report. With both hands.'],
       'app-17': ['It is on the RWY 17 final approach. Aircraft land through there. Engines swallow paper. I need to lie down on my shell.', 'Lantern on the extended centreline! Notify Samui Tower immediately — I am dialling with my flipper.'],
       'app-35': ['RWY 35 approach! Wrong end, same problem! Form 21-B, Form 21-C, Form… all of them.'],
-      fine: ['No district permit, no notice to the tower. That is up to three years or sixty thousand baht, or both. I am not paying it. Otter is paying it.'],
+      fine: ['No permission, no notice to the tower. In real life that is a serious problem. I am not paying for it. Otter is paying for it.'],
     };
     const pool = lines[a.id] ?? lines.ctr;
     if (this.capcom.zombieControl) {
@@ -1114,7 +1114,7 @@ export class LaunchPhase implements Phase {
         ctr: 'Samui Tower is screaming on the radio. We screamed back. They did not like our accent.',
         'app-17': 'Lantern in the airport approach. An aeroplane is coming. We are hungry. Interesting.',
         'app-35': 'Lantern in the airport approach. The pilots are waving. We wave back. With one arm.',
-        fine: 'Fine: sixty thousand baht. We do not have pockets. We do not have money. We have teeth.',
+        fine: 'A penalty. We do not have pockets. We do not have money. We have teeth.',
       };
       this.capcom.say('zombie', zl[a.id] ?? 'The humans are upset about the sky again.', 4, 'happy');
       return;
@@ -1555,7 +1555,7 @@ export class LaunchPhase implements Phase {
     this.k('sumstats').innerHTML = row('Apogee', fmtAlt(r.maxAlt)) + row('Top speed', `${r.maxSpeed.toFixed(0)} m/s`)
       + row('Peak g (vehicle)', r.maxG.toFixed(1)) + row('Peak g (seat)', r.maxSeatG.toFixed(1))
       + row('Landing speed', `${r.impactSpeed.toFixed(1)} m/s`) + row('Range', `${(r.range / 1000).toFixed(2)} km`)
-      + (this.monitor ? row('Airspace', this.monitor.alerts.length ? `${this.monitor.alerts.filter((a) => a.id !== 'fine').length} violation${this.monitor.alerts.length > 2 ? 's' : ''}${this.monitor.fines ? ` · ฿${this.monitor.fines.toLocaleString()}` : ''}` : 'Clear of Samui airspace') : '');
+      + (this.monitor ? row('Airspace', this.monitor.alerts.length ? `${this.monitor.alerts.filter((a) => a.id !== 'fine').length} airspace alert${this.monitor.alerts.length > 2 ? 's' : ''}${this.monitor.fines ? ' · penalty recorded' : ''}` : 'Clear of Samui airspace') : '');
     // Banner from the story art: chair mishaps get the soot, Bang Fai gets the procession
     const banner = this.q<HTMLImageElement>('.sum-banner');
     const chairBad = f.seat === 'chair' && r.outcome !== 'landed';
