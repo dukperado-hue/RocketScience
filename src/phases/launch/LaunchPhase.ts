@@ -63,6 +63,7 @@ import type { Weather } from '@/vfx/environment';
 import './launch.css';
 import { safeKV } from '@/core/safeStorage';
 import { keyOwner } from '@/ui/keyFocus';
+import { ffAllowed, fastForward } from '@/game/fastForward';
 import { ensureRetrySnapshot, quickRetry, rememberLaunchChoice } from '@/game/retrySession';
 import { siteFromChoice, type LaunchChoice } from '@/game/launchChoice';
 import { mountRetryButton } from '@/ui/softLaunchUI';
@@ -230,6 +231,7 @@ const TEMPLATE = `
     <button type="button" data-hold="1" title="Pitch right (D / →)">▶</button>
     <span class="sep"></span>
     <span class="warp" role="radiogroup" aria-label="Time warp"></span>
+    <button type="button" class="btn-ff" data-act="ff" hidden aria-pressed="false" title="Fast-forward while nothing is burning (same physics, just faster)"></button>
     <button type="button" data-sec data-act="map" title="Orbital map (Tab) — after the Kármán line" disabled>Map</button>
     <button type="button" data-sec data-act="eva" title="Spacewalk (E): in orbit, engines off" hidden>EVA</button>
     <button type="button" data-sec data-act="kit" title="EVA kit (K)" hidden>Kit: <span data-k="kit">Extinguisher</span></button>
@@ -289,6 +291,9 @@ export class LaunchPhase implements Phase {
   private node: { at: NodeAt; dv: number } = { at: 'apo', dv: 0 };
   private seamWarned = false;
   private summaryBusy = false;
+  /** Fast-forward is running (only while no engine burns; the physics is the same steps, more per frame) */
+  private ff = false;
+  private lastRender = 0;
   /** Soft launch: the Retry button on the summary card (R key); null when none is mounted */
   private retryBtn: HTMLButtonElement | null = null;
   /** Tier 0–1 airspace */
@@ -589,7 +594,38 @@ export class LaunchPhase implements Phase {
     this.setWarp(this.warp);
   }
 
+  private setFf(on: boolean, why?: string) {
+    const was = this.ff;
+    this.ff = on;
+    if (on) { this.setWarp(1); this.ff = true; this.warpDropped = false; }
+    if (was && !on && why) this.logLine({ t: this.flight.t, kind: 'info', text: `Fast-forward off — ${why}.` });
+    this.ffButton();
+  }
+
+  /** The button shows only while there is nothing to do but wait */
+  private ffButton() {
+    const b = this.q<HTMLButtonElement>('[data-act="ff"]');
+    const f = this.flight;
+    const avail = !!f && ffAllowed(f) && !f.onRailsOk && !this.mapMode && f.t > 5;
+    b.hidden = !avail && !this.ff;
+    b.setAttribute('aria-pressed', String(this.ff));
+    b.innerHTML = this.ff ? '<span lang="th">⏸ หยุดเร่ง</span> <span lang="en">Stop fast-forward</span>' : '<span lang="th">⏩ เร่งไปดูผล</span> <span lang="en">Fast-forward</span>';
+  }
+
+  /** What makes a fast-forward stop: something the player should watch (airspace, mission progress, the ground) */
+  private ffCheck(now: number): string | null {
+    const f = this.flight, v = f.vehicle;
+    if (this.airspace(now, false) > 0) return 'an airspace alert';
+    if (f.ignited && this.campaignTick(false)) return 'mission progress';
+    const alt = Math.max(0, v.lowestAlt());
+    const chute = v.items.some((it) => it.chute && (it.chute.state === 'open' || it.chute.state === 'opening' || (it.chute.state === 'packed' && f.controls.autoChute)));
+    if (f.airborne && !v.landed && -v.vUp > 15 && !chute && impactSoon(alt, v.vUp, 1, 20).soon) return 'coming down fast';
+    if (f.airborne && !v.landed && alt < 60 && v.vUp < -2) return 'close to the ground';
+    return null;
+  }
+
   private setWarp(w: number) {
+    if (this.ff && w !== undefined) this.ff = false;
     const ladder: readonly number[] = this.mapMode ? MAP_WARPS : WARPS;
     if (!ladder.includes(w)) w = ladder.filter((x) => x <= w).at(-1) ?? 1;
     this.warp = w;
@@ -692,6 +728,9 @@ export class LaunchPhase implements Phase {
       case 'cam': this.cycleCam(); break;
       case 'zin': this.view.zoom *= 1.4; this.clampZoom(); break;
       case 'zout': this.view.zoom /= 1.4; this.clampZoom(); break;
+      case 'ff':
+        if (this.ff) this.setFf(false); else if (ffAllowed(f) && !f.onRailsOk && !this.mapMode) this.setFf(true);
+        break;
       case 'more': {
         const bar = this.q('.hud-bar'), open = !bar.classList.contains('more-open');
         bar.classList.toggle('more-open', open);
@@ -783,7 +822,12 @@ export class LaunchPhase implements Phase {
       const rails = f.onRailsOk;
       const w = rails ? this.warp : Math.min(this.warp, PHYS_WARP_CAP);
       this.warpLimited = w < this.warp;
-      if (rails && this.warp > PHYS_WARP_CAP) { f.advanceWarp(real * w * ts); this.acc = 0; }
+      if (this.ff && ffAllowed(f) && !rails) {
+        this.acc = 0;
+        const r = fastForward(f, { maxSteps: 20_000, budgetMs: 80, check: () => this.ffCheck(now) });
+        if (r.stop) this.setFf(false, r.stop === 'done' ? undefined : r.stop === 'event' ? 'something happened' : r.stop === 'thrust' ? 'an engine lit' : r.stop);
+      } else if (this.ff) this.setFf(false, 'the flight changed');
+      else if (rails && this.warp > PHYS_WARP_CAP) { f.advanceWarp(real * w * ts); this.acc = 0; }
       else {
         this.acc += real * w * ts;
         const dt = 0.01;
@@ -808,8 +852,10 @@ export class LaunchPhase implements Phase {
     this.juiceTick(real, ts);
     if (this.assist.mode === 'guide') this.takeAssist(this.assist.update(f));
     this.view.guide = this.assistOut && this.assistOut.phase !== 'cutoff' && this.assistOut.phase !== 'idle' ? this.assistOut.targetPitch : null;
-    if (this.mapMode) this.drawMap(f, real); else this.view.frame(f, real);
-    this.airspace(now);
+    // while fast-forwarding the steps are what costs time: draw 2–3 times a second instead of every frame
+    const draw = !this.ff || now - this.lastRender > 400;
+    if (draw) { this.lastRender = now; if (this.mapMode) this.drawMap(f, real); else this.view.frame(f, real); }
+    this.airspace(now, draw);
     if (f.ignited && this.frameNo % 20 === 0) this.campaignTick(false);
 
     if (this.frameNo++ % 6 === 0) this.hud();
@@ -824,6 +870,7 @@ export class LaunchPhase implements Phase {
     this.zombieCallouts();
     const f = this.flight, v = f.vehicle;
     const sp = Math.hypot(v.vx, v.vy);
+    this.ffButton();
     this.k('t').textContent = f.t.toFixed(1);
     this.k('alt').textContent = fmtAlt(Math.max(0, v.lowestAlt()));
     this.k('vel').textContent = `${sp.toFixed(0)} m/s`;
@@ -1017,8 +1064,10 @@ export class LaunchPhase implements Phase {
   }
 
   /** Report the flight to the campaign: announce objectives as they tick, celebrate completions */
-  private campaignTick(final: boolean) {
-    if (campaign.sandbox || !this.parts.length) return;
+  /** Returns true when an objective was newly met or a mission completed on this call */
+  private campaignTick(final: boolean): boolean {
+    if (campaign.sandbox || !this.parts.length) return false;
+    let progressed = false;
     const f = this.flight;
     const rep = flightReport(f, this.parts.map((q) => q.defId), this.launchContext());
     const cur = campaign.current();
@@ -1031,14 +1080,14 @@ export class LaunchPhase implements Phase {
         this.logLine({ t: f.t, kind: 'info', text: `Mission ${cur.label} · ${cur.title}: ${cur.objectives.map((o, i) => `${prog[i] ? '✓' : '○'} ${o.text}`).join(' · ')}` });
         cur.objectives.forEach((o, i) => { if (prog[i]) this.objSeen.add(o.id); });
       } else cur.objectives.forEach((o, i) => {
-        if (prog[i] && !this.objSeen.has(o.id)) { this.objSeen.add(o.id); this.logLine({ t: f.t, kind: 'milestone', text: `Mission ${cur.label} · ✓ ${o.text}` }); }
+        if (prog[i] && !this.objSeen.has(o.id)) { this.objSeen.add(o.id); this.logLine({ t: f.t, kind: 'milestone', text: `Mission ${cur.label} · ✓ ${o.text}` }); progressed = true; }
       });
     }
-    for (const m of campaign.evaluate(rep, f.t)) { this.missionDone(m); this.objSeen.add('#done'); }
+    for (const m of campaign.evaluate(rep, f.t)) { this.missionDone(m); this.objSeen.add('#done'); progressed = true; }
     if (final && cur && !campaign.isDone(cur.id) && !this.objSeen.has('#done')) {
       const prog = campaign.progress(cur, rep), left = cur.objectives.filter((_, i) => !prog[i]);
       if (left.length) this.logLine({ t: f.t, kind: 'info', text: `Mission ${cur.label} not yet: ${left.map((o) => o.text).join(' · ')}. ${cur.hint ?? ''}` });
-    }
+    }    return progressed;
   }
 
   private missionDone(m: Mission) {
@@ -1072,14 +1121,16 @@ export class LaunchPhase implements Phase {
     this.q('.law-alert').hidden = true;
   }
 
-  private airspace(now: number) {
+  /** Returns how many new alerts fired this call */
+  private airspace(now: number, draw = true): number {
     const f = this.flight, m = this.monitor, v = f.vehicle;
     const card = this.q('.hud-radar');
     card.hidden = !m || this.mapMode;
-    if (!m) return;
+    if (!m) return 0;
     const alt = Math.max(0, v.lowestAlt());
-    for (const a of m.update(f.t, v.downrange, alt, f.airborne && !v.landed)) this.lawAlert(a, now);
-    if (!card.hidden) this.radar.frame(m, now);
+    const fresh = m.update(f.t, v.downrange, alt, f.airborne && !v.landed);
+    for (const a of fresh) this.lawAlert(a, now);
+    if (draw && !card.hidden) this.radar.frame(m, now);
     const last = m.track[m.track.length - 1];
     if (this.frameNo % 6 === 0) {
       const bad = m.inside.size > 0;
@@ -1089,6 +1140,7 @@ export class LaunchPhase implements Phase {
       this.k('radarfine').textContent = m.fines ? 'Penalty recorded (game)' : '';
     }
     if (this.alertTimer && now > this.alertTimer) { this.q('.law-alert').hidden = true; this.alertTimer = 0; }
+    return fresh.length;
   }
 
   private lawAlert(a: AirspaceAlert, now: number) {

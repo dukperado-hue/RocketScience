@@ -20,7 +20,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const RUNS = path.join(ROOT, 'playtest', 'runs');
 const sessionFile = (persona) => path.join(RUNS, `.session-${persona}.json`);
-const DIST = 'dist-playtest';
+const DIST = process.env.PLAYTEST_DIST ?? 'dist-playtest';
 
 const VIEWPORTS = {
   desktop: { viewport: { width: 1366, height: 768 }, deviceScaleFactor: 1, hasTouch: false, isMobile: false },

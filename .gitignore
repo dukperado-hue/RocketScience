@@ -6,3 +6,4 @@ public/basis
 dist-playtest
 playtest/runs/*
 !playtest/runs/.gitkeep
+dist-before

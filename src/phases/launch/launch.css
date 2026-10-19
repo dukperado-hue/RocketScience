@@ -341,3 +341,10 @@
   .hud-flight .hud-sas { display: none; }
   .hud-zombie.empty { display: none; }
 }
+
+/* Fast-forward: shown only while nothing is burning */
+.hud-bar .btn-ff { background: #e6f6ed; border-color: #9fd8b6; color: #1b7a44; font-weight: 700; }
+.hud-bar .btn-ff[aria-pressed='true'] { background: #fff1e4; border-color: #f2b27a; color: #a4570f; }
+@media (max-width: 760px) {
+  .hud-bar .btn-ff { order: 11; flex: 1 1 100%; }
+}
