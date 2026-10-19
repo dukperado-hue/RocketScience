@@ -62,6 +62,7 @@ const SITE_STATE = new Map<string, { terrain: Heightfield; wrecks: Wreck[]; mark
 import type { Weather } from '@/vfx/environment';
 import './launch.css';
 import { safeKV } from '@/core/safeStorage';
+import { keyOwner } from '@/ui/keyFocus';
 import { ensureRetrySnapshot, quickRetry, rememberLaunchChoice } from '@/game/retrySession';
 import { siteFromChoice, type LaunchChoice } from '@/game/launchChoice';
 import { mountRetryButton } from '@/ui/softLaunchUI';
@@ -458,6 +459,10 @@ export class LaunchPhase implements Phase {
       const up = () => this.holds.delete(dir);
       on(el, 'pointerdown', down); on(el, 'pointerup', up); on(el, 'pointercancel', up); on(el, 'lostpointercapture', up);
     }
+    // a slider/drop-down/checkbox must not keep the keyboard once the player lets go of it
+    const release = (e: Event) => { const t = e.target as HTMLElement; if (t instanceof HTMLInputElement || t instanceof HTMLSelectElement) t.blur(); };
+    on(this.root, 'pointerup', (e: PointerEvent) => { if ((e.target as HTMLElement) instanceof HTMLInputElement && (e.target as HTMLInputElement).type === 'range') release(e); });
+    on(this.root, 'change', release);
     on(this.root, 'input', (e: Event) => {
       const t = e.target as HTMLInputElement;
       if (t.dataset.in === 'rail') this.site.rail = +t.value;
@@ -684,7 +689,10 @@ export class LaunchPhase implements Phase {
   }
 
   private onKey(e: KeyboardEvent, down: boolean) {
-    if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
+    const tgt = e.target as HTMLInputElement | null;
+    const owner = keyOwner(tgt?.tagName ? { tag: tgt.tagName, type: tgt.type } : null, e.key);
+    if (owner === 'release') { if (down) tgt!.blur(); return; }
+    if (owner === 'control') return;
     const k = e.key;
     if (down && (k === 'u' || k === 'U') && !(this.flight.eva && this.evaCtl)) { this.toggleSound(); return; }
     if (this.flight.eva && this.evaCtl && !this.flight.eva.ended) {
