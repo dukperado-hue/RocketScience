@@ -659,7 +659,10 @@ export class LaunchPhase implements Phase {
       case 'cam': this.cycleCam(); break;
       case 'zin': this.view.zoom *= 1.4; this.clampZoom(); break;
       case 'zout': this.view.zoom /= 1.4; this.clampZoom(); break;
-      case 'again': this.newFlight(); break;
+      case 'again':
+        // mid-flight R / the ↺ button share the summary's Retry: same snapshot, attempt count and flight_retry event
+        if (!quickRetry.canRetry || !quickRetry.retry()) this.newFlight();
+        break;
       case 'back': bus.emit('phase:request', { phase: 'assembly' }); break;
     }
   }
