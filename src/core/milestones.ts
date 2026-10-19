@@ -5,6 +5,7 @@
  * Storage can be missing or throw (private mode); then milestones still unlock for
  * this session, they just don't persist.
  */
+import { safeKV } from './safeStorage';
 export interface Milestone { id: string; title: string; text: string }
 
 export const MILESTONES: Milestone[] = [
@@ -30,7 +31,7 @@ let mem: Record<string, number> | null = null;
 
 function load(): Record<string, number> {
   if (mem) return mem;
-  try { mem = JSON.parse(localStorage.getItem(KEY) ?? '{}') ?? {}; } catch { mem = {}; }
+  try { mem = JSON.parse(safeKV.getItem(KEY) ?? '{}') ?? {}; } catch { mem = {}; }
   return mem!;
 }
 
@@ -41,7 +42,7 @@ export function unlock(id: string, when = Date.now()): Milestone | null {
   const got = load();
   if (got[id]) return null;
   got[id] = when;
-  try { localStorage.setItem(KEY, JSON.stringify(got)); } catch { /* session only */ }
+  try { safeKV.setItem(KEY, JSON.stringify(got)); } catch { /* session only */ }
   return m;
 }
 
@@ -51,4 +52,4 @@ export function earned(): { m: Milestone; at: number }[] {
 }
 
 /** Tests only */
-export function _resetMilestones() { mem = {}; try { localStorage.removeItem(KEY); } catch { /* ignore */ } }
+export function _resetMilestones() { mem = {}; try { safeKV.removeItem(KEY); } catch { /* ignore */ } }

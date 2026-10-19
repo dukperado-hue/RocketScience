@@ -59,6 +59,9 @@ import type { Wreck, Mark, Touch } from './LaunchView';
 const SITE_STATE = new Map<string, { terrain: Heightfield; wrecks: Wreck[]; marks: Mark[] }>();
 import type { Weather } from '@/vfx/environment';
 import './launch.css';
+import { safeKV } from '@/core/safeStorage';
+import { quickRetry } from '@/game/retrySession';
+import { mountRetryButton } from '@/ui/softLaunchUI';
 
 const WARPS = [1, 2, 4, 10] as const;
 const MAP_WARPS = [1, 10, 100, 1000, 10000] as const;
@@ -280,6 +283,8 @@ export class LaunchPhase implements Phase {
   private node: { at: NodeAt; dv: number } = { at: 'apo', dv: 0 };
   private seamWarned = false;
   private summaryBusy = false;
+  /** Soft launch: the Retry button on the summary card (R key); null when none is mounted */
+  private retryBtn: HTMLButtonElement | null = null;
   /** Tier 0–1 airspace */
   private radar!: RadarView;
   private monitor: AirspaceMonitor | null = null;
@@ -305,9 +310,9 @@ export class LaunchPhase implements Phase {
   private globe: GlobeView | null = null;
   private globeLoading: Promise<void> | null = null;
   private globeFailed = false;
-  private rangeId: (typeof LAUNCH_RANGES)[number]['id'] = (() => { try { return localStorage.getItem('rs.range') === 'phangan' ? 'phangan' : 'yasothon'; } catch { return 'yasothon'; } })();
+  private rangeId: (typeof LAUNCH_RANGES)[number]['id'] = (() => { try { return safeKV.getItem('rs.range') === 'phangan' ? 'phangan' : 'yasothon'; } catch { return 'yasothon'; } })();
   private frame3d = new PlaneFrame(LAUNCH_RANGES.find((r) => r.id === this.rangeId)!.site);
-  private mapStyle: '3d' | '2d' = (() => { try { return localStorage.getItem('rs.map.style') === '2d' ? '2d' : '3d'; } catch { return '3d'; } })();
+  private mapStyle: '3d' | '2d' = (() => { try { return safeKV.getItem('rs.map.style') === '2d' ? '2d' : '3d'; } catch { return '3d'; } })();
 
   enter(root: HTMLElement, payload?: unknown) {
     this.root = root;
@@ -335,6 +340,7 @@ export class LaunchPhase implements Phase {
   }
 
   exit() {
+    this.retryBtn?.remove(); this.retryBtn = null;
     cancelAnimationFrame(this.raf);
     sfx.quiet();
     this.cleanup.forEach((f) => f());
@@ -373,7 +379,7 @@ export class LaunchPhase implements Phase {
   }
 
   private newFlight() {
-    this.limbSeaSaid = false;
+    this.limbSeaSaid = false; this.finaleShown = false;
     this.makeFlight();
     this.view.reset(this.flight);
     this.setMap(false);
@@ -395,6 +401,8 @@ export class LaunchPhase implements Phase {
     this.capcom.say('lee', `Mission control here. ${this.parts.length ? 'Vehicle on the pad — standing by for your go.' : 'No vehicle on the pad. Build one first.'}`, 2);
     this.k('log').innerHTML = '';
     this.q('.hud-summary').hidden = true;
+    this.retryBtn?.remove(); this.retryBtn = null;
+    this.q('.sum-actions [data-act="again"]').hidden = false;
     this.q('.hud-site').hidden = false;
     this.syncSite();
     if (!this.parts.length) this.logLine({ t: 0, kind: 'failure', text: 'No vehicle yet — build one in the factory first.' });
@@ -490,7 +498,7 @@ export class LaunchPhase implements Phase {
   private pickRange(id: typeof this.rangeId) {
     const r = LAUNCH_RANGES.find((x) => x.id === id) ?? LAUNCH_RANGES[0];
     this.rangeId = r.id;
-    try { localStorage.setItem('rs.range', r.id); } catch { /* private mode */ }
+    try { safeKV.setItem('rs.range', r.id); } catch { /* private mode */ }
     this.frame3d = new PlaneFrame(r.site);
     this.globe?.setSite(this.frame3d);
     if (!this.flight.ignited) this.newFlightKeepLog(); else this.syncSite();
@@ -620,7 +628,7 @@ export class LaunchPhase implements Phase {
       }
       case 'map3d': case 'map2d':
         this.mapStyle = a === 'map3d' ? '3d' : '2d';
-        try { localStorage.setItem('rs.map.style', this.mapStyle); } catch { /* ignore */ }
+        try { safeKV.setItem('rs.map.style', this.mapStyle); } catch { /* ignore */ }
         if (this.mapStyle === '3d') this.ensureGlobe();
         this.syncMapTools();
         break;
@@ -674,6 +682,8 @@ export class LaunchPhase implements Phase {
     if (k === 'x' || k === 'X') { this.flight.controls.throttle = 0; return; }
     if (k === 'Tab') { e.preventDefault(); this.act('map'); return; }
     if (k === 'v' || k === 'V') { this.act('assist'); return; }
+    // the summary's Retry button owns R while it is on screen
+    if ((k === 'r' || k === 'R') && this.retryBtn?.isConnected) return;
     const map: Record<string, string> = { ' ': 'go', t: 'sas', T: 'sas', m: 'mode', M: 'mode', f: 'rcs', F: 'rcs', p: 'chute', P: 'chute', g: 'turn', G: 'turn', c: 'cam', C: 'cam', '+': 'zin', '=': 'zin', '-': 'zout', r: 'again', R: 'again', Escape: 'back' };
     if (map[k]) { e.preventDefault(); this.act(map[k]); }
     const ladder: readonly number[] = this.mapMode ? MAP_WARPS : WARPS;
@@ -1425,8 +1435,9 @@ export class LaunchPhase implements Phase {
 
   /** Mission 2.5 done: the End of Early Access screen, then wherever the player chose */
   private eaPending = false;
+  private finaleShown = false;
   private async earlyAccessEnd(): Promise<void> {
-    this.eaPending = false;
+    this.eaPending = false; this.finaleShown = true;
     const x = await showEarlyAccessEnd({ apogeeKm: this.flight.result().maxAlt / 1000 });
     if (x === 'sandbox') { campaign.setMode('sandbox'); this.logLine({ t: this.flight.t, kind: 'info', text: 'Sandbox on: every Tier 0–2 part, every range, nothing recorded. Fly something silly.' }); }
     else if (x === 'factory') bus.emit('phase:request', { phase: 'assembly' });
@@ -1486,6 +1497,10 @@ export class LaunchPhase implements Phase {
     banner.onerror = () => { banner.hidden = true; };
     if (src) banner.src = src;
     this.q('.hud-summary').hidden = false;
+    // Retry rebuilds the launched design straight on the pad. Not offered after the Early Access finale.
+    this.retryBtn?.remove();
+    this.retryBtn = this.finaleShown ? null : mountRetryButton(this.q('.sum-actions'), quickRetry, () => bus.emit('phase:request', { phase: 'assembly' }));
+    this.q('.sum-actions [data-act="again"]').hidden = !!this.retryBtn;
   }
 }
 

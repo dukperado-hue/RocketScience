@@ -12,16 +12,20 @@ import { bus } from '@/core/EventBus';
 import { eaCap, type EarlyAccessCap } from '@/core/earlyAccess';
 import { PART } from '@/phases/assembly/model/catalog';
 import { PE_STABLE } from '@/orbit/state';
+import { safeKV } from '@/core/safeStorage';
+import { trackMissionComplete } from '@/core/analytics';
+import { quickRetry } from '@/game/retrySession';
 import {
   MISSIONS, MISSION, PROLOGUE, START,
   type CampaignSave, type FlightReport, type Mission, type MissionId, type ObjectiveCheck, type RangeId, type StoryEntry, type Tier,
 } from './campaign';
 
 export interface KV { get(k: string): string | null; set(k: string, v: string): void; del?(k: string): void }
-const localKV: KV = {
-  get: (k) => { try { return localStorage.getItem(k); } catch { return null; } },
-  set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* session only */ } },
-  del: (k) => { try { localStorage.removeItem(k); } catch { /* ignore */ } },
+/** safeKV never throws and falls back to memory (session only) when localStorage is unavailable */
+const safeKVAdapter: KV = {
+  get: (k) => safeKV.getItem(k),
+  set: (k, v) => safeKV.setItem(k, v),
+  del: (k) => safeKV.removeItem(k),
 };
 export const SAVE_KEY = 'rs.campaign.v1';
 
@@ -36,7 +40,7 @@ export class MissionManager {
    * `cap` (Early Access): parts above `cap.maxTier` are locked "coming soon" in every mode, and the
    * campaign ends with `cap.finale` — later missions are not offered. null = the full game.
    */
-  constructor(private kv: KV = localKV, readonly cap: EarlyAccessCap | null = null) { this.s = this.load(); }
+  constructor(private kv: KV = safeKVAdapter, readonly cap: EarlyAccessCap | null = null) { this.s = this.load(); }
 
   /** The missions this build offers (all of them, or up to the Early Access finale) */
   get missions(): Mission[] {
@@ -147,7 +151,7 @@ export class MissionManager {
       this.s.story.push({ id: m.story.id, at: now });
       done.push(m);
     }
-    if (done.length) { this.save(); for (const m of done) bus.emit('campaign:complete', { id: m.id }); }
+    if (done.length) { this.save(); for (const m of done) { trackMissionComplete(m.id, { flightTimeS: Math.round(flightT), maxAltM: Math.round(r.apogeeM), attempt: quickRetry.attempt }); bus.emit('campaign:complete', { id: m.id }); } }
     return done;
   }
 
@@ -166,4 +170,4 @@ export class MissionManager {
 }
 
 /** The one the game uses */
-export const campaign = new MissionManager(localKV, eaCap());
+export const campaign = new MissionManager(safeKVAdapter, eaCap());

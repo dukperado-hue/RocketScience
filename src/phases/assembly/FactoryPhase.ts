@@ -24,6 +24,7 @@ import { MixingBenchUI } from './ui/MixingBenchUI';
 import { TelemetryPanel } from './ui/TelemetryPanel';
 import { Inspector, type InspectorAction } from './ui/Inspector';
 import { ZOMBIES, type ZombieId } from '@/payload/zombies';
+import { captureForRetry, quickRetry } from '@/game/retrySession';
 import './factory.css';
 
 export class FactoryPhase implements Phase {
@@ -77,6 +78,9 @@ export class FactoryPhase implements Phase {
       q<HTMLButtonElement>('[data-tool="redo"]').disabled = !this.store.canRedo;
     };
     this.cleanup.push(this.store.on(sync));
+    // any edit makes the pad snapshot stale (selection also notifies the store, so compare the parts)
+    let lastParts = this.store.parts;
+    this.cleanup.push(this.store.on(() => { if (this.store.parts !== lastParts) { lastParts = this.store.parts; quickRetry.invalidate(); } }));
     this.cleanup.push(bus.on('campaign:changed', () => this.inventory.render()));
     sync();
 
@@ -178,7 +182,11 @@ export class FactoryPhase implements Phase {
       this.toast(`Campaign: ${locked.map((id) => PART[id].name).join(', ')} ${locked.length > 1 ? 'are' : 'is'} locked until Mission ${m.label} · ${m.title}. Remove ${locked.length > 1 ? 'them' : 'it'}, or switch to Sandbox in Missions.`);
       return;
     }
-    bus.emit('phase:request', { phase: 'launch', payload: { parts: st.active, telemetry: this.store.telemetry, bench: this.bench } });
+    const payload = { parts: st.active, telemetry: this.store.telemetry, bench: this.bench };
+    // lanterns start on bare ground, everything else on a rail/ramp (LaunchPhase.defaultSite picks the exact site)
+    const lantern = st.active.some((p) => PART[p.defId].envelope);
+    captureForRetry(payload, { missionId: campaign.sandbox ? null : campaign.current()?.id ?? null, siteId: 'default', useRail: !lantern });
+    bus.emit('phase:request', { phase: 'launch', payload });
   }
 
   private onKey(e: KeyboardEvent) {

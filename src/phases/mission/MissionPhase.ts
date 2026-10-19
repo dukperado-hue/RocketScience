@@ -10,6 +10,7 @@ import { campaign } from '@/campaign/missionManager';
 import { MISSIONS, type Mission } from '@/campaign/campaign';
 import { CREW } from '@/phases/launch/capcom';
 import { openGallery } from '@/story/story';
+import { mountDisclaimer } from '@/ui/softLaunchUI';
 import './mission.css';
 
 const esc = (t: string) => t.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
@@ -72,6 +73,9 @@ export class MissionPhase implements Phase {
         <ol class="ms-timeline ${sandbox ? 'is-sandbox' : ''}">${MS.map((m) => this.card(m)).join('')}${campaign.upcoming.map((m) => this.soonCard(m)).join('')}</ol>
         <footer class="ms-foot"><button type="button" class="ms-link danger" data-act="reset">Reset campaign progress</button></footer>
       </div>`;
+    // the lantern mission is the one that tells players to break airspace rules: say it is a simulation
+    const m1 = this.root.querySelector<HTMLElement>('[data-mission="m1-lantern"] .ms-card');
+    if (m1) mountDisclaimer(m1, 'briefing');
   }
 
   /** A mission the Early Access build holds back */
@@ -94,7 +98,7 @@ export class MissionPhase implements Phase {
     const obj = m.objectives.map((o) => `<li class="${st === 'done' ? 'ok' : ''}"><span aria-hidden="true">${st === 'done' ? '✓' : '○'}</span><div>${esc(o.text)}<small>${esc(o.textTh)}</small></div></li>`).join('');
     const prev = MISSIONS.find((x) => x.id === m.requires[0]);
     return `
-      <li class="ms-item ${st}">
+      <li class="ms-item ${st}" data-mission="${m.id}">
         <div class="ms-dot" aria-hidden="true">${st === 'done' ? '✓' : st === 'locked' ? '🔒' : m.label}</div>
         <article class="ms-card" aria-label="Mission ${m.label}: ${esc(m.title)} — ${st}">
           <header>

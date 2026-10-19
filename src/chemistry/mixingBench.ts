@@ -10,6 +10,7 @@
  * how steadily you stir decides its quality (consistency between motors).
  */
 import { scoreMill } from './powderMill';
+import { safeKV } from '@/core/safeStorage';
 
 export type IngredientId = 'oxidiser' | 'fuel' | 'moderator' | 'binder' | 'filler';
 
@@ -110,14 +111,14 @@ const KEY = 'rocketscience.bench.v1';
 
 export function loadBench(): BenchState {
   try {
-    const raw = localStorage.getItem(KEY);
+    const raw = safeKV.getItem(KEY);
     if (raw) return JSON.parse(raw) as BenchState;
   } catch { /* storage unavailable */ }
   return { crafted: {} };
 }
 
 export function saveBench(s: BenchState) {
-  try { localStorage.setItem(KEY, JSON.stringify(s)); } catch { /* storage unavailable */ }
+  try { safeKV.setItem(KEY, JSON.stringify(s)); } catch { /* storage unavailable */ }
 }
 
 export function recordCraft(s: BenchState, grade: GradeId, quality: number): BenchState {

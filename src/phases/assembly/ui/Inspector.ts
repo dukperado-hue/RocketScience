@@ -16,6 +16,7 @@ import { ZOMBIES, ZOMBIE_IDS, type ZombieId } from '@/payload/zombies';
 import { riderOf } from '../model/vehicle';
 import type { VehicleStore } from '../store';
 import { fmtForce, fmtMass, fmtMoney } from './format';
+import { safeKV } from '@/core/safeStorage';
 
 export type InspectorAction = 'rotate' | 'flip-x' | 'flip-y' | 'delete' | 'close' | 'stress' | { mat: string } | { matAll: string } | { rider: ZombieId | 'empty' } | { salt: Salt | null };
 
@@ -35,7 +36,7 @@ export class Inspector {
   stressOn = false;
 
   constructor(host: HTMLElement, private store: VehicleStore, private onAction: (a: InspectorAction) => void) {
-    try { Object.assign(this.state, JSON.parse(localStorage.getItem(KEY) ?? '{}')); } catch { /* storage unavailable */ }
+    try { Object.assign(this.state, JSON.parse(safeKV.getItem(KEY) ?? '{}')); } catch { /* storage unavailable */ }
     this.el = document.createElement('section');
     this.el.className = 'inspector';
     this.el.hidden = true;
@@ -90,7 +91,7 @@ export class Inspector {
 
   dispose() { this.off(); this.el.remove(); }
 
-  private persist() { try { localStorage.setItem(KEY, JSON.stringify(this.state)); } catch { /* storage unavailable */ } }
+  private persist() { try { safeKV.setItem(KEY, JSON.stringify(this.state)); } catch { /* storage unavailable */ } }
 
   render() {
     const sel = this.store.selected !== null ? this.store.get(this.store.selected) : undefined;

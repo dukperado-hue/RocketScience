@@ -10,9 +10,11 @@
  * flags live in localStorage behind try/catch (private mode → session only).
  */
 import { CREW, type CrewId } from '@/phases/launch/capcom';
+import { mountDisclaimer } from '@/ui/softLaunchUI';
 import { campaign } from '@/campaign/missionManager';
 
 import './story.css';
+import { safeKV } from '@/core/safeStorage';
 
 export interface Cutscene { id: string; title: string; titleTh: string; src: string; poster: string; caption: string }
 
@@ -30,8 +32,8 @@ export const STILLS = [
 ];
 
 const store = {
-  get(k: string) { try { return localStorage.getItem(k); } catch { return null; } },
-  set(k: string, v: string) { try { localStorage.setItem(k, v); } catch { /* session only */ } },
+  get(k: string) { try { return safeKV.getItem(k); } catch { return null; } },
+  set(k: string, v: string) { try { safeKV.setItem(k, v); } catch { /* session only */ } },
 };
 
 export const cutscenesEnabled = () => store.get('rs.cutscenes') !== 'off';
@@ -159,6 +161,7 @@ function prologue() {
     <div><h2>From Wan Hu’s Chair to Outer Space</h2>
       <p>Five hundred years ago, Wan Hu tied rockets to a chair. Today, Mission Control would like to try that again — with physics this time.</p>
       <div class="pr-actions"><button type="button" class="primary" data-pr="watch">▶ Watch the legend (10 s)</button><button type="button" class="ghost" data-pr="skip">Start building</button></div></div>`;
+  mountDisclaimer(el.querySelector<HTMLElement>(':scope > div')!, 'briefing');
   document.body.appendChild(el);
   const done = () => { store.set('rs.prologue.seen', '1'); el.remove(); };
   el.querySelector('img')!.addEventListener('error', () => el.querySelector('figure')!.remove());

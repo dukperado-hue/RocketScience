@@ -16,6 +16,7 @@
  * Browsers only start audio after a user gesture: call unlock() from a click/keydown.
  * Where WebAudio does not exist (tests, old browsers) every method is a silent no-op.
  */
+import { safeKV } from '@/core/safeStorage';
 
 type Ctx = AudioContext;
 const KEY = 'rs.audio.muted';
@@ -27,24 +28,33 @@ export class ProceduralAudio {
   private white!: AudioBuffer;
   private brown!: AudioBuffer;
   private loops: Partial<Record<'sizzle' | 'rumble', { gain: GainNode; filter: BiquadFilterNode }>> = {};
-  muted = (() => { try { return localStorage.getItem(KEY) === '1'; } catch { return false; } })();
+  muted = (() => { try { return safeKV.getItem(KEY) === '1'; } catch { return false; } })();
 
   get ready() { return !!this.ctx && this.ctx.state === 'running'; }
 
-  /** Create / resume the context. Call from a user gesture. */
-  unlock() {
+  /** The context, or null until the first gesture creates it (audioUnlock reads this) */
+  get context(): AudioContext | null { return this.ctx; }
+
+  /** Create the context (and its graph) without resuming it; throws where WebAudio is missing. audioUnlock resumes it inside the gesture. */
+  ensureContext(): AudioContext {
     if (!this.ctx) {
       const AC: typeof AudioContext | undefined = (globalThis as any).AudioContext ?? (globalThis as any).webkitAudioContext;
-      if (!AC) return;
-      try { this.ctx = new AC(); } catch { return; }
+      if (!AC) throw new Error('WebAudio unavailable');
+      this.ctx = new AC();
       this.build();
     }
-    if (this.ctx.state === 'suspended') void this.ctx.resume();
+    return this.ctx;
+  }
+
+  /** Create / resume the context. Call from a user gesture. */
+  unlock() {
+    try { this.ensureContext(); } catch { return; }
+    if (this.ctx!.state === 'suspended') void this.ctx!.resume();
   }
 
   setMuted(m: boolean) {
     this.muted = m;
-    try { localStorage.setItem(KEY, m ? '1' : '0'); } catch { /* session only */ }
+    try { safeKV.setItem(KEY, m ? '1' : '0'); } catch { /* session only */ }
     if (this.ctx) this.master.gain.setTargetAtTime(m ? 0 : 0.8, this.ctx.currentTime, 0.05);
   }
 

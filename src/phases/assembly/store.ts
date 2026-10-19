@@ -7,6 +7,7 @@
 import { telemetry, type PlacedPart, type Telemetry } from './model/vehicle';
 import { PART, type Salt } from './model/catalog';
 import type { ZombieId } from '@/payload/zombies';
+import { safeKV } from '@/core/safeStorage';
 
 const KEY = 'rocketscience.factory.v2';
 const MAX_HISTORY = 80;
@@ -153,12 +154,12 @@ export class VehicleStore {
   }
 
   private save() {
-    try { localStorage.setItem(KEY, JSON.stringify(this.parts)); } catch { /* storage unavailable */ }
+    try { safeKV.setItem(KEY, JSON.stringify(this.parts)); } catch { /* storage unavailable */ }
   }
 
   private load() {
     try {
-      const raw = localStorage.getItem(KEY);
+      const raw = safeKV.getItem(KEY);
       if (raw) this.parts = (JSON.parse(raw) as PlacedPart[]).filter((p) => PART[p.defId]);
     } catch { this.parts = []; }
     this.telemetry = telemetry(this.parts);
