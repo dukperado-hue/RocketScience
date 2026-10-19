@@ -60,7 +60,8 @@ const SITE_STATE = new Map<string, { terrain: Heightfield; wrecks: Wreck[]; mark
 import type { Weather } from '@/vfx/environment';
 import './launch.css';
 import { safeKV } from '@/core/safeStorage';
-import { quickRetry } from '@/game/retrySession';
+import { quickRetry, rememberLaunchChoice } from '@/game/retrySession';
+import { siteFromChoice, type LaunchChoice } from '@/game/launchChoice';
 import { mountRetryButton } from '@/ui/softLaunchUI';
 
 const WARPS = [1, 2, 4, 10] as const;
@@ -324,6 +325,7 @@ export class LaunchPhase implements Phase {
     // rockets (not lanterns) go to the Bang Fai grounds once the campaign allows it
     this.atYasothon = this.lowTier() && !this.parts.some((q) => PART[q.defId].envelope) && campaign.rangeUnlocked('yasothon');
     if (!campaign.rangeUnlocked(this.rangeId)) this.rangeId = 'phangan';
+    if (p?.site) this.applyChoice(p.site);
     this.view = new LaunchView(this.q('.sky-canvas'));
     this.map = new MapView(this.q('.map-canvas'));
     this.radar = new RadarView(this.q('.radar-canvas'));
@@ -337,6 +339,23 @@ export class LaunchPhase implements Phase {
       try { this.tick(now); } catch (e) { if (!warned) { warned = true; console.error('[RocketScience] frame error (game keeps running)', e); } }
     };
     this.raf = requestAnimationFrame(loop);
+  }
+
+  /** The launch screen's current choices (remembered at ignition for Quick Retry) */
+  private choice(): LaunchChoice {
+    return {
+      siteId: this.siteId, rail: this.site.rail, railAngleDeg: this.site.railAngleDeg, wind: this.site.wind,
+      atYasothon: this.atYasothon, lanternSiteId: this.lanternSite.id, windFrom: this.windFrom, permitted: this.permitted,
+    };
+  }
+
+  /** Restore a remembered choice (Quick Retry). Anything no longer valid falls back to the default. */
+  private applyChoice(c: LaunchChoice) {
+    const s = siteFromChoice(c);
+    this.siteId = s.id; this.site = s.site;
+    this.atYasothon = c.atYasothon && this.atYasothon;
+    this.lanternSite = LANTERN_SITES.find((x) => x.id === c.lanternSiteId) ?? this.lanternSite;
+    this.windFrom = c.windFrom; this.permitted = c.permitted;
   }
 
   exit() {
@@ -1335,6 +1354,7 @@ export class LaunchPhase implements Phase {
   private startCountdown() {
     if (!this.parts.length) return;
     this.countdown = { start: performance.now(), said: -1 };
+    rememberLaunchChoice(this.choice());
     this.q('.hud-site').hidden = true;
     this.capcom.say('lee', 'All stations, final poll. We are go for launch.', 4);
   }

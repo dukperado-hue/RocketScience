@@ -1,6 +1,7 @@
 /** Tiny typed pub/sub so phases never import each other directly. */
 import type { LawEvent } from '@/law/SpaceLawEngine';
 import type { GradeId } from '@/chemistry/mixingBench';
+import type { LaunchChoice } from '@/game/launchChoice';
 import type { PlacedPart, Telemetry } from '@/phases/assembly/model/vehicle';
 
 export interface GameEvents {
@@ -16,7 +17,11 @@ export interface GameEvents {
 }
 
 /** What the factory hands to the launch phase */
-export interface LaunchPayload { parts: PlacedPart[]; telemetry: Telemetry; bench: { crafted: Partial<Record<GradeId, number>> } }
+export interface LaunchPayload {
+  parts: PlacedPart[]; telemetry: Telemetry; bench: { crafted: Partial<Record<GradeId, number>> };
+  /** Set by Quick Retry: the site the player had chosen (the Factory never sets it) */
+  site?: LaunchChoice;
+}
 
 export type PhaseId = 'assembly' | 'launch' | 'orbit' | 'mission';
 
