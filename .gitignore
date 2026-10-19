@@ -3,3 +3,6 @@ dist
 public/models/**/*.glb
 public/draco
 public/basis
+dist-playtest
+playtest/runs/*
+!playtest/runs/.gitkeep
