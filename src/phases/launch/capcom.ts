@@ -126,7 +126,7 @@ export function portrait(who: CrewId, face: Face = 'neutral'): string {
   return c.img;
 }
 
-export interface Line { who: CrewId; text: string; priority: number; at?: number; face?: Face;
+export interface Line { who: CrewId; text: string; priority: number; at?: number; /** flight time (s) when the event happened */ simAt?: number; face?: Face;
   /** Zombie Control: what the gibberish in `text` means, shown under it in brackets */
   translation?: string }
 
@@ -189,8 +189,20 @@ const LIMB_LINES = [
   'The {limb} has left the vehicle. Somebody tell the {limb}.',
 ];
 
+/**
+ * A line is only worth saying while it is still true: older than this (in FLIGHT seconds, so time-warp
+ * counts) it is dropped. Urgent lines (priority >= 3: alerts, failures, impact) skip the pacing gap.
+ */
+export const CAPCOM_STALE_S = 1;
+const GAP_MS = 900, GAP_URGENT_MS = 400;
+
 export class Capcom {
   private queue: Line[] = [];
+  /** Flight time now (s); LaunchPhase sets it after each physics batch so new lines are stamped with when they happened */
+  private simNow = 0;
+  /** Wall clock; replaceable in tests */
+  clock: () => number = () => performance.now();
+  setSim(t: number) { this.simNow = t; }
   private lastAt = -1e9;
   private seed = 1;
   /** Zombie Control has the microphone: every line is grunted, with the meaning as a translation */
@@ -206,8 +218,8 @@ export class Capcom {
 
   /** `own`: the speaker keeps their own voice even while Zombie Control holds the microphone */
   say(who: CrewId, text: string, priority = 1, face: Face = 'neutral', own = false) {
-    if (who === 'zombie' || (this.zombieControl && !own)) { this.queue.push({ who: 'zombie', text: zombify(text), translation: text, priority, at: performance.now(), face }); }
-    else this.queue.push({ who, text, priority, at: performance.now(), face });
+    if (who === 'zombie' || (this.zombieControl && !own)) { this.queue.push({ who: 'zombie', text: zombify(text), translation: text, priority, at: this.clock(), simAt: this.simNow, face }); }
+    else this.queue.push({ who, text, priority, at: this.clock(), simAt: this.simNow, face });
     this.queue.sort((a, b) => b.priority - a.priority);
     if (this.queue.length > 4) this.queue.length = 4;
   }
@@ -236,12 +248,14 @@ export class Capcom {
   }
 
   /** Call every frame with real time (ms); speaks the next queued line when it is due */
-  tick(now: number) {
-    // stale news is no news: drop chatter older than 6 s (alerts 12 s)
-    this.queue = this.queue.filter((l) => now - (l.at ?? now) < (l.priority >= 3 ? 12_000 : 6000));
+  tick(now: number, simT?: number) {
+    if (simT !== undefined) this.simNow = simT;
+    // stale news is no news: a line older than a second of flight time no longer matches the HUD, so it is dropped
+    // (real-time limits stay for a paused or pre-launch screen where the flight clock does not move)
+    this.queue = this.queue.filter((l) => this.simNow - (l.simAt ?? this.simNow) <= CAPCOM_STALE_S && now - (l.at ?? now) < (l.priority >= 3 ? 12_000 : 6000));
     if (!this.queue.length) return;
-    const urgent = this.queue[0].priority >= 4;
-    if (now - this.lastAt < (urgent ? 900 : 2400)) return;
+    const urgent = this.queue[0].priority >= 3;
+    if (now - this.lastAt < (urgent ? GAP_URGENT_MS : GAP_MS)) return;
     const line = this.queue.shift()!;
     this.lastAt = now;
     this.onSay(line);

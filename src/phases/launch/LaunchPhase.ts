@@ -813,7 +813,7 @@ export class LaunchPhase implements Phase {
       if (on && f.eva.wantsThrust && this.warp > PHYS_WARP_CAP) this.setWarp(1);
     }
     this.tickCountdown(now);
-    this.capcom.tick(now);
+    this.capcom.tick(now, this.flight.t);
 
     // J1: hit-stop (0) and slow motion (0.25) scale everything that moves in the scene
     const ts = FEATURES.timeFx ? this.director.timeScale(now) : 1;
@@ -842,6 +842,7 @@ export class LaunchPhase implements Phase {
       // Lighting an engine at high warp drops back to 1× (like any sane flight computer)
       if (this.warp > PHYS_WARP_CAP && !rails && f.vehicle.thrust > 0) this.setWarp(1);
     }
+    this.capcom.setSim(f.t);       // lines raised from this batch of steps are stamped with when they happened
     // Particles get the new effects and age with the same warped time
     if (f.fxQueue.length) { this.view.particles.wind = f.site.wind; for (const fx0 of f.fxQueue.splice(0)) {
       // effects come in Earth-centred coordinates; the view works in the flat local frame
@@ -986,7 +987,7 @@ export class LaunchPhase implements Phase {
       const chute = v.items.some((it) => it.chute && (it.chute.state === 'open' || it.chute.state === 'opening' || (it.chute.state === 'packed' && f.controls.autoChute)));
       if (est.soon && est.vImpact > 20 && -v.vUp > 15 && !chute && !this.warpDropped) {
         this.warpDropped = true; this.setWarp(1);
-        this.logLine({ t: f.t, kind: 'info', text: `Impact in ~${est.tSim.toFixed(1)} s — time warp off so you can watch.` });
+        this.logLine({ t: f.t, kind: 'info', text: `Coming down fast — ${Math.round(Math.max(0, v.lowestAlt()))} m up, falling ${Math.round(-v.vUp)} m/s. Time warp off so you can watch.` });
       }
     }
     if (v.vUp > 5) this.warpDropped = false;
