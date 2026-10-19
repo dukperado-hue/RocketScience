@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RocketScience — From Wan Hu’s Chair to Outer Space</title>
+    <meta name="description" content="A historical, physics-grounded space exploration game: from Bang Fai to Voyager." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Sarabun:wght@400;600&family=Chakra+Petch:wght@400;600;700&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo" aria-hidden="true">▲</span>
+        <div>
+          <h1>RocketScience</h1>
+          <p>From Wan Hu’s Chair to Outer Space</p>
+        </div>
+      </div>
+      <nav class="phases" aria-label="Game phases">
+        <button type="button" data-goto="assembly">Factory</button>
+        <button type="button" data-goto="launch">Launch</button>
+        <button type="button" data-goto="orbit">Orbit</button>
+        <button type="button" data-goto="mission">Missions</button>
+      </nav>
+    </header>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

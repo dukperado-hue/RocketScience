@@ -1,0 +1,75 @@
+/* Missions tab — campaign timeline (v0.18) */
+[data-phase='mission'] { overflow: auto; background: #f5f7fa; }
+.ms-page { max-width: 880px; margin: 0 auto; padding: 28px 20px 40px; font-family: var(--font); color: var(--text); }
+.ms-page small { font-family: Sarabun, var(--font); }
+.ms-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+.ms-kicker { margin: 0; font-size: 12px; font-weight: 650; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.ms-head h2 { margin: 2px 0 4px; font-size: 28px; letter-spacing: -0.01em; }
+.ms-head h2 small { font-size: 16px; font-weight: 500; color: var(--muted); margin-left: 6px; }
+.ms-sub { margin: 0; color: #39404d; font-size: 14px; max-width: 56ch; }
+.ms-tools { display: flex; align-items: center; gap: 12px; }
+.ms-seg { display: inline-flex; padding: 3px; border-radius: 10px; background: #e7ebf1; }
+.ms-seg button { font: inherit; font-size: 13px; font-weight: 600; border: 0; background: transparent; padding: 6px 14px; border-radius: 8px; cursor: pointer; color: #39404d; }
+.ms-seg button[aria-checked='true'] { background: #fff; color: var(--text); box-shadow: 0 1px 3px rgba(16, 24, 40, 0.15); }
+.ms-link { font: inherit; font-size: 13px; font-weight: 600; border: 0; background: none; color: var(--accent); cursor: pointer; padding: 6px 2px; }
+.ms-link.danger { color: var(--muted); font-weight: 500; }
+.ms-link.danger:hover { color: var(--bad); }
+.ms-meter { height: 6px; border-radius: 99px; background: #e2e7ee; margin: 18px 0 8px; overflow: hidden; }
+.ms-meter i { display: block; height: 100%; background: var(--good); border-radius: inherit; transition: width 0.4s ease; }
+
+.ms-timeline { list-style: none; margin: 18px 0 0; padding: 0; position: relative; }
+.ms-timeline::before { content: ''; position: absolute; left: 17px; top: 18px; bottom: 18px; width: 2px; background: #d6dce5; }
+.ms-timeline.is-sandbox { opacity: 0.72; }
+.ms-item { position: relative; padding-left: 54px; margin-bottom: 16px; }
+.ms-dot { position: absolute; left: 0; top: 14px; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; font-size: 13px; font-weight: 700; background: #fff; border: 2px solid #c7cfda; color: #39404d; z-index: 1; }
+.ms-item.done .ms-dot { background: var(--good); border-color: var(--good); color: #fff; }
+.ms-item.available .ms-dot { background: var(--accent); border-color: var(--accent); color: #fff; box-shadow: 0 0 0 5px rgba(31, 95, 209, 0.15); }
+.ms-item.locked .ms-dot { font-size: 14px; }
+
+.ms-card { background: #fff; border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px; box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04); }
+.ms-item.available .ms-card { border-color: #b9cdf3; box-shadow: 0 6px 24px rgba(31, 95, 209, 0.08); }
+.ms-item.locked .ms-card { background: #fafbfc; }
+.ms-card header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.ms-code { margin: 0; font: 600 11.5px/1 var(--mono); letter-spacing: 0.06em; color: var(--muted); text-transform: uppercase; }
+.ms-pill { font-size: 11.5px; font-weight: 650; padding: 3px 9px; border-radius: 99px; white-space: nowrap; }
+.ms-pill.done { background: #e6f5ec; color: #16794a; }
+.ms-pill.available { background: #e8f0fe; color: #1a4fb0; }
+.ms-pill.locked { background: #eef1f5; color: var(--muted); }
+.ms-card h3 { margin: 8px 0 6px; font-size: 19px; line-height: 1.25; }
+.ms-card h3 small { display: block; font-size: 14px; font-weight: 500; color: var(--muted); margin-top: 2px; }
+.ms-item.locked h3 { color: #6b7380; }
+.ms-brief { margin: 0 0 12px; color: #2b3240; font-size: 14px; line-height: 1.5; max-width: 70ch; }
+.ms-brief small, .ms-reward small, .ms-obj small, .ms-hint small { display: block; color: var(--muted); font-size: 13px; margin-top: 2px; }
+.ms-cols { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; }
+.ms-cols h4 { margin: 0 0 6px; font-size: 11.5px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+.ms-cols h4 small { text-transform: none; letter-spacing: 0; font-weight: 500; }
+.ms-obj { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.ms-obj li { display: flex; gap: 8px; font-size: 13.5px; line-height: 1.4; }
+.ms-obj li > span { flex: none; width: 18px; color: #9aa3b1; font-weight: 700; }
+.ms-obj li.ok > span { color: var(--good); }
+.ms-reward { margin: 0; font-size: 13.5px; line-height: 1.45; padding: 8px 10px; border-radius: 8px; background: #f6f8fb; border: 1px dashed #d3dae4; }
+.ms-hint { margin: 12px 0 0; padding: 8px 10px; border-radius: 8px; background: #fff8e6; border: 1px solid #f2dfae; font-size: 13px; color: #5c4510; line-height: 1.45; }
+.ms-hint b { margin-right: 4px; }
+.ms-hint small { color: #7a6224; }
+.ms-actions { display: flex; gap: 10px; margin-top: 12px; }
+.ms-actions:empty { display: none; }
+.ms-btn { font: inherit; font-size: 13.5px; font-weight: 650; display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 9px; border: 1px solid var(--accent); background: var(--accent); color: #fff; cursor: pointer; }
+.ms-btn.ghost { background: #fff; color: var(--text); border-color: var(--border); }
+.ms-btn img { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; }
+.ms-btn:hover { filter: brightness(0.97); }
+.ms-foot { margin-top: 20px; text-align: center; }
+
+@media (max-width: 640px) {
+  .ms-page { padding: 18px 16px 32px; }
+  .ms-head h2 { font-size: 24px; }
+  .ms-cols { grid-template-columns: 1fr; }
+  .ms-item { padding-left: 46px; }
+  .ms-dot { width: 30px; height: 30px; }
+  .ms-timeline::before { left: 14px; }
+}
+
+/* Early Access: missions held back for the Space Age Update */
+.ms-item.soon .ms-dot { font-size: 14px; background: #f1edff; border-color: #c9bdf6; }
+.ms-item.soon .ms-card { background: repeating-linear-gradient(135deg, #fbfaff 0 12px, #f6f3ff 12px 24px); border-style: dashed; border-color: #cfc4f4; }
+.ms-item.soon h3 { color: #5b4bb0; }
+.ms-pill.soon { background: #ece6ff; color: #5b3fd0; }

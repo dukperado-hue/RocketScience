@@ -1,0 +1,61 @@
+:root {
+  /* Clean white theme */
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #f5f7fa;
+  --border: #e4e8ee;
+  --text: #161b24;
+  --muted: #667085;
+  --ink: #8a94a6;
+  --accent: #1f5fd1;
+  --good: #1f9d5a;
+  --warn: #b7791f;
+  --bad: #d93644;
+  --font: Inter, Sarabun, system-ui, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, monospace;
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--bg); color: var(--text); font-family: var(--font);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+body.dragging, body.dragging * { cursor: grabbing !important; user-select: none; }
+button { font: inherit; color: inherit; }
+
+/* ---------- Top bar ---------- */
+.topbar {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--surface);
+}
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand h1 { font-size: 17px; margin: 0; letter-spacing: 0.02em; }
+.brand p { margin: 0; font-size: 12px; color: var(--muted); }
+.logo { color: #f08c2e; font-size: 22px; }
+.phases { display: flex; gap: 4px; flex-wrap: wrap; }
+.phases button {
+  background: transparent; border: 1px solid var(--border); border-radius: 8px;
+  padding: 6px 12px; font-size: 13px; cursor: pointer; color: var(--muted);
+}
+.phases button[aria-current='true'] { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+
+#app { flex: 1; min-height: 0; }
+
+.muted { color: var(--muted); }
+.primary, .ghost { border-radius: 10px; padding: 10px 14px; cursor: pointer; font-weight: 600; font-size: 13px; }
+.primary { background: var(--accent); color: #fff; border: none; }
+.ghost { background: transparent; border: 1px solid var(--border); }
+.ghost:hover { border-color: var(--accent); }
+
+/* ---------- Other phases ---------- */
+.stub { max-width: 560px; margin: 60px auto; padding: 24px; text-align: center; }
+.three-wrap { position: relative; width: 100%; height: 100%; }
+.three-wrap canvas { display: block; }
+.overlay { position: absolute; top: 12px; left: 16px; margin: 0; font-size: 12px; }
+
+/* ---------- Narrow screens ---------- */
+@media (max-width: 860px) {
+  .topbar { flex-direction: column; align-items: flex-start; }
+}

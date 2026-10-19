@@ -1,0 +1,291 @@
+/* Phase 2 — Launch & Flight. Full-bleed sky canvas; light HUD cards float on it. */
+.flight-view {
+  --l-card: rgba(255, 255, 255, 0.94);
+  --l-rule: #e3e7ec;
+  --l-ink: #161b24;
+  --l-muted: #667085;
+  --l-blue: #1f5fd1;
+  --l-fire: #f08c2e;
+  --l-good: #1f9d5a;
+  --l-warn: #b7791f;
+  --l-bad: #d93644;
+  --l-slime: #4f9a2a;
+  position: relative; height: 100%; overflow: hidden;
+  font: 13px/1.4 'Inter', 'Sarabun', system-ui, sans-serif; color: var(--l-ink);
+  font-variant-numeric: tabular-nums;
+  background: #cfe4ff;
+}
+.flight-view [hidden] { display: none !important; }
+.flight-view button { font: inherit; color: inherit; cursor: pointer; }
+.flight-view :focus-visible { outline: 2px solid var(--l-blue); outline-offset: 2px; }
+.sky-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+
+.hud-card {
+  position: absolute; background: var(--l-card); border: 1px solid var(--l-rule); border-radius: 12px;
+  box-shadow: 0 6px 24px rgba(16, 24, 40, 0.12); padding: 10px 12px;
+  backdrop-filter: blur(6px);
+}
+.hud-card h3 { margin: 0 0 6px; font-size: 12px; font-weight: 650; color: var(--l-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+
+/* Flight data */
+.hud-flight { top: 12px; left: 12px; width: 236px; }
+.hud-flight header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 14px; }
+.pill { font-size: 11px; padding: 2px 8px; border-radius: 99px; background: #eef1f5; color: var(--l-muted); font-weight: 600; }
+.pill.live { background: #fff1e4; color: #b4560c; }
+.pill.good { background: #e6f6ed; color: var(--l-good); }
+.pill.bad { background: #fde8ea; color: var(--l-bad); }
+.hud-flight dl { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; margin: 0; }
+.hud-flight dl div { display: flex; flex-direction: column; }
+.hud-flight dt { font-size: 11px; color: var(--l-muted); }
+.hud-flight dd { margin: 0; font-size: 17px; font-weight: 700; letter-spacing: -0.01em; }
+.hud-sas { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--l-rule); font-size: 11.5px; color: var(--l-muted); }
+
+/* Zombie */
+.hud-zombie { top: 262px; left: 12px; width: 236px; display: flex; gap: 10px; align-items: center; }
+.z-frame { position: relative; width: 84px; height: 91px; flex: none; border-radius: 12px; border: 2.5px solid #1b2230; background: #eef6e6; overflow: hidden; transition: background 0.3s; }
+.z-frame[data-mood='zero-g'] { background: #e7ecff; }
+.z-frame[data-mood='high-g'] { background: #fff1d6; }
+.z-frame[data-mood='spinning'] { background: #eaf8d9; }
+.z-frame[data-mood='reentry'] { background: #ffd9c2; }
+.z-frame[data-mood='pieces'] { background: #f2f2f2; }
+.z-portrait, .z-art { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.z-info { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.z-info small { color: var(--l-muted); font-size: 11.5px; line-height: 1.3; }
+.z-info small.warn { color: var(--l-warn); }
+.z-info small.bad { color: var(--l-bad); }
+.g-read { display: flex; align-items: baseline; gap: 4px; margin-top: 2px; }
+.g-read span { font-size: 11px; color: var(--l-muted); }
+.g-read b { font-size: 22px; font-weight: 750; }
+.g-read b.warn { color: var(--l-warn); }
+.g-read b.bad { color: var(--l-bad); }
+.g-bar { position: relative; height: 6px; border-radius: 3px; background: #eef1f5; }
+.g-bar i { position: absolute; inset: 0 auto 0 0; border-radius: 3px; background: var(--l-good); transition: width 0.1s; }
+.g-bar i.warn { background: #e0a100; }
+.g-bar i.bad { background: var(--l-bad); }
+.g-bar em { position: absolute; top: -3px; width: 2px; height: 12px; background: #1b2230; }
+
+/* CAPCOM */
+.hud-capcom { left: 12px; bottom: 72px; width: 400px; display: flex; gap: 10px; align-items: flex-start; }
+.hud-capcom.pop { animation: cc-pop 0.25s ease-out; }
+@keyframes cc-pop { from { transform: translateY(6px); opacity: 0.6; } }
+.cc-avatar { position: relative; width: 52px; height: 52px; border-radius: 50%; border: 2.5px solid #1b2230; flex: none; overflow: hidden; display: grid; place-items: center; color: #fff; font-weight: 800; font-size: 18px; background: #8a5a3c; }
+.cc-avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #fff; }
+.cc-body { min-width: 0; }
+.cc-name { font-size: 13px; }
+.cc-role { margin-left: 6px; color: var(--l-muted); font-size: 11px; }
+.cc-text { margin: 2px 0 0; font-size: 13.5px; line-height: 1.35; min-height: 2.7em; }
+.cc-body:empty::after { content: ''; }
+
+/* Countdown */
+.countdown { position: absolute; left: 50%; top: 38%; transform: translate(-50%, -50%); font: 900 96px/1 'Chakra Petch', 'Inter', sans-serif; color: #fff;
+  -webkit-text-stroke: 5px #1b2230; paint-order: stroke fill; text-shadow: 0 6px 0 rgba(27,34,48,0.35); pointer-events: none; animation: cd-pop 0.9s ease-out both; }
+.countdown.n3 { color: #ff8a1f; font-size: 120px; }
+@keyframes cd-pop { 0% { transform: translate(-50%, -50%) scale(1.6); opacity: 0; } 25% { transform: translate(-50%, -50%) scale(1); opacity: 1; } 100% { opacity: 0.85; } }
+
+/* Throttle */
+.thr { display: flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 650; color: var(--l-muted); padding: 0 4px; }
+.thr input { width: 84px; accent-color: var(--l-fire); }
+.hud-bar small { font-weight: 500; color: var(--l-muted); }
+.hud-flight dd.warn { color: var(--l-warn); }
+.hud-flight dd.bad { color: var(--l-bad); }
+.hud-log li.capcom { border-left-color: #8a5a3c; background: #fbf6f1; }
+
+/* Launch site (before ignition) */
+.hud-site { top: 12px; left: 50%; transform: translateX(-50%); width: 340px; }
+.seg { display: flex; gap: 4px; margin-bottom: 8px; }
+.seg button { flex: 1; padding: 6px 4px; border: 1px solid var(--l-rule); border-radius: 8px; background: #fff; font-size: 12px; }
+.seg button[aria-checked='true'] { background: #e8f0fd; border-color: var(--l-blue); color: var(--l-blue); font-weight: 650; }
+.slider { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 2px 8px; font-size: 12px; color: var(--l-muted); margin-top: 4px; }
+.slider input { grid-column: 1 / -1; width: 100%; accent-color: var(--l-blue); }
+.slider output { color: var(--l-ink); font-weight: 650; }
+
+/* Flight log */
+.hud-log { top: 12px; right: 12px; width: 300px; max-height: calc(100% - 100px); display: flex; flex-direction: column; }
+.hud-log ol { list-style: none; margin: 0; padding: 0; overflow: auto; display: flex; flex-direction: column; gap: 4px; }
+.hud-log li { display: grid; grid-template-columns: 52px 1fr; gap: 6px; font-size: 12px; padding: 4px 6px; border-radius: 6px; border-left: 3px solid #d5dbe3; background: #fafbfc; animation: log-in 0.25s ease-out; }
+.hud-log li time { color: var(--l-muted); font-size: 11px; }
+.hud-log li.zombie { border-left-color: var(--l-slime); background: #f1f9ea; }
+.hud-log li.bad { border-left-color: var(--l-bad); background: #fdf1f2; }
+.hud-log li.warn { border-left-color: #e0a100; background: #fdf8ec; }
+.hud-log li.good { border-left-color: var(--l-good); background: #eef8f2; }
+@keyframes log-in { from { opacity: 0; transform: translateY(-4px); } }
+
+/* Control bar */
+.hud-bar {
+  position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 4px; padding: 6px; max-width: calc(100% - 24px); overflow-x: auto;
+  background: var(--l-card); border: 1px solid var(--l-rule); border-radius: 14px; box-shadow: 0 6px 24px rgba(16, 24, 40, 0.14);
+}
+.hud-bar button { min-width: 36px; height: 36px; padding: 0 10px; border: 1px solid var(--l-rule); border-radius: 9px; background: #fff; font-weight: 600; white-space: nowrap; user-select: none; -webkit-user-select: none; touch-action: none; }
+.hud-bar button:hover:not(:disabled) { border-color: var(--l-blue); }
+.hud-bar button:disabled { opacity: 0.45; cursor: default; }
+.hud-bar .btn-go { background: var(--l-fire); border-color: #d9741a; color: #fff; min-width: 110px; letter-spacing: 0.03em; }
+.hud-bar [aria-pressed='true'], .warp [aria-checked='true'] { background: #e8f0fd; border-color: var(--l-blue); color: var(--l-blue); }
+.hud-bar .sep { width: 1px; height: 24px; background: var(--l-rule); margin: 0 4px; flex: none; }
+.bar-read { min-width: 52px; text-align: center; font-weight: 650; font-size: 12px; color: var(--l-muted); }
+.warp { display: flex; gap: 2px; }
+
+/* Summary */
+.hud-summary { top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(420px, calc(100% - 24px)); padding: 18px 20px; text-align: center; }
+.hud-summary h2 { margin: 0 0 6px; font-size: 22px; }
+.hud-summary p { margin: 0 0 12px; color: var(--l-muted); }
+.hud-summary dl { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; margin: 0 0 14px; text-align: left; }
+.hud-summary dt { font-size: 11px; color: var(--l-muted); }
+.hud-summary dd { margin: 0; font-weight: 700; font-size: 15px; }
+.sum-actions { display: flex; gap: 8px; justify-content: center; }
+
+/* Phones: cards shrink, log goes above the bar */
+@media (max-width: 760px) {
+  .hud-flight { width: calc(50% - 18px); padding: 8px; }
+  .hud-flight dd { font-size: 14px; }
+  .hud-zombie { top: 12px; left: auto; right: 12px; width: calc(50% - 18px); padding: 8px; }
+  .z-frame { width: 54px; height: 59px; }
+  .hud-zombie { gap: 6px; }
+  .z-info b { font-size: 12px; }
+  .z-info small { font-size: 10.5px; }
+  .g-read b { font-size: 18px; }
+  .hud-site { top: auto; bottom: 64px; width: calc(100% - 24px); }
+  .hud-log { display: none; }
+  .hud-capcom { left: 8px; right: 8px; width: auto; bottom: 64px; }
+  .countdown { font-size: 64px; }
+  .countdown.n3 { font-size: 72px; }
+  .hud-bar { bottom: 8px; left: 8px; right: 8px; transform: none; max-width: none; }
+}
+
+/* Orbital map (Phase 3) */
+.map-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; background: #060a17; }
+.hud-orbit { top: 390px; left: 12px; width: 236px; }
+.hud-orbit h3 { display: flex; justify-content: space-between; align-items: center; }
+.hud-orbit dl { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; margin: 0; }
+.hud-orbit dl div { display: flex; flex-direction: column; }
+.hud-orbit dt { font-size: 11px; color: var(--l-muted); }
+.hud-orbit dd { margin: 0; font-size: 16px; font-weight: 700; }
+.hud-orbit dd.good { color: var(--l-good); }
+.hud-orbit dd.warn { color: var(--l-warn); }
+.flight-view.in-map .hud-site { display: none; }
+.hud-bar [data-act='map'][aria-pressed='true'] { background: #1b2230; color: #fff; }
+.hud-log li.milestone { border-left-color: #d8a83a; background: #fff8e6; font-weight: 600; }
+@media (max-height: 640px) { .hud-orbit { top: auto; bottom: 72px; } }
+
+/* Gate B/assist/node (v0.11) */
+.hud-assist { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); max-width: min(560px, calc(100% - 600px)); padding: 7px 14px; border-radius: 99px; font-size: 12.5px; font-weight: 650; background: #fdf8ec; color: #8a5a00; border: 1px solid #f0d9a6; box-shadow: 0 6px 24px rgba(16,24,40,0.12); text-align: center; }
+@media (max-width: 1100px) { .hud-assist { top: auto; bottom: 72px; max-width: calc(100% - 32px); } }
+.hud-assist.good { background: #e6f6ed; color: var(--l-good); }
+.hud-bar [data-act='assist'][aria-pressed='true'] { background: #e6f6ed; border-color: #9fd8b6; }
+.hud-node { right: 12px; bottom: 72px; width: 300px; }
+.hud-node h3 small { text-transform: none; letter-spacing: 0; font-weight: 500; margin-left: 4px; }
+.hud-node .seg { display: flex; gap: 4px; margin-bottom: 6px; }
+.hud-node .seg button { flex: 1; padding: 4px 6px; border: 1px solid var(--l-rule); border-radius: 8px; background: #fff; font-size: 12px; }
+.hud-node .seg button[aria-checked='true'] { background: #ffe6f6; border-color: #ff7ad9; font-weight: 650; }
+.hud-node .node-btns { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
+.hud-node .node-btns button { padding: 3px 8px; border: 1px solid var(--l-rule); border-radius: 8px; background: #fff; font-size: 12px; }
+.hud-node dl { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; margin: 0; }
+.hud-node dl div { display: flex; flex-direction: column; }
+.hud-node dt { font-size: 11px; color: var(--l-muted); }
+.hud-node dd { margin: 0; font-size: 15px; font-weight: 700; }
+.hud-node dd.good { color: var(--l-good); } .hud-node dd.warn { color: var(--l-warn); } .hud-node dd.bad { color: var(--l-bad); }
+.hud-node .slider input { width: 100%; accent-color: #ff7ad9; }
+.flight-view.in-map .hud-log { max-height: calc(100% - 440px); min-height: 120px; }
+
+/* Zombie art variants: one drawn zombie, three builds */
+.z-frame[data-zombie='fat'] .z-art { transform: scaleX(1.18); }
+.z-frame[data-zombie='brittle'] .z-art { transform: scaleX(0.86); filter: sepia(0.35) saturate(0.8) brightness(1.04); }
+.hud-capcom[data-face='happy'] .cc-avatar { box-shadow: 0 0 0 3px #ffe08a; }
+.hud-capcom[data-face='sad'] .cc-avatar { filter: saturate(0.85); }
+.hud-capcom[data-face='serious'] .cc-avatar { box-shadow: 0 0 0 3px #f2b8b5; }
+.hud-capcom[data-face='dizzy'] .cc-avatar { animation: cc-wobble 0.6s ease-in-out 2; }
+.hud-capcom[data-face='angry'] .cc-avatar { box-shadow: 0 0 0 3px #ff8a80; }
+@keyframes cc-wobble { 25% { transform: rotate(-8deg); } 75% { transform: rotate(8deg); } }
+@media (prefers-reduced-motion: reduce) { .hud-capcom .cc-avatar { animation: none !important; } }
+
+/* Orbital map layer: WebGL globe (or 2D fallback) under the HUD cards */
+.map-layer { position: absolute; inset: 0; background: #03050d; }
+.map-layer canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+.map-layer .map-gl { cursor: grab; }
+.map-layer .map-gl:active { cursor: grabbing; }
+/* labels follow 3D points but never catch the pointer — drags go straight to the globe */
+.map-labels { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.map-tag { position: absolute; left: 0; top: 0; padding: 2px 8px; border-radius: 6px; font: 600 12px/1.4 'Inter', system-ui, sans-serif; color: #1b2230; background: rgba(255,255,255,0.92); border: 1.5px solid #9fe6ff; white-space: nowrap; will-change: transform; }
+.map-tag.ap { border-color: #ffe08a; }
+.map-tag.warn { border-color: #ff9a3c; }
+.map-tag.bad { border-color: #ff5a3c; color: #b42318; }
+.map-tag.node { border-color: #ff7ad9; }
+.map-tag.ship { background: rgba(11,18,38,0.78); color: #e6f6ff; border-color: rgba(159,230,255,0.6); font-weight: 500; }
+.map-tools { position: absolute; top: 12px; left: 260px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; max-width: calc(100% - 600px); pointer-events: none; }
+.map-tools > * { pointer-events: auto; }
+.map-tools .seg { display: inline-flex; background: rgba(255,255,255,0.94); border: 1px solid var(--l-rule); border-radius: 10px; overflow: hidden; }
+.map-tools .seg button, .map-tools > button { border: 0; background: transparent; padding: 6px 12px; font-weight: 600; font-size: 12.5px; }
+.map-tools > button { background: rgba(255,255,255,0.94); border: 1px solid var(--l-rule); border-radius: 10px; }
+.map-tools button[aria-pressed='true'] { background: #1b2230; color: #fff; }
+.map-tools button:disabled { opacity: 0.4; cursor: not-allowed; }
+.map-tools .map-hint { color: rgba(230,240,255,0.75); font-size: 11.5px; pointer-events: none; }
+.flight-view.in-map .hud-assist { display: none; }
+@media (max-width: 1100px) { .map-tools { left: 12px; top: auto; bottom: 120px; max-width: calc(100% - 24px); } .map-tools .map-hint { display: none; } }
+
+.z-frame[data-mood='jarred'] { background: #e3f4fb; }
+
+/* Capybara palate cleanser: slime on the lens, over everything in the flight view */
+.rs-cleanser { position: absolute; inset: 0; z-index: 40; cursor: pointer; transition: opacity 0.3s; }
+.rs-cleanser canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.rs-cleanser.out { opacity: 0 !important; }
+.rs-cleanser .cl-skip { position: absolute; right: 16px; top: 12px; font-weight: 650; padding: 6px 14px; border-radius: 99px; border: 1px solid rgba(27,34,48,0.25); background: rgba(255,255,255,0.9); }
+
+/* Spacewalk card */
+.hud-eva { top: 12px; left: 50%; transform: translateX(-50%); width: 360px; }
+.flight-view.in-map .hud-eva { top: 60px; }
+.hud-eva h3 { display: flex; justify-content: space-between; align-items: center; }
+.hud-eva dl { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px 10px; margin: 6px 0 0; }
+.hud-eva dl div { display: flex; flex-direction: column; min-width: 0; }
+.hud-eva dt { font-size: 11px; color: var(--l-muted); }
+.hud-eva dd { margin: 0; font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hud-eva dd.warn { color: var(--l-warn); } .hud-eva dd.bad { color: var(--l-bad); }
+.eva-gas { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; font-size: 12px; font-weight: 600; }
+.eva-gas i { height: 8px; border-radius: 99px; background: #eef1f5; overflow: hidden; }
+.eva-gas b { display: block; height: 100%; background: linear-gradient(90deg, #e2483d, #ff8a7a); border-radius: 99px; transition: width 0.2s; }
+.hud-bar [data-act='eva'] { font-weight: 700; }
+.hud-bar [data-act='eva']:not(:disabled) { background: #fff1e4; border-color: #f2b27a; }
+@media (max-width: 1100px) { .hud-eva { width: calc(100% - 24px); } }
+.map-tag.eva { border-color: #7cff8a; background: rgba(11,18,38,0.78); color: #d8ffe0; }
+
+/* Tier 0–1 airspace */
+.law-site { display: grid; gap: 6px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--l-rule); font-size: 12px; }
+.law-site label { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.law-site select { font: inherit; padding: 3px 6px; border-radius: 6px; border: 1px solid var(--l-rule); max-width: 190px; }
+.range-pick { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 4px 8px; margin-top: 6px; font-size: 12px; }
+.range-pick select { font: inherit; padding: 3px 6px; border-radius: 6px; border: 1px solid var(--l-rule); }
+.range-pick small { grid-column: 1 / -1; color: var(--l-muted, #667085); font-size: 11px; }
+.range-pick[hidden] { display: none; }
+.law-site .chk { justify-content: flex-start; }
+.law-site small { color: var(--l-muted); line-height: 1.35; }
+.hud-radar { right: 12px; bottom: 72px; width: 320px; padding: 8px; background: rgba(7, 26, 43, 0.94); border-color: #1d3b55; color: #cfe8ff; }
+.hud-radar header { display: flex; justify-content: space-between; align-items: center; margin: 0 2px 6px; }
+.hud-radar h3 { color: #8fb8d8; margin: 0; }
+.radar-canvas { display: block; width: 100%; aspect-ratio: 1; border-radius: 8px; }
+.radar-foot { display: flex; justify-content: space-between; gap: 8px; font: 11px/1.4 'JetBrains Mono', monospace; color: #9fb3c8; margin: 6px 2px 0; }
+.radar-foot b { color: #ff8a80; }
+.flight-view:has(.hud-radar:not([hidden])) .hud-log { max-height: calc(100% - 520px); min-height: 140px; }
+.law-alert { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 6; width: min(620px, calc(100% - 560px)); min-width: 320px;
+  background: #b42318; color: #fff; border-radius: 12px; padding: 10px 14px; box-shadow: 0 10px 30px rgba(180,35,24,0.45); display: grid; gap: 3px; }
+.law-alert b { font-size: 13.5px; letter-spacing: 0.02em; }
+.law-alert span { font-size: 12.5px; }
+.law-alert small { font-size: 11px; opacity: 0.8; }
+.law-alert.pop { animation: law-pop 0.5s ease-out; }
+@keyframes law-pop { 0% { transform: translate(-50%, -8px) scale(0.96); } 40% { transform: translate(-50%, 0) scale(1.03); } 100% { transform: translate(-50%, 0) scale(1); } }
+.hud-log li.law { border-left-color: #b42318; background: #fdecea; font-weight: 600; }
+@media (max-width: 1100px) { .hud-radar { width: 220px; } .law-alert { width: calc(100% - 24px); min-width: 0; } }
+@media (prefers-reduced-motion: reduce) { .law-alert.pop { animation: none; } }
+
+/* Zombie Control (v0.19): gibberish on top, translation underneath */
+.cc-trans { margin: 4px 0 0; font-size: 12.5px; line-height: 1.35; color: #4b5563; font-style: italic; }
+.hud-capcom.zombie { border-color: #8fb35a; background: linear-gradient(#f4f8ec, #fff); }
+.hud-capcom.zombie .cc-name { color: #3f5a24; }
+.hud-capcom.zombie .cc-text { font-family: 'Chakra Petch', Inter, system-ui, sans-serif; font-weight: 600; letter-spacing: 0.02em; color: #2f4a1a; min-height: 1.4em; }
+.hud-capcom.zombie .cc-avatar { background: #4f6b32 !important; }
+.hud-capcom.zombie .cc-avatar img { animation: zc-lurch 2.4s ease-in-out infinite; }
+@keyframes zc-lurch { 0%, 100% { transform: rotate(-4deg); } 50% { transform: rotate(5deg) translateY(1px); } }
+@media (prefers-reduced-motion: reduce) { .hud-capcom.zombie .cc-avatar img { animation: none; } }
+
+/* J2: clear the site */
+.site-clean { margin-top: 8px; font: inherit; font-size: 12px; font-weight: 600; padding: 5px 10px; border-radius: 8px; border: 1px dashed #c9b28a; background: #fbf6ec; color: #6b4a1f; cursor: pointer; width: 100%; }
+.site-clean:hover:not(:disabled) { background: #f6ecd8; }
+.site-clean:disabled { opacity: 0.5; cursor: default; }
