@@ -56,6 +56,12 @@ export class Inventory {
         <button type="button" class="inv-campaign" data-goto-missions></button>
         <button type="button" class="inv-lockinfo" hidden></button></header>
       <div class="inv-scroll">
+        <nav class="inv-jump" aria-label="Jump to">
+          <button type="button" data-jump="quick">Blueprints<small>แบบสำเร็จรูป</small></button>
+          <button type="button" data-jump="era">Parts<small>ชิ้นส่วน</small></button>
+          <button type="button" data-jump="bench">Mixing bench<small>โต๊ะผสม</small></button>
+          <button type="button" data-jump="payload">Payloads<small>ผู้โดยสาร</small></button>
+        </nav>
         <div class="inv-quick" aria-label="Blueprints"></div>
         ${ERAS.map((era) => `
           <details class="inv-cat inv-era era-${era.id}" data-era="${era.id}" ${era.id === 'space' ? '' : 'open'}>
@@ -80,6 +86,7 @@ export class Inventory {
     this.tip = el.querySelector('.lanna-tip')!;
     el.querySelector('.inv-scroll')!.addEventListener('scroll', () => { if (this.tipCard && this.tipDef) this.place(this.tipCard); });
     el.querySelector('[data-goto-missions]')!.addEventListener('click', () => bus.emit('phase:request', { phase: 'mission' }));
+    for (const b of el.querySelectorAll<HTMLElement>('[data-jump]')) b.addEventListener('click', () => this.jump(b.dataset.jump!));
     this.render();
   }
 
@@ -183,6 +190,16 @@ export class Inventory {
   }
   private hideTip() { this.tip.hidden = true; this.tipFor = null; this.tipCard = null; this.tipDef = null; }
 
+  /** Phones: the jump chips scroll the long page to a section (the bench also opens) */
+  private jump(to: string) {
+    if (to === 'bench') { this.openChemistry(); return; }
+    const target = to === 'quick' ? this.el.querySelector<HTMLElement>('.inv-quick')
+      : to === 'payload' ? this.el.querySelector<HTMLDetailsElement>('details[data-cat="zombies"]')
+      : this.el.querySelector<HTMLDetailsElement>('details[data-era]');
+    if (target instanceof HTMLDetailsElement) target.open = true;
+    target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
   openChemistry() {
     this.chemistry.open = true;
     this.chemistry.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -237,7 +254,8 @@ export class Inventory {
       // the Lanna Instruction Manual: on hover / keyboard focus, or the 📜 chip on touch
       const chip = document.createElement('span');
       chip.className = 'pc-manual'; chip.textContent = '📜'; chip.setAttribute('aria-hidden', 'true');
-      chip.addEventListener('pointerdown', (e) => e.stopPropagation());
+      // preventDefault keeps the tap from focusing the card (focus shows the tip; the click would then hide it again)
+      chip.addEventListener('pointerdown', (e) => { e.stopPropagation(); e.preventDefault(); });
       chip.addEventListener('click', (e) => { e.stopPropagation(); this.tipFor === def.id ? this.hideTip() : this.showTip(b, def); });
       b.appendChild(chip);
       b.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse') this.showTip(b, def); });

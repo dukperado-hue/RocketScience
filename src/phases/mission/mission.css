@@ -73,3 +73,17 @@
 .ms-item.soon .ms-card { background: repeating-linear-gradient(135deg, #fbfaff 0 12px, #f6f3ff 12px 24px); border-style: dashed; border-color: #cfc4f4; }
 .ms-item.soon h3 { color: #5b4bb0; }
 .ms-pill.soon { background: #ece6ff; color: #5b3fd0; }
+
+/* Logbook and field notes on the Missions tab */
+.ms-logbook { margin: 28px 0 8px; }
+.ms-logbook h3 { margin: 0 0 6px; font-size: 18px; }
+.ms-logbook h3 small { color: #667085; font-weight: 400; font-size: 13px; margin-left: 6px; }
+.ms-best { margin: 0 0 10px; color: #4a5262; font-size: 13px; }
+.ms-badges { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; }
+.ms-badges li { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid #e3e7ec; border-radius: 10px; background: #fff; }
+.ms-badges li > span { font-size: 24px; line-height: 1.1; }
+.ms-badges li.got { background: #fff8e6; border-color: #f0d9a6; }
+.ms-badges li.todo { background: #fafbfc; border-style: dashed; color: #8a94a6; }
+.ms-badges b small { font-weight: 400; color: #8a6420; margin-left: 4px; }
+.ms-badges li > div > small { display: block; margin-top: 2px; color: #5a6270; line-height: 1.4; }
+.ms-card .field-note { margin: 12px 0 0; }

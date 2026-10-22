@@ -10,6 +10,8 @@ import { campaign } from '@/campaign/missionManager';
 import { MISSIONS, type Mission } from '@/campaign/campaign';
 import { CREW } from '@/phases/launch/capcom';
 import { openGallery } from '@/story/story';
+import { FIELD_NOTE, FIELD_NOTES_PUBLIC, fieldNoteHtml } from '@/story/culture';
+import { BADGES, loadLogbook } from '@/game/achievements';
 import { mountDisclaimer } from '@/ui/softLaunchUI';
 import './mission.css';
 
@@ -71,11 +73,24 @@ export class MissionPhase implements Phase {
         </header>
         <div class="ms-meter" aria-hidden="true"><i style="width:${(done / MS.length) * 100}%"></i></div>
         <ol class="ms-timeline ${sandbox ? 'is-sandbox' : ''}">${MS.map((m) => this.card(m)).join('')}${campaign.upcoming.map((m) => this.soonCard(m)).join('')}</ol>
+        ${this.logbook()}
         <footer class="ms-foot"><button type="button" class="ms-link danger" data-act="reset">Reset campaign progress</button></footer>
       </div>`;
     // the lantern mission is the one that tells players to break airspace rules: say it is a simulation
     const m1 = this.root.querySelector<HTMLElement>('[data-mission="m1-lantern"] .ms-card');
     if (m1) mountDisclaimer(m1, 'briefing');
+  }
+
+  /** The Logbook: discoveries made by flying (see game/achievements.ts) */
+  private logbook(): string {
+    const lb = loadLogbook(), got = BADGES.filter((b) => lb.badges[b.id]).length;
+    return `<section class="ms-logbook" aria-label="Logbook">
+      <h3>Logbook <small>สมุดบันทึกการบิน · ${got} of ${BADGES.length} discoveries · ${lb.flights} flight${lb.flights === 1 ? '' : 's'}</small></h3>
+      ${lb.best.rocket || lb.best.lantern ? `<p class="ms-best">Best rocket ${lb.best.rocket ? `${(lb.best.rocket / 1000).toFixed(2)} km` : '—'} · best lantern ${lb.best.lantern ? `${Math.round(lb.best.lantern)} m` : '—'}</p>` : ''}
+      <ul class="ms-badges">${BADGES.map((b) => lb.badges[b.id]
+        ? `<li class="got"><span aria-hidden="true">${b.icon}</span><div><b>${esc(b.title)} <small>${esc(b.titleTh)}</small></b><small>${esc(b.text)}</small></div></li>`
+        : `<li class="todo"><span aria-hidden="true">❔</span><div><b>Not found yet</b><small>ยังไม่พบ — keep flying and changing one thing at a time</small></div></li>`).join('')}</ul>
+    </section>`;
   }
 
   /** A mission the Early Access build holds back */
@@ -102,7 +117,7 @@ export class MissionPhase implements Phase {
         <div class="ms-dot" aria-hidden="true">${st === 'done' ? '✓' : st === 'locked' ? '🔒' : m.label}</div>
         <article class="ms-card" aria-label="Mission ${m.label}: ${esc(m.title)} — ${st}">
           <header>
-            <p class="ms-code">Mission ${m.label} · ${m.codename}</p>
+            <p class="ms-code">Mission ${m.label} · codename ${m.codename}</p>
             <span class="ms-pill ${st}">${st === 'done' ? `Complete · ${date(at!)}` : st === 'available' ? 'Available' : 'Locked'}</span>
           </header>
           <h3>${esc(m.title)} <small>${esc(m.titleTh)}</small></h3>
@@ -114,6 +129,7 @@ export class MissionPhase implements Phase {
                  <section><h4>Rewards</h4><p class="ms-reward">${campaign.cap?.finale === m.id ? 'The End of Early Access — and a message from Zombie Control. Tier 3 arrives with the Space Age Update.<small>จบช่วง Early Access พร้อมข้อความจากศูนย์ควบคุมซอมบี้</small>' : `${esc(m.rewards.text)}<small>${esc(m.rewards.textTh)}</small>`}</p></section>
                </div>
                ${st === 'available' && m.hint ? `<p class="ms-hint"><b>Hint</b> ${esc(m.hint)}<small>${esc(m.hintTh ?? '')}</small></p>` : ''}
+               ${FIELD_NOTES_PUBLIC && m.fieldNote && FIELD_NOTE[m.fieldNote] ? fieldNoteHtml(FIELD_NOTE[m.fieldNote]) : ''}
                <div class="ms-actions">
                  ${st === 'available' ? `<button type="button" class="ms-btn" data-act="build">Build it in the Factory ›</button>` : ''}
                  ${st === 'done' ? `<button type="button" class="ms-btn ghost" data-act="story"><img src="${crew.img}" alt="">${esc(crew.name)}’s log entry ›</button>` : ''}

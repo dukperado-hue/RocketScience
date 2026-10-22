@@ -24,6 +24,7 @@ export type ObjectiveCheck =
   | { kind: 'launch-island'; island: 'phangan' | 'samui' }        // lantern site (law/samui.ts)
   | { kind: 'launch-range'; range: RangeId }                      // where the pad is
   | { kind: 'airspace'; zones: ('ctr' | 'app-17' | 'app-35')[] }  // any one of these triggered
+  | { kind: 'flight-clear' }                                      // the flight is over and no airspace zone was ever entered
   | { kind: 'apogee'; m: number }
   | { kind: 'karman' }
   | { kind: 'orbit'; peM: number }
@@ -55,6 +56,12 @@ export interface Mission {
   rewards: { tier: Tier; parts: string[]; ranges?: RangeId[]; text: string; textTh: string };
   story: StoryEntry;
   hint?: string; hintTh?: string;
+  /** Launch settings the hint describes — the Launch screen offers a one-tap "set up as hinted" */
+  setup?: { wind?: number; railAngleDeg?: number };
+  /** Key into story/culture.ts: the real-world tradition behind this mission */
+  fieldNote?: string;
+  /** One line for the Launch screen's goal strip */
+  goal: { en: string; th: string };
 }
 
 /** What LaunchPhase reports. Read-only, built from the Flight and the airspace monitor; "ever this flight" semantics */
@@ -71,6 +78,8 @@ export interface FlightReport {
   eva: boolean;
   /** Airspace alert ids fired this flight: 'ctr', 'app-17', 'fine', … */
   airspace: string[];
+  /** The flight has finished (the summary is about to show). Mid-flight reports leave this out. */
+  ended?: boolean;
 }
 
 /** localStorage 'rs.campaign.v1' */
@@ -97,28 +106,31 @@ export const PROLOGUE: StoryEntry = {
 
 export const MISSIONS: Mission[] = [
   {
-    id: 'm1-lantern', order: 1, label: '1', codename: 'PAPER MOON',
+    id: 'm1-lantern', order: 1, label: '1', codename: 'PAPER MOON', fieldNote: 'yipeng',
+    goal: { en: 'Release a lantern and keep it out of Samui’s airspace', th: 'ปล่อยโคมและไม่ให้เข้าน่านฟ้าสมุย' },
     title: 'Full Moon Festival of the Dead', titleTh: 'เทศกาลพระจันทร์เต็มดวงแห่งความตาย',
-    brief: 'Launch a sky lantern from Koh Phangan and drift it into Samui airspace. On purpose. For science. Then read the report.',
-    briefTh: 'ปล่อยโคมลอยจากเกาะพะงัน แล้วปล่อยให้ลมพาเข้าน่านฟ้าสมุย โดยตั้งใจ เพื่อวิทยาศาสตร์ แล้วค่อยอ่านรายงาน',
+    brief: 'Release a sky lantern from Koh Phangan and keep it out of Samui’s airspace for the whole flight. Choose the beach and the wind like a festival organiser who has to answer to the control tower.',
+    briefTh: 'ปล่อยโคมลอยจากเกาะพะงัน และต้องไม่ให้โคมเข้าน่านฟ้าสมุยตลอดเที่ยวบิน เลือกชายหาดและทิศลมอย่างผู้จัดงานที่ต้องรับผิดชอบต่อหอบังคับการบิน',
     requires: [],
     objectives: [
       { id: 'tier0', text: 'Fly a Tier 0 build (paper, bamboo, fire — nothing else)', textTh: 'ใช้ชิ้นส่วน Tier 0 เท่านั้น (กระดาษ ไม้ไผ่ ไฟ)', check: { kind: 'max-tier', tier: 0 } },
       { id: 'phangan', text: 'Launch from Koh Phangan (Haad Rin or Thong Sala)', textTh: 'ปล่อยจากเกาะพะงัน (หาดริ้นหรือท้องศาลา)', check: { kind: 'launch-island', island: 'phangan' } },
-      { id: 'violate', text: 'Trigger a Samui airspace alert (control zone or an approach path)', textTh: 'ทำให้เกิดการแจ้งเตือนน่านฟ้าสมุย (เขตควบคุมหรือแนวร่อนลง)', check: { kind: 'airspace', zones: ['ctr', 'app-17', 'app-35'] } },
+      { id: 'rise', text: 'Climb above 300 m', textTh: 'ลอยสูงเกิน 300 ม.', check: { kind: 'apogee', m: 300 } },
+      { id: 'clear', text: 'Stay out of Samui’s airspace for the whole flight (no alerts)', textTh: 'ไม่เข้าน่านฟ้าสมุยตลอดเที่ยวบิน (ไม่มีการแจ้งเตือน)', check: { kind: 'flight-clear' } },
     ],
-    hint: 'Khom loi blueprint · Haad Rin · wind from 015° · leave the “pretend permission” box empty · 10× warp.',
-    hintTh: 'แบบสำเร็จรูป Khom loi · หาดริ้น · ลมจาก 015° · ไม่ต้องติ๊กช่อง “สมมติว่าขออนุญาตแล้ว” · เร่งเวลา 10×',
+    hint: 'Check the radar, then press “Risk check” before you release: it flies the lantern in the simulation first and says whether it stays clear. Haad Rin lies under Samui’s runway approach; Thong Sala, with the wind from the north-east, carries lanterns out to sea. The flight takes about 25 minutes — use Fast-forward.',
+    hintTh: 'ดูเรดาร์ แล้วกด “Risk check” ก่อนปล่อย: เกมจะบินโคมในการจำลองให้ก่อนและบอกว่าจะอยู่นอกเขตหรือไม่ หาดริ้นอยู่ใต้แนวร่อนลงของสนามบินสมุย ส่วนท้องศาลาเมื่อลมมาจากทิศตะวันออกเฉียงเหนือ จะพัดโคมออกทะเล เที่ยวบินใช้เวลาราว 25 นาที ใช้ปุ่มเร่งเวลา',
     rewards: { tier: 1, parts: partsOfTier(1), ranges: ['yasothon'], text: 'Tier 1: gunpowder, Bang Fai tubes, the wooden chair · Yasothon range', textTh: 'Tier 1: ดินปืน บั้งไฟ เก้าอี้ไม้ · ลานปล่อยยโสธร' },
     story: {
       id: 'm1', crew: 'tortoise', image: 'assets/capcom/capcom_tortoise_clerk_full.png',
-      title: 'Incident report, Haad Rin', titleTh: 'รายงานเหตุการณ์ หาดริ้น',
-      text: 'Full Moon night. One paper lantern entered the Samui control zone without a flight plan. Samui Tower was not amused. I have written it all up. There is a form. There is always a form. Our colleagues suggest that rockets are "a separate matter", so we are now building rockets — in Yasothon, far from any tower that can see us.',
-      textTh: 'คืนพระจันทร์เต็มดวง โคมกระดาษหนึ่งลูกหลุดเข้าเขตควบคุมสนามบินสมุยโดยไม่มีแผนการบิน หอบังคับการบินไม่ขำด้วย ข้าพเจ้าบันทึกเหตุการณ์ไว้ครบแล้ว มีแบบฟอร์มเสมอ เพื่อนร่วมงานแนะนำว่าจรวดเป็น "อีกเรื่องหนึ่ง" เราจึงหันมาสร้างจรวด ที่ยโสธร ไกลจากหอบังคับการบินทุกแห่งที่มองเห็นเราได้',
+      title: 'Incident report: none', titleTh: 'รายงานเหตุการณ์: ไม่มี',
+      text: 'Full Moon night. One paper lantern lifted off from the west coast, rose to the stars and came down in the sea, nowhere near anyone’s runway. Samui Tower noticed nothing. I have filed the report anyway; there is a form, there is always a form, and for once it is blank. Our colleagues suggest that rockets are “a separate matter”, so we are now building rockets — in Yasothon, far from any tower that can see us — and I am filing the paperwork first.',
+      textTh: 'คืนพระจันทร์เต็มดวง โคมกระดาษหนึ่งลูกลอยขึ้นจากชายฝั่งตะวันตก ขึ้นไปหาดวงดาวและตกลงทะเล ไม่ใกล้ทางวิ่งของใครเลย หอบังคับการบินสมุยไม่รู้สึกอะไรเลย ข้าพเจ้าทำรายงานไว้อยู่ดี มีแบบฟอร์มเสมอ และครั้งนี้เป็นครั้งแรกที่มันว่างเปล่า เพื่อนร่วมงานแนะนำว่าจรวดเป็น "อีกเรื่องหนึ่ง" เราจึงหันมาสร้างจรวด ที่ยโสธร ไกลจากหอบังคับการบินทุกแห่งที่มองเห็นเราได้ และข้าพเจ้าจะยื่นเอกสารก่อน',
     },
   },
   {
-    id: 'm2-ballistics', order: 2, label: '2', codename: 'BAMBOO FEVER',
+    id: 'm2-ballistics', order: 2, label: '2', codename: 'BAMBOO FEVER', fieldNote: 'bangfai',
+    goal: { en: 'Send a Bang Fai up to 5 km', th: 'ส่งบั้งไฟขึ้นให้ถึง 5 กม.' },
     title: 'Viral Ballistics', titleTh: 'ขีปนวิถีไวรัล',
     brief: 'Take a Bang Fai (or the chair, if you are brave and wrong) to 5 km from the Yasothon range. Bamboo, gunpowder, no excuses.',
     briefTh: 'ส่งบั้งไฟ (หรือเก้าอี้ ถ้าคุณกล้าและคิดผิด) ขึ้นไปให้ถึง 5 กม. จากลานปล่อยยโสธร ไม้ไผ่ ดินปืน ไม่มีข้ออ้าง',
@@ -129,8 +141,9 @@ export const MISSIONS: Mission[] = [
       { id: 'yasothon', text: 'Launch from Yasothon', textTh: 'ปล่อยจากยโสธร', check: { kind: 'launch-range', range: 'yasothon' } },
       { id: '5km', text: 'Reach 5 km', textTh: 'ขึ้นให้ถึง 5 กม.', check: { kind: 'apogee', m: 5000 } },
     ],
-    hint: 'A Bang Fai turns into the wind (weathercocking). Twin-tail blueprint, wind 0, ramp angle 0° — wait for the one calm morning of the year.',
-    hintTh: 'บั้งไฟจะหันหัวเข้าหาลม (weathercocking) ใช้แบบหางคู่ ลม 0 มุมราง 0° แล้วรอเช้าที่ลมสงบที่สุดของปี',
+    hint: 'A Bang Fai turns into the wind (weathercocking), and a slow rocket cannot fight even a breeze. Twin-tail blueprint, a vertical ramp (0°) and dead-calm air: pick “Dawn · calm” in the launch settings. Stir the powder evenly at the Mixing bench (60%+). The forecast shows what your settings do before you light it.',
+    hintTh: 'บั้งไฟจะหันหัวเข้าหาลม (weathercocking) และจรวดที่ช้าสู้ลมแม้เพียงเบาๆ ไม่ไหว ใช้แบบหางคู่ แรมป์ตั้งตรง (0°) และอากาศนิ่งสนิท: เลือก “รุ่งเช้า · ลมสงบ” ในการตั้งค่าลานปล่อย กวนดินขับให้สม่ำเสมอที่โต๊ะผสม (60% ขึ้นไป) พยากรณ์จะแสดงผลของการตั้งค่าก่อนจุดไฟ',
+    setup: { wind: 0, railAngleDeg: 0 },
     rewards: { tier: 2, parts: partsOfTier(2), text: 'Tier 2: LV-45 liquid engine, metal tanks, decouplers, bigger fins and chutes', textTh: 'Tier 2: เครื่องยนต์เหลว LV-45 ถังโลหะ ตัวแยกท่อน ครีบและร่มที่ใหญ่ขึ้น' },
     story: {
       id: 'm2', crew: 'otter', image: 'assets/story/bangfai_parade.jpg',
@@ -141,6 +154,7 @@ export const MISSIONS: Mission[] = [
   },
   {
     id: 'm2b-karman', order: 3, label: '2.5', codename: 'SPACE PASSPORT',
+    goal: { en: 'Cross the Kármán line (100 km)', th: 'ข้ามเส้นคาร์มาน (100 กม.)' },
     title: 'Space Passport', titleTh: 'พาสปอร์ตอวกาศ',
     brief: 'Cross the Kármán line — 100 km, where the air gives up and the paperwork begins — on liquid-fuel engines.',
     briefTh: 'ข้ามเส้นคาร์มาน ที่ 100 กม. ซึ่งอากาศยอมแพ้และงานเอกสารเริ่มต้น ด้วยเครื่องยนต์เชื้อเพลิงเหลว',
@@ -161,6 +175,7 @@ export const MISSIONS: Mission[] = [
   },
   {
     id: 'm3-orbit', order: 4, label: '3', codename: 'ORBITAL HIJACK',
+    goal: { en: 'A zombie in a stable orbit, then a spacewalk', th: 'ซอมบี้ในวงโคจรเสถียร แล้วเดินอวกาศ' },
     title: 'Orbital Hijack', titleTh: 'ปล้นวงโคจร',
     brief: 'Put a zombie in a stable orbit (periapsis above 140 km) — then open the hatch and let it go for a walk.',
     briefTh: 'ส่งซอมบี้เข้าวงโคจรที่เสถียร (จุดใกล้โลกสูงกว่า 140 กม.) แล้วเปิดประตูให้มันออกไปเดินเล่น',

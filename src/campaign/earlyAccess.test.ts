@@ -10,7 +10,7 @@ const report = (o: Partial<FlightReport>): FlightReport => ({ partIds: ['envelop
 const ea = () => new MissionManager(mem(), EARLY_ACCESS);
 /** Play the Early Access campaign through with flight reports that meet each mission */
 const playThrough = (m: MissionManager) => {
-  m.evaluate(report({ island: 'phangan', airspace: ['ctr'] }));
+  m.evaluate(report({ island: 'phangan', apogeeM: 750, ended: true }));
   m.evaluate(report({ partIds: ['bang-fai'], maxTier: 1, range: 'yasothon', apogeeM: 5200 }));
   return m.evaluate(report({ partIds: ['engine-lv45'], maxTier: 2, range: 'yasothon', apogeeM: 104_000, karman: true }));
 };

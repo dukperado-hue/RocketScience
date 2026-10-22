@@ -130,7 +130,15 @@ export interface FlightOptions {
   autoStage?: boolean;
   /** Deploy parachutes automatically on the way down (default on) */
   autoChute?: boolean;
+  /**
+   * Mixing Bench stir quality (0–1) of the powder in the solid motors. A lumpy batch leaves unburnt grains, so the motor
+   * delivers up to IMPULSE_LOSS_MAX less impulse at quality 0 (same burn time, less thrust). 1 (the default, and every test) adds nothing.
+   */
+  propellantQuality?: number;
 }
+
+/** Fraction of impulse a solid motor loses when filled with the worst possible powder (quality 0) */
+export const IMPULSE_LOSS_MAX = 0.12;
 
 export interface FlightResult {
   outcome: FlightOutcome;
@@ -470,6 +478,10 @@ export class Flight {
       e.trim = Math.max(-8 * D2R, Math.min(8 * D2R, Math.atan2(e.dx * ry - e.dy * rx, e.dx * rx + e.dy * ry)));
     }
 
+    // A lumpy batch leaves unburnt grains: less impulse from the same motor (none at quality 1)
+    const q = Math.min(1, Math.max(0, opts.propellantQuality ?? 1));
+    if (q < 1) for (const it of items) { const e = it.engine; if (e && !e.liquid && PART[it.part.defId].engine?.kind === 'solid') { const k = 1 - (1 - q) * IMPULSE_LOSS_MAX; e.fSL *= k; e.fVac *= k; e.ispSL *= k; e.ispVac *= k; } }
+
     // Stage plan: radial decouplers first (boosters), then axial ones from the bottom up; chutes last
     const decs = st.active.filter(isDecoupler);
     const radial = decs.filter((p) => PART[p.defId].shape === 'decoupler-radial').map((p) => p.uid);
@@ -785,6 +797,9 @@ export class Flight {
   }
 
   /* ---------- Stepping ---------- */
+
+  /** Speed (m/s) the vehicle had when it left the rail or ramp; null before that, or with no guide */
+  get railExitSpeed(): number | null { return this.site.rail > 0 && this.railS >= this.site.rail ? this.railV : null; }
 
   /** Nothing left moving */
   get done() {

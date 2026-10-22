@@ -5,7 +5,7 @@ import { PART } from '@/phases/assembly/model/catalog';
 import { AscentAssist, PROFILE_TIER3, PROFILE_TIER4 } from '@/orbit/ascent';
 import { LANTERN_SITES } from '@/law/samui';
 import { AirspaceMonitor } from '@/law/airspaceMonitor';
-import { MISSIONS, MISSION, PROLOGUE, partsOfTier, type FlightReport, type MissionId } from './campaign';
+import { MISSIONS, MISSION, PROLOGUE, partsOfTier, type FlightReport } from './campaign';
 import { MissionManager, SAVE_KEY, type KV } from './missionManager';
 import { flightReport } from './report';
 
@@ -45,27 +45,31 @@ describe('MissionManager', () => {
     expect(m.rangeUnlocked('phangan')).toBe(true); expect(m.rangeUnlocked('yasothon')).toBe(false);
     m.setMode('sandbox');
     expect(m.partUnlocked('engine-modern')).toBe(true); expect(m.rangeUnlocked('yasothon')).toBe(true);
-    expect(m.evaluate(report({ island: 'phangan', airspace: ['ctr'] }))).toEqual([]);
+    expect(m.evaluate(report({ island: 'phangan', apogeeM: 750, ended: true }))).toEqual([]);
     expect(m.isDone('m1-lantern')).toBe(false);
   });
 
   it('completing Mission 1 unlocks Tier 1 + Yasothon and writes the Tortoise Clerk entry; one flight cannot skip ahead', () => {
     const m = new MissionManager(mem());
-    expect(m.evaluate(report({ island: 'phangan', airspace: ['fine'] }))).toEqual([]);          // a fine alone is not a zone
-    expect(m.evaluate(report({ island: 'samui', airspace: ['ctr'] }))).toEqual([]);             // wrong island
-    expect(m.evaluate(report({ island: 'phangan', airspace: ['app-17'], partIds: ['envelope-m', 'bang-fai'], maxTier: 1 }))).toEqual([]);
-    const done = m.evaluate(report({ island: 'phangan', airspace: ['app-17', 'fine'] }), 900, 1234);
+    const clean = { island: 'phangan' as const, apogeeM: 750, ended: true };
+    expect(m.evaluate(report({ ...clean, airspace: ['app-17', 'fine'] }))).toEqual([]);         // under the RWY 17 approach: not clear
+    expect(m.evaluate(report({ ...clean, airspace: ['ctr'] }))).toEqual([]);                    // inside the control zone: not clear
+    expect(m.evaluate(report({ ...clean, island: 'samui' }))).toEqual([]);                      // wrong island
+    expect(m.evaluate(report({ ...clean, ended: false }))).toEqual([]);                         // the flight is not over yet
+    expect(m.evaluate(report({ ...clean, apogeeM: 120 }))).toEqual([]);                         // it never rose
+    expect(m.evaluate(report({ ...clean, partIds: ['envelope-m', 'bang-fai'], maxTier: 1 }))).toEqual([]);
+    const done = m.evaluate(report({ ...clean }), 900, 1234);
     expect(done.map((x) => x.id)).toEqual(['m1-lantern']);
     expect(m.unlockedTier()).toBe(1); expect(m.rangeUnlocked('yasothon')).toBe(true);
     expect(m.story().map((s) => s.entry.crew)).toEqual(['lee', 'tortoise']);
-    expect(m.evaluate(report({ island: 'phangan', airspace: ['ctr'] }))).toEqual([]);            // no double completion
+    expect(m.evaluate(report({ ...clean }))).toEqual([]);                                       // no double completion
     expect(m.current()!.id).toBe('m2-ballistics');
   });
 
   it('progress survives a reload; a corrupt or foreign save starts fresh; reset keeps the mode', () => {
     const kv = mem();
     const a = new MissionManager(kv);
-    a.evaluate(report({ island: 'phangan', airspace: ['ctr'] }));
+    a.evaluate(report({ island: 'phangan', apogeeM: 750, ended: true }));
     a.setMode('sandbox');
     const b = new MissionManager(kv);
     expect(b.isDone('m1-lantern')).toBe(true); expect(b.mode).toBe('sandbox');
@@ -90,27 +94,33 @@ describe('the campaign is flyable, in order, with what each mission unlocks', ()
   const m = new MissionManager(mem());
   const usable = (parts: { defId: string }[]) => expect(m.lockedIn(ids(parts))).toEqual([]);
 
-  it('Mission 1: a khom loi from Haad Rin on a NNE wind drifts into the RWY 17 approach and the control zone', () => {
+  it('Mission 1: a khom loi from Thong Sala on a NE wind floats out to sea, clear of Samui, and completes — from Haad Rin it is under the RWY 17 approach and does not', () => {
     const parts = preset('khom-loi'); usable(parts);
-    const site = LANTERN_SITES.find((s) => s.id === 'haad-rin')!;
-    const f = new Flight(parts, { site: { ...SITES.ground, rail: 0, railAngleDeg: 0, wind: 4 } });
-    const mon = new AirspaceMonitor(site, site.windFrom, false);
-    f.ignite();
-    let done: MissionId[] = [];
-    while (!f.done && f.t < 2400 && !done.length) {
-      f.step();
-      mon.update(f.t, f.vehicle.downrange, f.vehicle.alt, f.airborne);
-      if (Math.round(f.t * 100) % 50 === 0) done = m.evaluate(flightReport(f, ids(parts), { range: 'phangan', lanternSite: site.id, island: site.island, airspace: mon.alerts.map((a) => a.id) }), f.t).map((x) => x.id);
-    }
-    expect(done).toEqual(['m1-lantern']);
+    const fly = (siteId: string) => {
+      const site = LANTERN_SITES.find((s) => s.id === siteId)!;
+      const f = new Flight(parts, { site: { ...SITES.ground, rail: 0, railAngleDeg: 0, wind: 4 } });
+      const mon = new AirspaceMonitor(site, site.windFrom, false);
+      f.ignite();
+      while (!f.done && f.t < 3000) { f.step(); if (Math.round(f.t * 100) % 50 === 0) mon.update(f.t, f.vehicle.downrange, f.vehicle.alt, f.airborne); }
+      return flightReport(f, ids(parts), { range: 'phangan', lanternSite: site.id, island: site.island, airspace: mon.alerts.map((a) => a.id), ended: true });
+    };
+    const bad = fly('haad-rin');
+    expect(bad.airspace).toContain('app-17');
+    expect(m.evaluate(bad)).toEqual([]);
+    const good = fly('thong-sala');
+    expect(good.airspace).toEqual([]);
+    expect(good.apogeeM).toBeGreaterThan(300);
+    expect(m.evaluate(good).map((x) => x.id)).toEqual(['m1-lantern']);
     expect(m.rangeUnlocked('yasothon')).toBe(true);
   });
 
   it('Mission 2: the twin-tail Bang Fai makes 5 km at Yasothon on a calm morning with a vertical ramp — and not in a breeze', () => {
     const parts = preset('bang-fai-twin'); usable(parts);
-    const fly = (wind: number) => { const f = new Flight(parts, { site: { rail: 22, railAngleDeg: 0, wind } }); f.ignite(); while (!f.done && f.t < 600) f.step(); return f; };
-    expect(fly(2).maxAlt).toBeLessThan(5000);                                   // weathercocking: the lesson of the mission
-    const f = fly(0);
+    const setup = MISSION['m2-ballistics'].setup!;                               // what the hint (and the one-tap button) set up
+    const fly = (wind: number, angle: number) => { const f = new Flight(parts, { site: { rail: 22, railAngleDeg: angle, wind } }); f.ignite(); while (!f.done && f.t < 600) f.step(); return f; };
+    expect(fly(2, 0).maxAlt).toBeLessThan(5000);                                // weathercocking: the lesson of the mission
+    expect(fly(0, 10).maxAlt).toBeLessThan(5000);                               // a leaning ramp does not do it either
+    const f = fly(setup.wind!, setup.railAngleDeg!);
     expect(f.maxAlt).toBeGreaterThan(5000);
     expect(m.evaluate(flightReport(f, ids(parts), { range: 'yasothon', airspace: [] })).map((x) => x.id)).toEqual(['m2-ballistics']);
   });

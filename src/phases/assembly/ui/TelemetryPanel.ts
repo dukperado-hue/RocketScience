@@ -9,6 +9,9 @@ import type { Telemetry } from '../model/vehicle';
 import type { VehicleStore } from '../store';
 import { fmtForce, fmtMass } from './format';
 import { U_ENVELOPE, airTemp, steadyTin, floatTin } from '@/physics/buoyancy';
+import { loadBench } from '@/chemistry/mixingBench';
+import { requiredGrade } from '../model/catalog';
+import { IMPULSE_LOSS_MAX } from '@/physics/flight2d';
 
 type Sev = 'ok' | 'warn' | 'error';
 
@@ -47,7 +50,7 @@ export function checks(t: Telemetry, partCount: number, nameOf: (uid: number) =>
   else if (t.atRisk.length > 1) out.push({ sev: 'warn', msg: `${t.atRisk.length} parts are likely to fail. Click one to see why.` });
   // the centre-of-pressure number is pure geometry; a gimbal engine with SAS on can still hold the rocket straight
   const steered = defIds.some((id) => ((PART[id]?.engine as { gimbalDeg?: number } | undefined)?.gimbalDeg ?? 0) > 0);
-  if (t.engines > 0 && t.cpAboveCom > 0.02) out.push({ sev: 'warn', msg: `Centre of pressure is ${(t.cpAboveCom * 100).toFixed(0)} cm above the centre of mass — ${steered ? 'it tumbles once it’s moving fast unless SAS steers it with the gimbal engine. Keep SAS ON (T), or add fins low down for real stability.' : 'it will tumble once it’s moving fast. Add fins low down.'}` });
+  if (t.engines > 0 && t.cpAboveCom > 0.02) out.push({ sev: 'warn', msg: `Centre of pressure is ${(t.cpAboveCom * 100).toFixed(0)} cm above the centre of mass — ${steered ? 'it tumbles once it’s moving fast unless SAS steers it with the gimbal engine. Keep SAS ON (T), or add fins low down for real stability.' : 'it can tumble as soon as a crosswind catches it. Fins low down help — and calm air helps more (the forecast on the launch screen shows what your settings do).'}` });
   else if (t.engines > 0 && t.cpAboveComLate > 0.02) out.push({ sev: 'warn', msg: `Stable now, but past Mach 3 with empty tanks the centre of pressure is ${(t.cpAboveComLate * 100).toFixed(0)} cm above the centre of mass — it will flip late in the climb. Bigger fins, lower down.` });
   if (t.rider && t.engines > 0) { const f = zombieForecast(t.rider.zombie, t.burnoutG); if (f) out.push({ sev: 'warn', msg: f }); }
   if (t.engines > 0 && t.thrustOffset > 0.03) out.push({ sev: 'warn', msg: `Thrust is ${(t.thrustOffset * 100).toFixed(0)} cm off the centre of mass — it will turn.` });
@@ -80,7 +83,10 @@ export class TelemetryPanel {
       </dl>
       <h3>Pre-flight checks</h3>
       <ul class="checks" data-k="checks"></ul>
-      <button type="button" class="btn primary launch" data-act="launch">Roll out to the pad</button>`;
+      <div class="launch-dock">
+        <p class="dock-stats" aria-live="polite"><span>TWR<b data-k="d-twr">—</b></span><span>Δv<b data-k="d-dv">—</b></span><span>Mass<b data-k="d-mass">—</b></span><span class="dock-msg" data-k="d-msg"></span></p>
+        <button type="button" class="btn primary launch" data-act="launch">Roll out to the pad</button>
+      </div>`;
     el.querySelector('[data-act="launch"]')!.addEventListener('click', () => this.onLaunch());
     this.off = store.on(() => this.render());
     this.render();
@@ -105,6 +111,19 @@ export class TelemetryPanel {
     this.k('dv').textContent = `${t.deltaV.toFixed(0)} m/s`;
     this.k('burn').textContent = `${t.burnTime.toFixed(1)} s`;
     const cs = checks(t, parts.length, nameOf, parts.map((q) => q.defId));
+    // powder from the Mixing bench: say what its stir quality costs (the flight uses the same number)
+    const crafted = loadBench().crafted;
+    let pq = 1;
+    for (const q of parts) { const g = requiredGrade(PART[q.defId]); if (g && crafted[g] !== undefined) pq = Math.min(pq, crafted[g]!); }
+    if (pq < 0.95) cs.splice(Math.max(0, cs.findIndex((c) => c.sev === 'ok')), 0, { sev: 'warn', msg: `Powder quality ${Math.round(pq * 100)}% — the motor gives about ${Math.round((1 - pq) * IMPULSE_LOSS_MAX * 100)}% less impulse than a perfect batch. Stir a better one at the Mixing bench.` });
+    // the phone dock keeps the three numbers and the first warning next to Roll out
+    this.k('d-twr').textContent = t.engines ? t.twr.toFixed(2) : '—';
+    this.k('d-twr').className = cls;
+    this.k('d-dv').textContent = t.engines ? `${t.deltaV.toFixed(0)} m/s` : '—';
+    this.k('d-mass').textContent = fmtMass(t.wetMass);
+    const worst = cs.find((c) => c.sev !== 'ok');
+    this.k('d-msg').textContent = worst ? worst.msg : '';
+    this.k('d-msg').className = `dock-msg${worst?.sev === 'error' ? ' error' : ''}`;
     this.k('checks').innerHTML = cs.map((c) => `<li class="${c.sev}">${c.msg}</li>`).join('');
     (this.el.querySelector('[data-act="launch"]') as HTMLButtonElement).disabled = cs.some((c) => c.sev === 'error');
   }

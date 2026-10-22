@@ -20,15 +20,23 @@
 .flight-view :focus-visible { outline: 2px solid var(--l-blue); outline-offset: 2px; }
 .sky-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
 
+/* ---------- HUD layout: three measured containers, so cards can never sit on top of each other ----------
+   left   = flight data, payload, orbit        right = launch site, spacewalk, node, radar, flight log
+   bottom = ascent-assist pill, CAPCOM, control bar
+   LaunchPhase measures the bar/bottom heights into --bar-h / --bottom-h and adds .compact (small window) and .phone */
+.hud-left, .hud-right, .hud-bottom { position: absolute; display: flex; pointer-events: none; z-index: 2; }
+.hud-left > *, .hud-right > *, .hud-bottom > * { pointer-events: auto; }
+.hud-left { top: 12px; left: 12px; width: 236px; flex-direction: column; gap: 8px; bottom: calc(var(--bottom-h, 90px) + 20px); overflow: hidden; }
+.hud-right { top: 12px; right: 12px; width: min(330px, 36vw); flex-direction: column; gap: 8px; bottom: calc(var(--bar-h, 56px) + 20px); overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; }
+.hud-bottom { left: 12px; right: 12px; bottom: 12px; flex-direction: column; align-items: center; gap: 8px; }
 .hud-card {
-  position: absolute; background: var(--l-card); border: 1px solid var(--l-rule); border-radius: 12px;
+  position: relative; flex: none; background: var(--l-card); border: 1px solid var(--l-rule); border-radius: 12px;
   box-shadow: 0 6px 24px rgba(16, 24, 40, 0.12); padding: 10px 12px;
   backdrop-filter: blur(6px);
 }
 .hud-card h3 { margin: 0 0 6px; font-size: 12px; font-weight: 650; color: var(--l-muted); text-transform: uppercase; letter-spacing: 0.04em; }
 
 /* Flight data */
-.hud-flight { top: 12px; left: 12px; width: 236px; }
 .hud-flight header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 14px; }
 .pill { font-size: 11px; padding: 2px 8px; border-radius: 99px; background: #eef1f5; color: var(--l-muted); font-weight: 600; }
 .pill.live { background: #fff1e4; color: #b4560c; }
@@ -41,7 +49,8 @@
 .hud-sas { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--l-rule); font-size: 11.5px; color: var(--l-muted); }
 
 /* Zombie */
-.hud-zombie { top: 262px; left: 12px; width: 236px; display: flex; gap: 10px; align-items: center; }
+.hud-zombie { display: flex; gap: 10px; align-items: center; }
+.hud-zombie.empty { display: none; }
 .z-frame { position: relative; width: 84px; height: 91px; flex: none; border-radius: 12px; border: 2.5px solid #1b2230; background: #eef6e6; overflow: hidden; transition: background 0.3s; }
 .z-frame[data-mood='zero-g'] { background: #e7ecff; }
 .z-frame[data-mood='high-g'] { background: #fff1d6; }
@@ -65,7 +74,8 @@
 .g-bar em { position: absolute; top: -3px; width: 2px; height: 12px; background: #1b2230; }
 
 /* CAPCOM */
-.hud-capcom { left: 12px; bottom: 72px; width: 400px; display: flex; gap: 10px; align-items: flex-start; }
+.hud-capcom { display: flex; gap: 10px; align-items: flex-start; }
+.hud-bottom > .hud-capcom { align-self: flex-start; width: min(430px, 100%); }
 .hud-capcom.pop { animation: cc-pop 0.25s ease-out; }
 @keyframes cc-pop { from { transform: translateY(6px); opacity: 0.6; } }
 .cc-avatar { position: relative; width: 52px; height: 52px; border-radius: 50%; border: 2.5px solid #1b2230; flex: none; overflow: hidden; display: grid; place-items: center; color: #fff; font-weight: 800; font-size: 18px; background: #8a5a3c; }
@@ -91,7 +101,6 @@
 .hud-log li.capcom { border-left-color: #8a5a3c; background: #fbf6f1; }
 
 /* Launch site (before ignition) */
-.hud-site { top: 12px; left: 50%; transform: translateX(-50%); width: 340px; }
 .seg { display: flex; gap: 4px; margin-bottom: 8px; }
 .seg button { flex: 1; padding: 6px 4px; border: 1px solid var(--l-rule); border-radius: 8px; background: #fff; font-size: 12px; }
 .seg button[aria-checked='true'] { background: #e8f0fd; border-color: var(--l-blue); color: var(--l-blue); font-weight: 650; }
@@ -100,8 +109,8 @@
 .slider output { color: var(--l-ink); font-weight: 650; }
 
 /* Flight log */
-.hud-log { top: 12px; right: 12px; width: 300px; max-height: calc(100% - 100px); display: flex; flex-direction: column; }
-.hud-log ol { list-style: none; margin: 0; padding: 0; overflow: auto; display: flex; flex-direction: column; gap: 4px; }
+.hud-log { flex: 1 1 120px; min-height: 96px; display: flex; flex-direction: column; overflow: hidden; }
+.hud-log ol { list-style: none; margin: 0; padding: 0; overflow: auto; min-height: 0; display: flex; flex-direction: column; gap: 4px; }
 .hud-log li { display: grid; grid-template-columns: 52px 1fr; gap: 6px; font-size: 12px; padding: 4px 6px; border-radius: 6px; border-left: 3px solid #d5dbe3; background: #fafbfc; animation: log-in 0.25s ease-out; }
 .hud-log li time { color: var(--l-muted); font-size: 11px; }
 .hud-log li.zombie { border-left-color: var(--l-slime); background: #f1f9ea; }
@@ -110,23 +119,26 @@
 .hud-log li.good { border-left-color: var(--l-good); background: #eef8f2; }
 @keyframes log-in { from { opacity: 0; transform: translateY(-4px); } }
 
-/* Control bar */
+/* Control bar: wraps to a second row instead of squeezing the labels on top of each other */
 .hud-bar {
-  position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%);
-  display: flex; align-items: center; gap: 4px; padding: 6px; max-width: calc(100% - 24px); overflow-x: auto;
+  position: relative; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 4px; padding: 6px; max-width: min(100%, 1180px);
   background: var(--l-card); border: 1px solid var(--l-rule); border-radius: 14px; box-shadow: 0 6px 24px rgba(16, 24, 40, 0.14);
 }
+.hud-bar > * { flex: none; }
 .hud-bar button { min-width: 36px; height: 36px; padding: 0 10px; border: 1px solid var(--l-rule); border-radius: 9px; background: #fff; font-weight: 600; white-space: nowrap; user-select: none; -webkit-user-select: none; touch-action: none; }
 .hud-bar button:hover:not(:disabled) { border-color: var(--l-blue); }
 .hud-bar button:disabled { opacity: 0.45; cursor: default; }
 .hud-bar .btn-go { background: var(--l-fire); border-color: #d9741a; color: #fff; min-width: 110px; letter-spacing: 0.03em; }
 .hud-bar [aria-pressed='true'], .warp [aria-checked='true'] { background: #e8f0fd; border-color: var(--l-blue); color: var(--l-blue); }
-.hud-bar .sep { width: 1px; height: 24px; background: var(--l-rule); margin: 0 4px; flex: none; }
+.hud-bar .sep { width: 1px; height: 24px; background: var(--l-rule); margin: 0 4px; }
 .bar-read { min-width: 52px; text-align: center; font-weight: 650; font-size: 12px; color: var(--l-muted); }
 .warp { display: flex; gap: 2px; }
+/* a lantern or a Bang Fai has nothing to steer: the pitch nudge buttons stay out of the way */
+.hud-bar[data-steer='0'] [data-hold], .hud-bar[data-steer='0'] .bar-read { display: none; }
 
 /* Summary */
-.hud-summary { top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(420px, calc(100% - 24px)); padding: 18px 20px; text-align: center; }
+.hud-summary { position: absolute; z-index: 5; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(480px, calc(100% - 16px)); max-height: calc(100% - 16px); overflow-y: auto; padding: 18px 20px; text-align: center; }
+.flight-view .primary { color: #fff; }
 .hud-summary h2 { margin: 0 0 6px; font-size: 22px; }
 .hud-summary p { margin: 0 0 12px; color: var(--l-muted); }
 .hud-summary dl { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; margin: 0 0 14px; text-align: left; }
@@ -134,27 +146,9 @@
 .hud-summary dd { margin: 0; font-weight: 700; font-size: 15px; }
 .sum-actions { display: flex; gap: 8px; justify-content: center; }
 
-/* Phones: cards shrink, log goes above the bar */
-@media (max-width: 760px) {
-  .hud-flight { width: calc(50% - 18px); padding: 8px; }
-  .hud-flight dd { font-size: 14px; }
-  .hud-zombie { top: 12px; left: auto; right: 12px; width: calc(50% - 18px); padding: 8px; }
-  .z-frame { width: 54px; height: 59px; }
-  .hud-zombie { gap: 6px; }
-  .z-info b { font-size: 12px; }
-  .z-info small { font-size: 10.5px; }
-  .g-read b { font-size: 18px; }
-  .hud-site { top: auto; bottom: 64px; width: calc(100% - 24px); }
-  .hud-log { display: none; }
-  .hud-capcom { left: 8px; right: 8px; width: auto; bottom: 64px; }
-  .countdown { font-size: 64px; }
-  .countdown.n3 { font-size: 72px; }
-  .hud-bar { bottom: 8px; left: 8px; right: 8px; transform: none; max-width: none; }
-}
-
 /* Orbital map (Phase 3) */
 .map-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; background: #060a17; }
-.hud-orbit { top: 390px; left: 12px; width: 236px; }
+
 .hud-orbit h3 { display: flex; justify-content: space-between; align-items: center; }
 .hud-orbit dl { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; margin: 0; }
 .hud-orbit dl div { display: flex; flex-direction: column; }
@@ -168,14 +162,12 @@
 .hud-bar [data-act='sas'][aria-pressed='false'] { color: #7a8294; }
 .hud-bar [data-act='map'][aria-pressed='true'] { background: #1b2230; color: #fff; }
 .hud-log li.milestone { border-left-color: #d8a83a; background: #fff8e6; font-weight: 600; }
-@media (max-height: 640px) { .hud-orbit { top: auto; bottom: 72px; } }
 
 /* Gate B/assist/node (v0.11) */
-.hud-assist { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); max-width: min(560px, calc(100% - 600px)); padding: 7px 14px; border-radius: 99px; font-size: 12.5px; font-weight: 650; background: #fdf8ec; color: #8a5a00; border: 1px solid #f0d9a6; box-shadow: 0 6px 24px rgba(16,24,40,0.12); text-align: center; }
-@media (max-width: 1100px) { .hud-assist { top: auto; bottom: 72px; max-width: calc(100% - 32px); } }
+.hud-assist { position: relative; max-width: min(560px, 100%); padding: 7px 14px; border-radius: 99px; font-size: 12.5px; font-weight: 650; background: #fdf8ec; color: #8a5a00; border: 1px solid #f0d9a6; box-shadow: 0 6px 24px rgba(16,24,40,0.12); text-align: center; }
 .hud-assist.good { background: #e6f6ed; color: var(--l-good); }
 .hud-bar [data-act='assist'][aria-pressed='true'] { background: #e6f6ed; border-color: #9fd8b6; }
-.hud-node { right: 12px; bottom: 72px; width: 300px; }
+
 .hud-node h3 small { text-transform: none; letter-spacing: 0; font-weight: 500; margin-left: 4px; }
 .hud-node .seg { display: flex; gap: 4px; margin-bottom: 6px; }
 .hud-node .seg button { flex: 1; padding: 4px 6px; border: 1px solid var(--l-rule); border-radius: 8px; background: #fff; font-size: 12px; }
@@ -188,7 +180,6 @@
 .hud-node dd { margin: 0; font-size: 15px; font-weight: 700; }
 .hud-node dd.good { color: var(--l-good); } .hud-node dd.warn { color: var(--l-warn); } .hud-node dd.bad { color: var(--l-bad); }
 .hud-node .slider input { width: 100%; accent-color: #ff7ad9; }
-.flight-view.in-map .hud-log { max-height: calc(100% - 440px); min-height: 120px; }
 
 /* Zombie art variants: one drawn zombie, three builds */
 .z-frame[data-zombie='fat'] .z-art { transform: scaleX(1.18); }
@@ -214,7 +205,7 @@
 .map-tag.bad { border-color: #ff5a3c; color: #b42318; }
 .map-tag.node { border-color: #ff7ad9; }
 .map-tag.ship { background: rgba(11,18,38,0.78); color: #e6f6ff; border-color: rgba(159,230,255,0.6); font-weight: 500; }
-.map-tools { position: absolute; top: 12px; left: 260px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; max-width: calc(100% - 600px); pointer-events: none; }
+.map-tools { position: absolute; top: 12px; left: 262px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; max-width: calc(100% - 620px); pointer-events: none; z-index: 2; }
 .map-tools > * { pointer-events: auto; }
 .map-tools .seg { display: inline-flex; background: rgba(255,255,255,0.94); border: 1px solid var(--l-rule); border-radius: 10px; overflow: hidden; }
 .map-tools .seg button, .map-tools > button { border: 0; background: transparent; padding: 6px 12px; font-weight: 600; font-size: 12.5px; }
@@ -223,7 +214,7 @@
 .map-tools button:disabled { opacity: 0.4; cursor: not-allowed; }
 .map-tools .map-hint { color: rgba(230,240,255,0.75); font-size: 11.5px; pointer-events: none; }
 .flight-view.in-map .hud-assist { display: none; }
-@media (max-width: 1100px) { .map-tools { left: 12px; top: auto; bottom: 120px; max-width: calc(100% - 24px); } .map-tools .map-hint { display: none; } }
+@media (max-width: 1100px) { .map-tools { left: 12px; top: auto; bottom: calc(var(--bottom-h, 90px) + 16px); max-width: calc(100% - 24px); } .map-tools .map-hint { display: none; } }
 
 .z-frame[data-mood='jarred'] { background: #e3f4fb; }
 
@@ -234,8 +225,6 @@
 .rs-cleanser .cl-skip { position: absolute; right: 16px; top: 12px; font-weight: 650; padding: 6px 14px; border-radius: 99px; border: 1px solid rgba(27,34,48,0.25); background: rgba(255,255,255,0.9); }
 
 /* Spacewalk card */
-.hud-eva { top: 12px; left: 50%; transform: translateX(-50%); width: 360px; }
-.flight-view.in-map .hud-eva { top: 60px; }
 .hud-eva h3 { display: flex; justify-content: space-between; align-items: center; }
 .hud-eva dl { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px 10px; margin: 6px 0 0; }
 .hud-eva dl div { display: flex; flex-direction: column; min-width: 0; }
@@ -247,7 +236,6 @@
 .eva-gas b { display: block; height: 100%; background: linear-gradient(90deg, #e2483d, #ff8a7a); border-radius: 99px; transition: width 0.2s; }
 .hud-bar [data-act='eva'] { font-weight: 700; }
 .hud-bar [data-act='eva']:not(:disabled) { background: #fff1e4; border-color: #f2b27a; }
-@media (max-width: 1100px) { .hud-eva { width: calc(100% - 24px); } }
 .map-tag.eva { border-color: #7cff8a; background: rgba(11,18,38,0.78); color: #d8ffe0; }
 
 /* Tier 0–1 airspace */
@@ -260,13 +248,12 @@
 .range-pick[hidden] { display: none; }
 .law-site .chk { justify-content: flex-start; }
 .law-site small { color: var(--l-muted); line-height: 1.35; }
-.hud-radar { right: 12px; bottom: 72px; width: 320px; padding: 8px; background: rgba(7, 26, 43, 0.94); border-color: #1d3b55; color: #cfe8ff; }
+.hud-radar { padding: 8px; background: rgba(7, 26, 43, 0.94); border-color: #1d3b55; color: #cfe8ff; }
 .hud-radar header { display: flex; justify-content: space-between; align-items: center; margin: 0 2px 6px; }
 .hud-radar h3 { color: #8fb8d8; margin: 0; }
 .radar-canvas { display: block; width: 100%; aspect-ratio: 1; border-radius: 8px; }
 .radar-foot { display: flex; justify-content: space-between; gap: 8px; font: 11px/1.4 'JetBrains Mono', monospace; color: #9fb3c8; margin: 6px 2px 0; }
 .radar-foot b { color: #ff8a80; }
-.flight-view:has(.hud-radar:not([hidden])) .hud-log { max-height: calc(100% - 520px); min-height: 140px; }
 .law-alert { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 6; width: min(620px, calc(100% - 560px)); min-width: 320px;
   background: #b42318; color: #fff; border-radius: 12px; padding: 10px 14px; box-shadow: 0 10px 30px rgba(180,35,24,0.45); display: grid; gap: 3px; }
 .law-alert b { font-size: 13.5px; letter-spacing: 0.02em; }
@@ -275,7 +262,7 @@
 .law-alert.pop { animation: law-pop 0.5s ease-out; }
 @keyframes law-pop { 0% { transform: translate(-50%, -8px) scale(0.96); } 40% { transform: translate(-50%, 0) scale(1.03); } 100% { transform: translate(-50%, 0) scale(1); } }
 .hud-log li.law { border-left-color: #b42318; background: #fdecea; font-weight: 600; }
-@media (max-width: 1100px) { .hud-radar { width: 220px; } .law-alert { width: calc(100% - 24px); min-width: 0; } }
+@media (max-width: 1100px) { .law-alert { width: calc(100% - 24px); min-width: 0; } }
 @media (prefers-reduced-motion: reduce) { .law-alert.pop { animation: none; } }
 
 /* Zombie Control (v0.19): gibberish on top, translation underneath */
@@ -293,61 +280,10 @@
 .site-clean:hover:not(:disabled) { background: #f6ecd8; }
 .site-clean:disabled { opacity: 0.5; cursor: default; }
 
-/* ---------- Phones: every control reachable at 390 px, nothing stacked on anything ---------- */
-.bar-more, .bar-break { display: none; }
-@media (max-width: 760px) {
-  /* control bar: two rows always visible (go, SAS, chute, again, More / pitch, warp); the rest sits under "More" */
-  .hud-bar { flex-wrap: wrap; justify-content: center; gap: 6px; padding: 8px; overflow: visible; left: 8px; right: 8px; bottom: 8px; max-width: none; transform: none; }
-  .hud-bar button { min-width: 44px; height: 44px; padding: 0 10px; }
-  .hud-bar .sep { display: none; }
-  .hud-bar .btn-go { order: 1; flex: 1 1 84px; min-width: 84px; padding: 0 8px; }
-  .hud-bar [data-act='sas'] { order: 2; min-width: 70px; padding: 0 8px; }
-  .hud-bar [data-act='chute'] { order: 3; }
-  .hud-bar > [data-act='again'] { order: 4; }
-  .hud-bar .bar-more { padding: 0 8px; display: inline-flex; align-items: center; justify-content: center; order: 5; }
-  .hud-bar .bar-break { display: block; flex-basis: 100%; height: 0; }
-  .hud-bar .b1 { order: 6; }
-  .hud-bar [data-hold='-1'] { order: 7; }
-  .hud-bar .bar-read { order: 8; min-width: 40px; text-align: center; }
-  .hud-bar [data-hold='1'] { order: 9; }
-  .hud-bar .warp { order: 10; display: flex; gap: 6px; }
-  .hud-bar .b2 { order: 19; display: none; }
-  .hud-bar.more-open .b2 { display: block; }
-  .hud-bar [data-sec] { display: none; order: 20; }
-  .hud-bar.more-open [data-sec]:not([hidden]) { display: inline-flex; align-items: center; justify-content: center; }
-  .hud-bar.more-open label.thr[data-sec] { display: flex; flex: 1 1 100%; gap: 8px; align-items: center; }
-  .hud-bar.more-open label.thr input { flex: 1; }
-
-  /* the dock: site card, radar and CAPCOM in one column above the bar */
-  .hud-dock { position: absolute; left: 8px; right: 8px; bottom: calc(var(--bar-h, 60px) + 16px); display: flex; flex-direction: column; gap: 6px;
-    max-height: calc(100% - var(--bar-h, 60px) - 190px); overflow-y: auto; pointer-events: none; }
-  .hud-dock > .hud-card { position: static; width: auto; transform: none; margin: 0; pointer-events: auto; }
-  .hud-dock > .hud-card[hidden] { display: none; }
-  .hud-dock .hud-site { max-height: 190px; overflow-y: auto; }
-  .hud-dock .hud-site .seg button { min-height: 44px; }
-  .hud-dock .hud-site > h3, .hud-dock .hud-radar > header { cursor: pointer; }
-  .hud-dock .hud-site > h3::after, .hud-dock .hud-radar > header h3::after { content: ' \25BE'; color: var(--l-muted); }
-  .hud-dock .hud-card.min > :not(h3):not(header):not(.cc-avatar):not(.cc-body) { display: none; }
-  .hud-dock .hud-card.min > h3::after, .hud-dock .hud-card.min > header h3::after { content: ' \25B8'; }
-  .hud-dock .hud-radar .radar-canvas { max-height: 170px; width: 100%; }
-  .hud-dock .hud-capcom { padding: 6px 8px; gap: 8px; }
-  .hud-dock .hud-capcom .cc-avatar { width: 38px; height: 38px; }
-  .hud-dock .hud-capcom .cc-text { font-size: 12.5px; min-height: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-  .hud-dock .hud-capcom.min .cc-text { -webkit-line-clamp: 1; }
-  .hud-dock .hud-capcom .cc-trans { font-size: 11.5px; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
-
-  /* top cards: only what matters in flight; the empty payload card disappears */
-  .hud-flight dl div:nth-child(3), .hud-flight dl div:nth-child(6), .hud-flight dl div:nth-child(7), .hud-flight dl div:nth-child(8) { display: none; }
-  .hud-flight .hud-sas { display: none; }
-  .hud-zombie.empty { display: none; }
-}
-
 /* Fast-forward: shown only while nothing is burning */
 .hud-bar .btn-ff { background: #e6f6ed; border-color: #9fd8b6; color: #1b7a44; font-weight: 700; }
 .hud-bar .btn-ff[aria-pressed='true'] { background: #fff1e4; border-color: #f2b27a; color: #a4570f; }
-@media (max-width: 760px) {
-  .hud-bar .btn-ff { order: 11; flex: 1 1 100%; }
-}
+
 
 /* Objective-done banner (bilingual) */
 .rs-banner { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 6; width: min(460px, calc(100% - 24px)); padding: 8px 12px; border-radius: 12px;
@@ -357,4 +293,155 @@
 .rs-banner.below-alert { top: 96px; }
 .rs-banner.out { opacity: 0; transition: opacity 0.4s; }
 .rs-milestone [lang='th'] { margin-top: 4px; display: block; }
-@media (max-width: 760px) { .rs-banner { top: 8px; } }
+
+
+/* ---------- Small windows (.compact: narrower than 900 px or shorter than 660 px) ---------- */
+.bar-more, .bar-break { display: none; }
+.flight-view.compact .hud-left { width: 208px; gap: 6px; }
+.flight-view.compact .hud-card { padding: 8px 10px; }
+.flight-view.compact .hud-flight dd { font-size: 15px; }
+.flight-view.compact .hud-flight dl div:nth-child(3), .flight-view.compact .hud-flight dl div:nth-child(6), .flight-view.compact .hud-flight dl div:nth-child(8), .flight-view.compact .hud-flight .hud-sas { display: none; }
+.flight-view.compact .hud-flight header { margin-bottom: 4px; }
+.flight-view.compact .z-frame { width: 54px; height: 59px; }
+.flight-view.compact .hud-capcom { padding: 6px 10px; gap: 8px; }
+.flight-view.compact .hud-capcom .cc-avatar { width: 40px; height: 40px; }
+.flight-view.compact .cc-text { font-size: 12.5px; min-height: 0; }
+.flight-view.compact .cc-trans { font-size: 11.5px; }
+.flight-view.compact .hud-bar button { height: 40px; }
+.flight-view.compact .hud-site .seg button { min-height: 40px; }
+/* very short (landscape phones): the translation and the zombie card step aside */
+.flight-view.tiny .hud-zombie, .flight-view.tiny .cc-trans, .flight-view.tiny .hud-log { display: none; }
+
+/* ---------- Phones (.phone: narrower than 640 px): a top row of cards and a dock above the controls ---------- */
+.flight-view.phone .hud-left { left: 8px; right: 8px; width: auto; bottom: auto; flex-direction: row; flex-wrap: wrap; overflow: visible; gap: 6px; }
+.flight-view.phone .hud-left > .hud-card { flex: 1 1 0; min-width: 0; padding: 7px 8px; }
+.flight-view.phone .hud-orbit { flex-basis: 100%; }
+.flight-view.phone .hud-right { left: 8px; right: 8px; width: auto; top: auto; bottom: calc(var(--bottom-h, 120px) + 14px); max-height: calc(100% - var(--top-h, 120px) - var(--bottom-h, 120px) - 32px); }
+.flight-view.phone .hud-log { display: none; }
+.flight-view.phone .hud-bottom { left: 8px; right: 8px; bottom: 8px; align-items: stretch; gap: 6px; }
+.flight-view.phone .hud-bottom > .hud-capcom { width: auto; align-self: stretch; }
+.flight-view.phone .hud-assist { align-self: stretch; max-width: none; }
+.flight-view.phone .hud-flight dd { font-size: 14px; }
+.flight-view.phone .z-info b { font-size: 12px; }
+.flight-view.phone .z-info small { font-size: 10.5px; }
+.flight-view.phone .g-read b { font-size: 18px; }
+.flight-view.phone .countdown { font-size: 64px; }
+.flight-view.phone .countdown.n3 { font-size: 72px; }
+.flight-view.phone .rs-banner { top: auto; bottom: calc(var(--bottom-h, 120px) + 14px); }
+.flight-view.phone .hud-right > .hud-site { max-height: max(160px, calc(100% - var(--top-h, 120px) - var(--bottom-h, 120px) - 40px)); overflow-y: auto; overscroll-behavior: contain; }
+.hud-site > h3 small { text-transform: none; letter-spacing: 0; font-weight: 500; margin-left: 6px; }
+.flight-view.phone .hud-right .hud-site .seg button { min-height: 44px; }
+.flight-view.compact .hud-right .hud-site > h3, .flight-view.compact .hud-right .hud-goal > h3, .flight-view.compact .hud-right .hud-radar > header, .flight-view.phone .hud-bottom .hud-capcom .cc-body { cursor: pointer; }
+.flight-view.compact .hud-right .hud-site > h3::after, .flight-view.compact .hud-right .hud-goal > h3::after, .flight-view.compact .hud-right .hud-radar > header h3::after { content: ' \25BE'; color: var(--l-muted); }
+.flight-view.compact .hud-card.min > :not(h3):not(header):not(.cc-avatar):not(.cc-body) { display: none; }
+.flight-view.compact .hud-card.min > h3::after, .flight-view.compact .hud-card.min > header h3::after { content: ' \25B8'; }
+.flight-view.compact .hud-right .hud-radar .radar-canvas { max-height: 150px; width: 100%; }
+.flight-view.phone .hud-bottom .hud-capcom .cc-text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.flight-view.phone .hud-bottom .hud-capcom.min .cc-text { -webkit-line-clamp: 1; }
+.flight-view.phone .hud-bottom .hud-capcom .cc-trans { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* phone control bar: go / SAS / chute / again / More on the first row; pitch + warp on the second; the rest under "More" */
+.flight-view:is(.phone, .tiny) .hud-bar { flex-wrap: wrap; justify-content: center; gap: 6px; padding: 8px; overflow: visible; max-width: none; }
+.flight-view:is(.phone, .tiny) .hud-bar button { min-width: 44px; height: 44px; padding: 0 10px; }
+.flight-view:is(.phone, .tiny) .hud-bar .sep { display: none; }
+.flight-view:is(.phone, .tiny) .hud-bar .btn-go { order: 1; flex: 1 1 84px; min-width: 84px; padding: 0 8px; }
+.flight-view:is(.phone, .tiny) .hud-bar [data-act='sas'] { order: 2; min-width: 70px; padding: 0 8px; }
+.flight-view:is(.phone, .tiny) .hud-bar [data-act='chute'] { order: 3; }
+.flight-view:is(.phone, .tiny) .hud-bar > [data-act='again'] { order: 4; }
+.flight-view:is(.phone, .tiny) .hud-bar .bar-more { padding: 0 8px; display: inline-flex; align-items: center; justify-content: center; order: 5; }
+.flight-view:is(.phone, .tiny) .hud-bar .bar-break { display: block; flex-basis: 100%; height: 0; }
+.flight-view:is(.phone, .tiny) .hud-bar .b1 { order: 6; }
+.flight-view:is(.phone, .tiny) .hud-bar [data-hold='-1'] { order: 7; }
+.flight-view:is(.phone, .tiny) .hud-bar .bar-read { order: 8; min-width: 40px; text-align: center; }
+.flight-view:is(.phone, .tiny) .hud-bar [data-hold='1'] { order: 9; }
+.flight-view:is(.phone, .tiny) .hud-bar .warp { order: 10; display: flex; gap: 6px; }
+.flight-view:is(.phone, .tiny) .hud-bar .btn-ff { order: 11; flex: 1 1 100%; }
+.flight-view:is(.phone, .tiny) .hud-bar .b2 { order: 19; display: none; }
+.flight-view:is(.phone, .tiny) .hud-bar.more-open .b2 { display: block; }
+.flight-view:is(.phone, .tiny) .hud-bar [data-sec] { display: none; order: 20; }
+.flight-view:is(.phone, .tiny) .hud-bar.more-open [data-sec]:not([hidden]) { display: inline-flex; align-items: center; justify-content: center; }
+.flight-view:is(.phone, .tiny) .hud-bar.more-open label.thr[data-sec] { display: flex; flex: 1 1 100%; gap: 8px; align-items: center; }
+.flight-view:is(.phone, .tiny) .hud-bar.more-open label.thr input { flex: 1; }
+
+.flight-view.tiny .hud-left { width: 190px; }
+.flight-view.tiny .hud-flight dl { grid-template-columns: 1fr 1fr; gap: 2px 8px; }
+.flight-view.tiny .hud-flight dd { font-size: 13px; }
+.flight-view.tiny .hud-flight dl div:nth-child(5) { display: none; }
+.flight-view.tiny .cc-text { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+.flight-view.tiny .hud-bottom > .hud-capcom { width: min(430px, 60%); }
+.flight-view.tiny .hud-right { width: min(300px, 40vw); }
+
+/* hide controls the vehicle cannot use (a lantern has no SAS and no parachute) */
+.hud-bar[data-steer='0'] [data-act='sas'] { display: none; }
+.hud-bar [data-act='chute'][hidden] { display: none; }
+
+/* a vehicle with nothing to steer also loses the steering-only controls */
+.hud-bar[data-steer='0'] [data-act='mode'], .hud-bar[data-steer='0'] [data-act='rcs'], .hud-bar[data-steer='0'] [data-act='turn'], .hud-bar[data-steer='0'] [data-act='assist'] { display: none !important; }
+.hud-bar label.thr[hidden] { display: none !important; }
+/* landscape phones: pitch + warp share the first row when they fit, so the bar is one line tall */
+.flight-view.tiny .hud-bar .bar-break { display: none; }
+
+/* ---------- Mission goal strip, launch window, forecast ---------- */
+.hud-goal { padding: 8px 10px; border-color: #f2cfa6; background: #fff8ef; }
+.hud-goal h3 { margin: 0; font-size: 12.5px; text-transform: none; letter-spacing: 0; color: var(--l-ink); font-weight: 650; }
+.hud-goal h3 small { color: var(--l-muted); font-weight: 500; }
+.goal-hint { margin: 6px 0 0; font-size: 12px; line-height: 1.4; color: #5a4a2a; }
+.hint-apply { display: block; width: 100%; margin-top: 8px; min-height: 40px; border: 1px solid #e0912f; border-radius: 9px; background: #fff; color: #8a4b12; font-weight: 650; }
+.hint-apply small { margin-left: 6px; font-weight: 500; color: #a4570f; }
+.flight-view.phone .hud-goal.min .goal-hint, .flight-view.phone .hud-goal.min .hint-apply { display: none; }
+.window-pick { margin-top: 6px; }
+.wp-label { display: block; margin-bottom: 4px; font-size: 12px; color: var(--l-muted); }
+.wp-label small { margin-left: 4px; }
+.window-pick .seg { margin-bottom: 0; }
+.window-pick .seg button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; min-height: 44px; padding: 4px 2px; line-height: 1.2; font-size: 12px; }
+.window-pick .seg button small { font-size: 10.5px; color: var(--l-muted); font-weight: 400; }
+.forecast { padding: 8px 10px; border-radius: 12px; border: 1px solid var(--l-rule); background: #f6f8fb; font-size: 12px; }
+.forecast.good { background: #eef8f2; border-color: #b7e2c8; }
+.forecast.warn { background: #fdf8ec; border-color: #f0d9a6; }
+.forecast.bad { background: #fdf1f2; border-color: #f2b8b5; }
+.fc-head { font-weight: 650; font-size: 12.5px; }
+.fc-head [lang='en'], .fc-detail [lang='en'] { display: block; }
+.fc-head [lang='th'], .fc-detail [lang='th'] { display: block; font-weight: 400; font-size: 11.5px; color: var(--l-muted); }
+.fc-detail { margin: 4px 0 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+.fc-btn { margin-top: 6px; width: 100%; min-height: 44px; border: 1px solid var(--l-blue); border-radius: 9px; background: #fff; color: var(--l-blue); font-weight: 650; }
+
+/* ---------- Debrief on the summary card ---------- */
+.hud-summary { text-align: left; }
+.hud-summary h2 { text-align: center; }
+.hud-summary .sum-z { text-align: center; margin-bottom: 8px; }
+.hud-summary .sum-head { margin: 0 0 8px; padding: 8px 10px; border-radius: 10px; background: #f3f5f8; color: var(--l-ink); font-size: 14.5px; font-weight: 700; border-left: 4px solid #c7cfda; }
+.sum-head [lang='en'] { display: block; }
+.sum-head [lang='th'] { display: block; margin-top: 2px; font-weight: 500; font-size: 12.5px; color: var(--l-muted); }
+.sum-head.good { background: #eef8f2; border-left-color: var(--l-good); }
+.sum-head.warn { background: #fdf8ec; border-left-color: #e0a100; }
+.sum-head.bad { background: #fdf1f2; border-left-color: var(--l-bad); }
+.sum-track { display: block; width: 100%; height: 130px; margin: 0 0 10px; background: #fafbfc; border: 1px solid var(--l-rule); border-radius: 10px; }
+.sum-block { margin: 0 0 10px; }
+.sum-block h3 { margin: 0 0 6px; }
+.sum-block h3 small { text-transform: none; letter-spacing: 0; font-weight: 500; margin-left: 4px; }
+.sum-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.sum-list li { padding: 6px 8px; border-left: 3px solid #d5dbe3; background: #fafbfc; border-radius: 6px; font-size: 12.5px; line-height: 1.4; }
+.sum-list li.good { border-left-color: var(--l-good); background: #eef8f2; }
+.sum-list li.warn { border-left-color: #e0a100; background: #fdf8ec; }
+.sum-list li.bad { border-left-color: var(--l-bad); background: #fdf1f2; }
+.sum-list li [lang='en'] { display: block; }
+.sum-list li [lang='th'] { display: block; margin-top: 2px; color: var(--l-muted); font-size: 12px; }
+.sum-badges { display: grid; gap: 6px; margin: 0 0 10px; }
+.sum-badge { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border-radius: 10px; background: #fff8e6; border: 1px solid #f0d9a6; font-size: 12.5px; }
+.sum-badge > span { font-size: 24px; line-height: 1.1; }
+.sum-badge b small { font-weight: 500; color: #8a6420; margin-left: 4px; }
+.sum-badge [lang='en'], .sum-badge [lang='th'] { display: block; color: #5a4a2a; }
+.sum-badge [lang='th'] { font-size: 12px; }
+.hud-summary dl { margin-top: 4px; }
+
+.flight-view.compact .sum-banner { max-height: 96px; object-fit: cover; }
+.sum-banner { display: block; width: 100%; border-radius: 10px; margin: 0 0 10px; }
+
+/* phones: the forecast keeps its headline and the button; the explanation lines open on a tap of the headline */
+.flight-view.phone .hud-forecast { padding: 7px 10px; }
+.flight-view.phone .hud-forecast .fc-head { font-size: 12.5px; }
+.flight-view.phone .hud-forecast .fc-detail { display: none; }
+.flight-view.phone .hud-forecast.open .fc-detail { display: grid; }
+.flight-view.phone .hud-forecast .fc-btn { min-height: 40px; margin-top: 6px; }
+.goal-hint [lang='en'], .goal-hint [lang='th'] { display: block; }
+.goal-hint [lang='th'] { margin-top: 4px; color: #7a6a4a; font-size: 11.5px; }

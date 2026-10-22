@@ -124,6 +124,7 @@ export class MissionManager {
       case 'launch-island': return r.island === c.island;
       case 'launch-range': return r.range === c.range;
       case 'airspace': return r.airspace.some((a) => (c.zones as string[]).includes(a));
+      case 'flight-clear': return !!r.ended && !r.airspace.some((a) => a === 'ctr' || a.startsWith('app-'));
       case 'apogee': return r.apogeeM >= c.m;
       case 'karman': return r.karman;
       // the stable flag already means "Pe above 140 km at some point this flight" — an EVA push-off

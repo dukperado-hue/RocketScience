@@ -30,8 +30,17 @@ const VIEWPORTS = {
   },
 };
 
+/** `desktop`, `mobile`, or a custom size such as `360x640t` (touch, phone-like) / `1024x600` (mouse) */
+function vp(name) {
+  if (VIEWPORTS[name]) return VIEWPORTS[name];
+  const m = /^(\d{3,4})x(\d{3,4})(t?)$/.exec(name);
+  if (!m) return null;
+  const touch = m[3] === 't';
+  return { ...(touch ? VIEWPORTS.mobile : VIEWPORTS.desktop), viewport: { width: +m[1], height: +m[2] } };
+}
+
 const HELP = `RocketScience playtest harness
-  start <persona> [--viewport desktop|mobile] [--private] [--rebuild]  open the game (desktop 1366x768, mobile 390x844 touch)
+  start <persona> [--viewport desktop|mobile|WxH[t]] [--private] [--rebuild]  open the game (desktop 1366x768, mobile 390x844 touch, or e.g. 360x640t / 1024x600)
                                           --private: localStorage throws like Safari Private Mode (saves live in memory only)
   stop                                    close the browser and the preview server
   newtab                                  close the tab and open the game again (same browser profile: saves persist, unless --private); prints load time
@@ -72,7 +81,7 @@ async function start(a) {
   if (!persona) fail('usage: start <persona> [--viewport desktop|mobile] [--rebuild] [--fresh]');
   const vi = a.indexOf('--viewport');
   const viewport = vi >= 0 ? a[vi + 1] : 'desktop';
-  if (!VIEWPORTS[viewport]) fail(`unknown viewport "${viewport}" (desktop | mobile)`);
+  if (!vp(viewport)) fail(`unknown viewport "${viewport}" (desktop | mobile | WxH | WxHt)`);
   if (fs.existsSync(sessionFile(persona))) {
     const old = readSession(persona);
     if (old && (await ping(old.port))) fail(`persona "${persona}" already has a running session (port ${old.port}). Run: stop --persona ${persona}`);
@@ -95,7 +104,7 @@ async function start(a) {
   for (let i = 0; i < 100; i++) {
     await sleep(300);
     const s = readSession(persona);
-    if (s && (await ping(s.port))) { console.log(`ready: persona=${persona} viewport=${viewport} ${VIEWPORTS[viewport].viewport.width}x${VIEWPORTS[viewport].viewport.height} url=${s.url}\nscreenshots -> ${path.join('playtest', 'runs', persona)}`); return; }
+    if (s && (await ping(s.port))) { console.log(`ready: persona=${persona} viewport=${viewport} ${vp(viewport).viewport.width}x${vp(viewport).viewport.height} url=${s.url}\nscreenshots -> ${path.join('playtest', 'runs', persona)}`); return; }
   }
   fail(`the session did not start; see playtest/runs/${persona}/daemon.log`);
 }
@@ -145,7 +154,7 @@ async function daemon({ persona, viewport, priv }) {
   const server = await preview({ root: ROOT, base: '/', configFile: path.join(ROOT, 'vite.config.ts'), build: { outDir: DIST }, preview: { port: await freePort(), strictPort: true, host: '127.0.0.1' } });
   const url = server.resolvedUrls.local[0];
   const browser = await chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required', '--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
-  const context = await browser.newContext(VIEWPORTS[viewport]);
+  const context = await browser.newContext(vp(viewport));
   // --private: reading window.localStorage throws, as in Safari Private Mode / blocked site data
   if (priv) await context.addInitScript(() => { Object.defineProperty(window, 'localStorage', { get() { throw new DOMException('The operation is insecure.', 'SecurityError'); } }); });
   let page;
@@ -161,7 +170,7 @@ async function daemon({ persona, viewport, priv }) {
   }
   await openPage();
   const nextShot = () => { const n = fs.readdirSync(dir).map((f) => parseInt(f, 10)).filter((x) => !Number.isNaN(x)); return (n.length ? Math.max(...n) : 0) + 1; };
-  const touch = VIEWPORTS[viewport].hasTouch;
+  const touch = vp(viewport).hasTouch;
 
   const handlers = {
     ping: async () => 'pong',

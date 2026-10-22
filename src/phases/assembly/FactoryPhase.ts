@@ -122,9 +122,10 @@ export class FactoryPhase implements Phase {
     card.setAttribute('role', 'note');
     card.innerHTML = `<button type="button" class="coach-x" aria-label="Close">✕</button>
       <b>ภารกิจที่ 1 · Mission 1</b>
-      <p lang="th">ปล่อยโคมลอยจากเกาะพะงัน (ในเกมเท่านั้น) เราโหลดแบบ “Khom loi” ให้แล้ว</p>
-      <p lang="en">Launch a sky lantern from Koh Phangan. The Khom loi blueprint is already loaded.</p>
-      <p class="coach-go"><span lang="th">กด “Roll out to the pad” ได้เลย</span> <span lang="en">Press “Roll out to the pad”.</span></p>`;
+      <p lang="th">ปล่อยโคมลอยจากเกาะพะงัน (ในเกมเท่านั้น) และอย่าให้โคมเข้าน่านฟ้าสมุย เราโหลดแบบ “Khom loi” ให้แล้ว</p>
+      <p lang="en">Launch a sky lantern from Koh Phangan and keep it out of Samui’s airspace. The Khom loi blueprint is already loaded.</p>
+      <p class="coach-go"><span lang="th">กด “Roll out to the pad” แล้วดูเรดาร์กับ “Risk check” ก่อนปล่อย</span> <span lang="en">Press “Roll out to the pad”, then check the radar and “Risk check” before you release.</span></p>
+      <p class="coach-short" lang="en">Mission 1: launch a lantern clear of Samui airspace — Roll out, then Risk check.</p>`;
     card.querySelector('.coach-x')!.addEventListener('click', () => this.endCoach());
     this.root.querySelector('.build')!.appendChild(card);
     this.root.querySelector('.launch')?.classList.add('coach-pulse');

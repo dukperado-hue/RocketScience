@@ -18,4 +18,10 @@ describe('phone camera fit', () => {
     expect(scale).toBe(0.25);
     expect(728 / 2 - shiftPx).toBeGreaterThanOrEqual(60);
   });
+  it('frames the vehicle between a top row of cards and the dock', () => {
+    const view = 600, top = 130, floor = 430;                    // free sky = 130…430
+    const { shiftPx, scale } = phoneFit(view, floor, top);
+    expect(view / 2 - shiftPx).toBeCloseTo((top + floor) / 2, 5); // the vehicle ends up in the middle of that band
+    expect(scale).toBeCloseTo((floor - top) / view, 5);
+  });
 });

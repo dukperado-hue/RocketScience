@@ -14,6 +14,7 @@ import { mountDisclaimer } from '@/ui/softLaunchUI';
 import { bus } from '@/core/EventBus';
 import { FIRSTRUN_KEY } from '@/game/firstRun';
 import { campaign } from '@/campaign/missionManager';
+import { visibleFieldNotes, fieldNoteHtml } from './culture';
 
 import './story.css';
 import { safeKV } from '@/core/safeStorage';
@@ -133,6 +134,7 @@ export function openGallery(focus?: 'log') {
         <p class="st-lede">Legend says a Ming-dynasty official strapped 47 rockets to a chair to reach the heavens. Our crew tested the theory. Three times.</p>
         <div class="st-videos">${CUTSCENES.map((c, i) => `<button type="button" class="st-video" data-cs="${i}"><img src="${c.poster}" alt=""><span>▶</span><b>${c.title}</b></button>`).join('')}</div>
       </section>
+      ${visibleFieldNotes().length ? `<section class="st-notes"><h3>Field notes <small>บันทึกภาคสนาม · the real traditions behind the missions</small></h3>${visibleFieldNotes().map((n) => fieldNoteHtml(n)).join('')}</section>` : ''}
       <section><h3>Scenes</h3><div class="st-stills">${STILLS.map((s) => `<figure><img src="${s.src}" alt="" loading="lazy"><figcaption><b>${s.title}</b><small>${s.text}</small></figcaption></figure>`).join('')}</div></section>
       <section><h3>Mission Control</h3><div class="st-crews">${crew}</div></section>
     </div>`;

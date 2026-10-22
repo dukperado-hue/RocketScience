@@ -85,3 +85,17 @@
 .st-entry.locked .st-who { border-color: #c7cfda; }
 .st-entry.locked .st-eh b { color: #6b7380; }
 @media (max-width: 560px) { .st-loghead { flex-direction: column; align-items: flex-start; } }
+
+/* Field notes (culture) */
+.field-note { border: 1px solid #e3e7ec; border-radius: 10px; background: #fff; padding: 6px 12px; margin: 8px 0; }
+.field-note > summary { cursor: pointer; font-weight: 650; min-height: 36px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.field-note > summary small { color: #667085; font-weight: 400; }
+.field-note p { margin: 8px 0 0; line-height: 1.55; max-width: 72ch; }
+.field-note p.th, .field-note [lang='th'] { font-family: Sarabun, Inter, system-ui, sans-serif; color: #4a5262; }
+.fn-words { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.fn-words li { padding: 4px 10px; border-radius: 999px; background: #f3f5f8; font-size: 13px; }
+.fn-words b { font-size: 15px; }
+.fn-words i { color: #667085; margin: 0 4px; }
+.fn-game { padding: 8px 10px; border-left: 3px solid #d8a83a; background: #fff8e6; border-radius: 6px; font-size: 13px; }
+.fn-game [lang='th'] { display: block; margin-top: 4px; }
+.fn-draft { font-size: 12px; color: #8a6420; }

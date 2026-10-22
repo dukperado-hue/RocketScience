@@ -22,7 +22,7 @@
  */
 import type { Phase } from '@/core/PhaseManager';
 import { bus, type LaunchPayload } from '@/core/EventBus';
-import { PART } from '@/phases/assembly/model/catalog';
+import { PART, requiredGrade } from '@/phases/assembly/model/catalog';
 import { analyse, telemetry, type PlacedPart } from '@/phases/assembly/model/vehicle';
 import { loadBench } from '@/chemistry/mixingBench';
 import { retryContext } from '@/game/retryContext';
@@ -70,6 +70,11 @@ import { objectiveBannerText, missionCompleteTh } from '@/game/missionBanner';
 import { ensureRetrySnapshot, quickRetry, rememberLaunchChoice } from '@/game/retrySession';
 import { siteFromChoice, type LaunchChoice } from '@/game/launchChoice';
 import { mountRetryButton } from '@/ui/softLaunchUI';
+import { forecastAsync, factsFromFlight, type FlightFacts } from '@/game/flightFacts';
+import { buildDebrief, describeForecast, alternativesFor, digestOf, readDigest, writeDigest, type Note } from '@/game/debrief';
+import { recordFlight } from '@/game/achievements';
+import { drawTrack } from '@/game/trackPlot';
+import { padGreeting } from '@/story/culture';
 
 const WARPS = [1, 2, 4, 10] as const;
 const MAP_WARPS = [1, 10, 100, 1000, 10000] as const;
@@ -89,6 +94,29 @@ export function defaultSite(parts: PlacedPart[]): { id: 'ground' | 'pad' | 'ramp
   return { id: 'pad', site: { ...SITES.pad } };
 }
 
+/** The pad settings a player chose last time (per site type), so a new roll-out does not reset the ramp angle or the wind */
+const SITE_MEMORY_KEY = 'rs.site.v1';
+type SiteMemory = Partial<Record<'pad' | 'ramp' | 'ground', { rail: number; railAngleDeg: number; wind: number }>>;
+function recallSite(id: 'pad' | 'ramp' | 'ground'): { rail: number; railAngleDeg: number; wind: number } | null {
+  try {
+    const m = JSON.parse(safeKV.getItem(SITE_MEMORY_KEY) ?? '{}') as SiteMemory;
+    const r = m[id];
+    return r && Number.isFinite(r.rail) && Number.isFinite(r.railAngleDeg) && Number.isFinite(r.wind) ? r : null;
+  } catch { return null; }
+}
+function rememberSite(id: 'pad' | 'ramp' | 'ground', site: LaunchSite) {
+  try {
+    const m = JSON.parse(safeKV.getItem(SITE_MEMORY_KEY) ?? '{}') as SiteMemory;
+    m[id] = { rail: site.rail, railAngleDeg: site.railAngleDeg, wind: site.wind };
+    safeKV.setItem(SITE_MEMORY_KEY, JSON.stringify(m));
+  } catch { /* session only */ }
+}
+
+/** Launch windows: when in the day you fly decides the crosswind (m/s) */
+const WINDOWS = { dawn: 0, morning: 1, noon: 2 } as const;
+
+const lineHtml = (l: Note) => `<li class="${l.tone}"><span lang="en">${l.en}</span><span lang="th">${l.th}</span></li>`;
+
 const TEMPLATE = `
 <div class="flight-view">
   <canvas class="sky-canvas" aria-label="Flight view"></canvas>
@@ -104,6 +132,7 @@ const TEMPLATE = `
     </div>
   </div>
 
+  <div class="hud-left">
   <section class="hud-card hud-flight" aria-label="Flight data">
     <header><b>T+<span data-k="t">0.0</span> s</b><span class="pill" data-k="state">On the pad</span></header>
     <dl>
@@ -118,9 +147,6 @@ const TEMPLATE = `
     </dl>
     <div class="hud-sas" data-k="sasline"></div>
   </section>
-
-  <div class="hud-assist" data-k="assist" hidden aria-live="polite"></div>
-
   <section class="hud-card hud-zombie" aria-label="Payload">
     <div class="z-frame"><canvas class="z-portrait" width="144" height="156"></canvas><img class="z-art" alt="" hidden></div>
     <div class="z-info">
@@ -130,7 +156,6 @@ const TEMPLATE = `
       <div class="g-bar"><i data-k="gbar"></i><em data-k="glimb"></em><em data-k="gdead"></em></div>
     </div>
   </section>
-
   <section class="hud-card hud-orbit" aria-label="Orbit" hidden>
     <h3>Orbit <span class="pill" data-k="otype">—</span></h3>
     <dl>
@@ -141,7 +166,48 @@ const TEMPLATE = `
     </dl>
     <div class="hud-sas" data-k="owarp"></div>
   </section>
+  </div>
 
+  <div class="hud-right">
+  <section class="hud-card hud-goal" aria-label="Mission goal" hidden>
+    <h3 data-k="goalsum">Mission goal</h3>
+    <p class="goal-hint" data-k="goalhint"></p>
+    <button type="button" class="hint-apply" data-act="applyhint" hidden></button>
+  </section>
+  <section class="hud-card hud-forecast forecast" data-k="forecast" aria-label="Forecast" aria-live="polite" hidden>
+    <div class="fc-head" data-k="fchead"></div>
+    <ul class="fc-detail" data-k="fcdetail"></ul>
+    <button type="button" class="fc-btn" data-act="riskcheck" hidden>Risk check · ตรวจความเสี่ยงก่อนปล่อย</button>
+  </section>
+  <section class="hud-card hud-site" aria-label="Launch site">
+    <h3>Launch site <small data-k="sitesum"></small></h3>
+    <div class="seg" role="radiogroup">
+      <button type="button" data-site="pad" role="radio">Pad rail · 6 m</button>
+      <button type="button" data-site="ramp" role="radio">Bamboo ramp</button>
+      <button type="button" data-site="ground" role="radio">Bare ground</button>
+    </div>
+    <label class="slider" data-only="ramp">Ramp length <output data-k="rl"></output><input type="range" min="10" max="30" step="1" data-in="rail"></label>
+    <label class="slider" data-only="ramp">Ramp angle <output data-k="ra"></output><input type="range" min="0" max="25" step="1" data-in="angle"></label>
+    <div class="window-pick" data-only="window" role="radiogroup" aria-label="Launch window">
+      <span class="wp-label">Launch window <small>ช่วงเวลาปล่อย</small></span>
+      <div class="seg">
+        <button type="button" data-window="dawn" role="radio">Dawn · calm<small>รุ่งเช้า ลมสงบ</small></button>
+        <button type="button" data-window="morning" role="radio">Morning · light<small>สาย ลมเบา</small></button>
+        <button type="button" data-window="noon" role="radio">Midday · breezy<small>เที่ยง ลมพัด</small></button>
+      </div>
+    </div>
+    <label class="slider">Wind <output data-k="wd"></output><input type="range" min="0" max="8" step="0.5" data-in="wind"></label>
+
+    <label class="range-pick" data-only="range">Range <select data-in="range">${LAUNCH_RANGES.map((r) => `<option value="${r.id}">${r.site.name}</option>`).join('')}</select>
+      <small data-k="rangenote"></small></label>
+    <button type="button" class="site-clean" data-act="cleanup" hidden>Clear craters &amp; wrecks</button>
+    <div class="law-site" data-only="lowtier">
+      <label>Location <select data-in="lsite">${LANTERN_SITES.map((s) => `<option value="${s.id}">${s.name}</option>`).join('')}<option value="yasothon">Yasothon (Bang Fai festival)</option></select></label>
+      <label data-samui>Wind from <select data-in="wdir">${[0, 15, 45, 90, 135, 180, 225, 270, 315].map((d) => `<option value="${d}">${String(d).padStart(3, '0')}° ${['N', 'NNE', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][[0, 15, 45, 90, 135, 180, 225, 270, 315].indexOf(d)]}</option>`).join('')}</select></label>
+      <label class="chk" data-samui><input type="checkbox" data-in="permit"> Pretend permission + notice were given (game option) · สมมติว่าขออนุญาตแล้ว</label>
+      <small data-k="sitenote"></small>
+    </div>
+  </section>
   <section class="hud-card hud-eva" aria-label="Spacewalk" hidden>
     <h3>Spacewalk <span class="pill" data-k="evactl">Flying: zombie</span></h3>
     <div class="eva-gas"><span data-k="evakit">Fire extinguisher</span><i><b data-k="evabar"></b></i><small data-k="evapct"></small></div>
@@ -155,7 +221,6 @@ const TEMPLATE = `
     </dl>
     <div class="hud-sas" data-k="evahint"></div>
   </section>
-
   <section class="hud-card hud-node" aria-label="Maneuver node" hidden>
     <h3>Maneuver node <small>preview — the ship is not touched</small></h3>
     <div class="seg" role="radiogroup" aria-label="Burn at">
@@ -178,48 +243,27 @@ const TEMPLATE = `
     </dl>
     <div class="hud-sas" data-k="nhint">Pick where and how much. The dotted pink line is the orbit you would get.</div>
   </section>
-
-  <section class="hud-card hud-site" aria-label="Launch site">
-    <h3>Launch site</h3>
-    <div class="seg" role="radiogroup">
-      <button type="button" data-site="pad" role="radio">Pad rail · 6 m</button>
-      <button type="button" data-site="ramp" role="radio">Bamboo ramp</button>
-      <button type="button" data-site="ground" role="radio">Bare ground</button>
-    </div>
-    <label class="slider" data-only="ramp">Ramp length <output data-k="rl"></output><input type="range" min="10" max="30" step="1" data-in="rail"></label>
-    <label class="slider" data-only="ramp">Ramp angle <output data-k="ra"></output><input type="range" min="0" max="25" step="1" data-in="angle"></label>
-    <label class="slider">Wind <output data-k="wd"></output><input type="range" min="0" max="8" step="0.5" data-in="wind"></label>
-    <label class="range-pick" data-only="range">Range <select data-in="range">${LAUNCH_RANGES.map((r) => `<option value="${r.id}">${r.site.name}</option>`).join('')}</select>
-      <small data-k="rangenote"></small></label>
-    <button type="button" class="site-clean" data-act="cleanup" hidden>Clear craters &amp; wrecks</button>
-    <div class="law-site" data-only="lowtier">
-      <label>Location <select data-in="lsite">${LANTERN_SITES.map((s) => `<option value="${s.id}">${s.name}</option>`).join('')}<option value="yasothon">Yasothon (Bang Fai festival)</option></select></label>
-      <label data-samui>Wind from <select data-in="wdir">${[0, 15, 45, 90, 135, 180, 225, 270, 315].map((d) => `<option value="${d}">${String(d).padStart(3, '0')}° ${['N', 'NNE', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][[0, 15, 45, 90, 135, 180, 225, 270, 315].indexOf(d)]}</option>`).join('')}</select></label>
-      <label class="chk" data-samui><input type="checkbox" data-in="permit"> Pretend permission + notice were given (game option) · สมมติว่าขออนุญาตแล้ว</label>
-      <small data-k="sitenote"></small>
-    </div>
-  </section>
-
   <section class="hud-card hud-radar" aria-label="Airspace radar" hidden>
     <header><h3>Radar · Samui Tower</h3><span class="pill" data-k="radarstate">Clear</span></header>
     <canvas class="radar-canvas"></canvas>
     <div class="radar-foot"><span data-k="radarpos">—</span><b data-k="radarfine"></b></div>
   </section>
-  <div class="law-alert" hidden role="alert"><b></b><span></span><small></small></div>
-
-  <section class="hud-card hud-capcom" aria-label="Mission control" aria-live="polite">
-    <div class="cc-avatar"><img alt="" hidden><span></span></div>
-    <div class="cc-body"><b class="cc-name"></b><small class="cc-role"></small><p class="cc-text"></p><p class="cc-trans" hidden></p></div>
-  </section>
-
-  <div class="countdown" hidden aria-live="assertive"></div>
-
   <section class="hud-card hud-log" aria-label="Flight log">
     <h3>Flight log</h3>
     <ol data-k="log"></ol>
   </section>
+  </div>
 
-  <nav class="hud-bar" aria-label="Flight controls">
+  <div class="law-alert" hidden role="alert"><b></b><span></span><small></small></div>
+  <div class="countdown" hidden aria-live="assertive"></div>
+
+  <div class="hud-bottom">
+  <div class="hud-assist" data-k="assist" hidden aria-live="polite"></div>
+  <section class="hud-card hud-capcom" aria-label="Mission control" aria-live="polite">
+    <div class="cc-avatar"><img alt="" hidden><span></span></div>
+    <div class="cc-body"><b class="cc-name"></b><small class="cc-role"></small><p class="cc-text"></p><p class="cc-trans" hidden></p></div>
+  </section>
+  <nav class="hud-bar" aria-label="Flight controls" data-steer="1">
     <button type="button" class="btn-go" data-act="go" title="Ignition / stage (Space)">IGNITION</button>
     <button type="button" data-act="sas" title="SAS — gimbal attitude hold (T)" aria-pressed="false">SAS OFF</button>
     <button type="button" data-act="chute" title="Deploy parachutes (P)">Chute</button>
@@ -249,11 +293,18 @@ const TEMPLATE = `
     <button type="button" class="bar-more" data-act="more" aria-expanded="false" title="More controls">More ⋯</button>
     <span class="bar-break b1" aria-hidden="true"></span><span class="bar-break b2" aria-hidden="true"></span>
   </nav>
+  </div>
 
   <section class="hud-card hud-summary" hidden aria-live="polite">
     <img class="sum-banner" alt="" hidden>
     <h2 data-k="sumtitle"></h2>
-    <p data-k="sumz"></p>
+    <p class="sum-head" data-k="sumhead"></p>
+    <p class="sum-z" data-k="sumz"></p>
+    <canvas class="sum-track" data-k="sumtrack" aria-label="Flight path: altitude against distance"></canvas>
+    <section class="sum-block" data-k="sumwhyblock" hidden><h3>Why <small>ทำไมถึงเป็นแบบนี้</small></h3><ul class="sum-list" data-k="sumwhy"></ul></section>
+    <section class="sum-block" data-k="sumnextblock" hidden><h3>Try next <small>ลองต่อไป</small></h3><ul class="sum-list" data-k="sumnext"></ul></section>
+    <section class="sum-block" data-k="sumcmpblock" hidden><h3>Compared with last flight <small>เทียบกับเที่ยวที่แล้ว</small></h3><ul class="sum-list" data-k="sumcmp"></ul></section>
+    <div class="sum-badges" data-k="sumbadges" hidden></div>
     <dl data-k="sumstats"></dl>
     <div class="sum-actions">
       <button type="button" class="primary" data-act="again">Fly again</button>
@@ -280,6 +331,12 @@ export class LaunchPhase implements Phase {
   private frameNo = 0;
   private hudNo = 0;
   private endAt = 0;
+  /** Forecast: the settings it was computed for, its result, and a token that cancels a stale run */
+  private fcKey = '';
+  private fcFacts: FlightFacts | null = null;
+  private fcToken = 0;
+  /** The mission goal (m) when the countdown started: the mission may be complete by the time the summary shows */
+  private goalAtLaunch: number | null = null;
   private cleanup: (() => void)[] = [];
   private capcom = new Capcom();
   private countdown: { start: number; said: number } | null = null;
@@ -337,6 +394,7 @@ export class LaunchPhase implements Phase {
     root.innerHTML = TEMPLATE;
     const d = defaultSite(this.parts);
     this.siteId = d.id; this.site = d.site;
+    { const mem = p?.site ? null : recallSite(d.id); if (mem) this.site = { ...this.site, ...mem }; }
     // rockets (not lanterns) go to the Bang Fai grounds once the campaign allows it
     this.atYasothon = this.lowTier() && !this.parts.some((q) => PART[q.defId].envelope) && campaign.rangeUnlocked('yasothon');
     if (!campaign.rangeUnlocked(this.rangeId)) this.rangeId = 'phangan';
@@ -344,7 +402,7 @@ export class LaunchPhase implements Phase {
     this.view = new LaunchView(this.q('.sky-canvas'));
     this.map = new MapView(this.q('.map-canvas'));
     this.radar = new RadarView(this.q('.radar-canvas'));
-    this.phoneLayout();
+    this.layout();
     this.wire();
     this.newFlight();
     this.last = performance.now();
@@ -358,30 +416,54 @@ export class LaunchPhase implements Phase {
   }
 
   /**
-   * Phones (<=760 px): the site card, radar and CAPCOM share one bottom dock above the control bar instead of
-   * floating on top of each other; the radar starts collapsed and the cards fold up when their header is tapped.
+   * Responsive HUD. The view's real size decides .compact (narrower than 900 px or shorter than 660 px), .phone
+   * (narrower than 640 px) and .tiny (shorter than 460 px); the measured bar / bottom / top heights become CSS
+   * variables, so the left and right card stacks stop where the controls start and nothing sits on anything else.
+   * The camera then frames the vehicle in the free sky between the cards (phoneFit).
    */
-  private phoneLayout() {
-    if (typeof matchMedia === 'undefined' || !matchMedia('(max-width: 760px)').matches) return;
-    const view = this.q('.flight-view'), bar = this.q('.hud-bar');
-    const dock = document.createElement('div');
-    dock.className = 'hud-dock';
-    const cards = ['.hud-site', '.hud-radar', '.hud-capcom'].map((sel) => this.q(sel));
-    for (const c of cards) dock.appendChild(c);
-    cards[1].classList.add('min');
-    view.insertBefore(dock, bar);
-    dock.addEventListener('click', (e) => {
-      const head = (e.target as HTMLElement).closest('.hud-site > h3, .hud-radar > header, .hud-capcom .cc-body');
-      if (head) (head.closest('.hud-card') as HTMLElement).classList.toggle('min');
-    });
-    // the vehicle sits in the free sky between the stats card and the dock, not behind the dock
-    const fit = () => {
+  private layout() {
+    if (typeof ResizeObserver === 'undefined') return;
+    const view = this.q('.flight-view'), bar = this.q('.hud-bar'), bottom = this.q('.hud-bottom'), left = this.q('.hud-left'), right = this.q('.hud-right');
+    let radarFolded = false;
+    const apply = () => {
+      const vr = view.getBoundingClientRect();
+      if (vr.width < 1 || vr.height < 1) return;
+      const phone = vr.width <= 640;
+      view.classList.toggle('phone', phone);
+      view.classList.toggle('compact', vr.width <= 900 || vr.height <= 660);
+      view.classList.toggle('tiny', vr.height <= 460);
+      // small windows start with the radar folded (its header still shows ALERT); phones also fold the site card to one line
+      if (view.classList.contains('compact') && !radarFolded) { radarFolded = true; this.q('.hud-radar').classList.add('min'); if (phone || view.classList.contains('tiny')) { this.q('.hud-site').classList.add('min'); if (this.goalSeen()) this.q('.hud-goal').classList.add('min'); } }
       view.style.setProperty('--bar-h', `${bar.offsetHeight}px`);
-      const vr = view.getBoundingClientRect(), fit = phoneFit(vr.height, dock.getBoundingClientRect().top - vr.top - 8);
-      this.view.shiftPx = fit.shiftPx; this.view.fitScale = fit.scale;
+      view.style.setProperty('--bottom-h', `${bottom.offsetHeight}px`);
+      // free sky: below the top row of cards (phones), above the dock / the controls
+      const rel = (el: Element) => el.getBoundingClientRect().top - vr.top;
+      const shown = (el: Element) => !(el as HTMLElement).hidden && el.getBoundingClientRect().height > 0;
+      let top = 0, floor = rel(bar) - 8;
+      if (phone) {
+        for (const c of Array.from(left.children).filter(shown)) top = Math.max(top, c.getBoundingClientRect().bottom - vr.top + 8);
+        view.style.setProperty('--top-h', `${top}px`);
+        const dock = Array.from(right.children).filter(shown);
+        floor = Math.min(rel(bottom), dock.length ? rel(right) : Infinity) - 8;
+      }
+      const f = phoneFit(vr.height, floor, top);
+      this.view.shiftPx = f.shiftPx;
+      this.view.fitScale = view.classList.contains('compact') ? f.scale : 1;
     };
-    fit();
-    if (typeof ResizeObserver !== 'undefined') { const ro = new ResizeObserver(fit); ro.observe(bar); ro.observe(dock); this.cleanup.push(() => ro.disconnect()); }
+    apply();
+    const ro = new ResizeObserver(apply);
+    for (const el of [view, bar, bottom, left, right]) ro.observe(el);
+    this.cleanup.push(() => ro.disconnect());
+    // phones: the site card, radar and CAPCOM fold up when their header is tapped
+    const fold = (e: Event) => {
+      if (!view.classList.contains('compact')) return;
+      const phone = view.classList.contains('phone');
+      if (phone && (e.target as HTMLElement).closest('.hud-forecast .fc-head, .hud-forecast .fc-detail')) { this.q('.hud-forecast').classList.toggle('open'); return; }
+      const head = (e.target as HTMLElement).closest(phone ? '.hud-site > h3, .hud-goal > h3, .hud-radar > header, .hud-capcom .cc-body' : '.hud-site > h3, .hud-goal > h3, .hud-radar > header');
+      if (head) (head.closest('.hud-card') as HTMLElement).classList.toggle('min');
+    };
+    view.addEventListener('click', fold);
+    this.cleanup.push(() => view.removeEventListener('click', fold));
   }
 
   /** The launch screen's current choices (remembered at ignition for Quick Retry) */
@@ -431,7 +513,7 @@ export class LaunchPhase implements Phase {
     const old = this.flight;
     if (old?.ignited && this.view) { const st = this.siteState(); st.wrecks.push(...this.view.bakeWrecks(old)); if (st.wrecks.length > 30) st.wrecks.splice(0, st.wrecks.length - 30); }
     const st = this.siteState();
-    this.flight = new Flight(this.parts, { site: { ...this.site }, terrain: FEATURES.terrainCollision ? st.terrain : undefined });
+    this.flight = new Flight(this.parts, { site: { ...this.site }, terrain: FEATURES.terrainCollision ? st.terrain : undefined, propellantQuality: this.quality() });
     this.flight.controls.sas = this.flight.vehicle.gimbals.length > 0;
     this.view.terrain = st.terrain; this.view.wrecks = st.wrecks; this.view.marks = st.marks;
     this.view.strainOf = (b, it) => this.flight.strain(b, it);
@@ -460,7 +542,7 @@ export class LaunchPhase implements Phase {
     this.zombieCalls.clear(); this.polluted = false;
     this.weather = this.rollWeather();
     this.configureScene();
-    this.capcom.say('lee', `Mission control here. ${this.parts.length ? 'Vehicle on the pad — standing by for your go.' : 'No vehicle on the pad. Build one first.'}`, 2);
+    this.capcom.say('lee', `Mission control here. ${this.parts.length ? padGreeting(this.atYasothon ? 'yasothon' : this.lowTier() && this.parts.some((q) => PART[q.defId].envelope) ? 'lantern' : 'other') : 'No vehicle on the pad. Build one first.'}`, 2);
     this.k('log').innerHTML = '';
     this.q('.hud-summary').hidden = true;
     this.retryBtn?.remove(); this.retryBtn = null;
@@ -485,6 +567,8 @@ export class LaunchPhase implements Phase {
       const act = (t.closest('[data-act]') as HTMLElement | null)?.dataset.act;
       const warp = (t.closest('[data-warp]') as HTMLElement | null)?.dataset.warp;
       const site = (t.closest('[data-site]') as HTMLElement | null)?.dataset.site;
+      const win = (t.closest('[data-window]') as HTMLElement | null)?.dataset.window as keyof typeof WINDOWS | undefined;
+      if (win && !this.flight.ignited) { this.site.wind = WINDOWS[win]; this.saveSite(); this.newFlightKeepLog(); }
       if (warp) this.setWarp(+warp);
       const nAt = (t.closest('[data-node-at]') as HTMLElement | null)?.dataset.nodeAt as NodeAt | undefined;
       const nDv = (t.closest('[data-node-dv]') as HTMLElement | null)?.dataset.nodeDv;
@@ -508,6 +592,7 @@ export class LaunchPhase implements Phase {
       if (t.dataset.in === 'rail') this.site.rail = +t.value;
       if (t.dataset.in === 'angle') this.site.railAngleDeg = +t.value;
       if (t.dataset.in === 'wind') this.site.wind = +t.value;
+      if (t.dataset.in === 'rail' || t.dataset.in === 'angle' || t.dataset.in === 'wind') this.saveSite();
       if (t.dataset.in === 'range') {
         if (this.flight.ignited) return;
         this.pickRange(t.value as typeof this.rangeId);
@@ -543,8 +628,11 @@ export class LaunchPhase implements Phase {
     this.siteId = id;
     this.site = id === 'ramp' ? { ...SITES.ramp, rail: this.site.rail >= 10 ? this.site.rail : 22, wind: this.site.wind }
       : { ...SITES[id], wind: this.site.wind };
+    this.saveSite();
     this.newFlightKeepLog();
   }
+
+  private saveSite() { if (!this.flight?.ignited) rememberSite(this.siteId, this.site); }
 
   /** Where the pad really is for this build (the globe draws it there) */
   private padSite(): GeoSite {
@@ -601,7 +689,107 @@ export class LaunchPhase implements Phase {
     this.k('rl').textContent = `${this.site.rail} m`;
     this.k('ra').textContent = `${this.site.railAngleDeg}°`;
     this.k('wd').textContent = `${this.site.wind} m/s`;
+    this.k('sitesum').textContent = `· ${{ pad: 'pad rail', ramp: `ramp ${this.site.railAngleDeg}°`, ground: 'bare ground' }[this.siteId]} · wind ${this.site.wind} m/s`;
+    const lantern = this.parts.some((q) => PART[q.defId].envelope);
+    for (const el of this.root.querySelectorAll<HTMLElement>('[data-only="window"]')) el.hidden = !this.lowTier() || lantern;
+    for (const b of this.root.querySelectorAll<HTMLElement>('[data-window]')) b.setAttribute('aria-checked', String(this.site.wind === WINDOWS[b.dataset.window as keyof typeof WINDOWS]));
+    this.updateGoal();
+    this.updateForecast();
     this.setWarp(this.warp);
+  }
+
+  /* ---------- Mission goal strip and the forecast (real simulation, same physics as the flight) ---------- */
+
+  /** The altitude goal of the current mission, for rocket flights only */
+  private goalM(): number | null {
+    if (campaign.sandbox || this.parts.some((q) => PART[q.defId].envelope)) return null;
+    const o = campaign.current()?.objectives.find((x) => x.check.kind === 'apogee');
+    return o && o.check.kind === 'apogee' ? o.check.m : null;
+  }
+
+  /** The goal strip opens the first time a mission's launch screen is shown (the hint is the point of the strip), then folds on phones */
+  private goalSeen() { const id = campaign.current()?.id; return !!id && safeKV.getItem(`rs.goal.seen.${id}`) === '1'; }
+
+  private updateGoal() {
+    const card = this.q('.hud-goal'), cur = campaign.sandbox ? null : campaign.current();
+    const show = !!cur && !this.flight?.ignited && !this.countdown;
+    card.hidden = !show;
+    if (show) safeKV.setItem(`rs.goal.seen.${cur!.id}`, '1');
+    if (!cur) return;
+    this.k('goalsum').innerHTML = `🎯 Mission ${cur.label} · ${cur.goal.en}<small> · ${cur.goal.th}</small>`;
+    this.k('goalhint').innerHTML = `<span lang="en">${cur.hint ?? ''}</span><span lang="th">${cur.hintTh ?? ''}</span>`;
+    const btn = this.q<HTMLButtonElement>('[data-act="applyhint"]');
+    const s = cur.setup, canSet = !!s && this.siteId !== 'ground' && this.lowTier() && !this.parts.some((q) => PART[q.defId].envelope);
+    btn.hidden = !canSet;
+    if (canSet) {
+      const bits = [s!.wind !== undefined ? `wind ${s!.wind} m/s` : '', s!.railAngleDeg !== undefined && this.siteId === 'ramp' ? `ramp ${s!.railAngleDeg}°` : ''].filter(Boolean);
+      btn.innerHTML = `Set up as hinted: ${bits.join(' · ')} <small>ตั้งตามคำใบ้</small>`;
+    }
+  }
+
+  private applyHint() {
+    const s = campaign.current()?.setup;
+    if (!s || this.flight.ignited) return;
+    if (s.wind !== undefined) this.site.wind = s.wind;
+    if (s.railAngleDeg !== undefined && this.siteId === 'ramp') this.site.railAngleDeg = s.railAngleDeg;
+    this.saveSite();
+    this.newFlightKeepLog();
+  }
+
+  /** Stir quality of the powder in this build's solid motors: the worst batch among the grades it uses (1 = none needed) */
+  private quality(): number {
+    const crafted = loadBench().crafted;
+    let q = 1;
+    for (const p of this.parts) { const g = requiredGrade(PART[p.defId]); if (g && crafted[g] !== undefined) q = Math.min(q, crafted[g]!); }
+    return q;
+  }
+
+  private forecastKey() {
+    return [this.siteId, this.quality(), this.site.rail, this.site.railAngleDeg, this.site.wind, this.atYasothon, this.lanternSite.id, this.windFrom, this.permitted, this.parts.length, this.parts.map((q) => `${q.defId}${q.mat ?? ''}${q.x.toFixed(2)}${q.y.toFixed(2)}`).join('|')].join('~');
+  }
+
+  private setForecast(tone: string, head: string, detail: Note[] = []) {
+    const box = this.k('forecast');
+    box.className = `forecast ${tone}`;
+    this.k('fchead').innerHTML = head;
+    this.k('fcdetail').innerHTML = detail.map(lineHtml).join('');
+  }
+
+  private renderForecast(f: FlightFacts) {
+    const t = describeForecast(f, this.goalM());
+    this.setForecast(t.tone, `<span lang="en">${t.head.en}</span><span lang="th">${t.head.th}</span>`, t.detail);
+  }
+
+  /**
+   * Rockets are forecast automatically (a few milliseconds of the real simulation); a lantern flight is 25 minutes
+   * of simulated time, so it runs when the player presses "Risk check". Settings changed → the old answer is dropped.
+   */
+  private updateForecast(manual = false) {
+    const box = this.k('forecast'), btn = this.q<HTMLButtonElement>('[data-act="riskcheck"]');
+    if (!this.parts.length || !this.flight || this.flight.ignited || this.mapMode) { box.hidden = true; return; }
+    const lantern = this.parts.some((q) => PART[q.defId].envelope);
+    const monitored = this.lowTier() && !this.atYasothon;
+    if (this.parts.some((q) => PART[q.defId].tier >= 2)) { box.hidden = true; return; }      // Tier 2+: no forecast (staging, orbits)
+    box.hidden = false;
+    btn.hidden = !lantern;
+    const key = this.forecastKey();
+    if (this.fcKey === key && this.fcFacts) { this.renderForecast(this.fcFacts); return; }
+    this.fcKey = ''; this.fcFacts = null;
+    const token = ++this.fcToken;
+    if (lantern && !manual) {
+      this.setForecast('info', '<span lang="en">Not forecast yet.</span><span lang="th">ยังไม่ได้พยากรณ์</span>', [{ tone: 'info', en: monitored ? 'Press “Risk check”: the lantern is flown in the simulation, then you decide whether to release it.' : 'Press “Risk check” for a forecast.', th: monitored ? 'กด “Risk check” เกมจะบินโคมในการจำลองให้ก่อน แล้วคุณค่อยตัดสินใจว่าจะปล่อยหรือไม่' : 'กด “Risk check” เพื่อดูพยากรณ์' }]);
+      return;
+    }
+    this.setForecast('info', '<span lang="en">Simulating…</span><span lang="th">กำลังจำลอง…</span>');
+    const st = this.siteState();
+    void forecastAsync({
+      parts: this.parts, site: { ...this.site }, terrain: FEATURES.terrainCollision ? st.terrain : null, quality: this.quality(),
+      lantern: monitored ? { site: this.lanternSite, windFrom: this.windFrom, permitted: this.permitted } : null,
+    }, (pr) => { if (token === this.fcToken && lantern) this.k('fchead').innerHTML = `<span lang="en">Simulating… ${Math.round(pr * 100)}%</span><span lang="th">กำลังจำลอง… ${Math.round(pr * 100)}%</span>`; }, () => token !== this.fcToken)
+      .then((facts) => {
+        if (!facts || token !== this.fcToken) return;
+        this.fcKey = key; this.fcFacts = facts; this.renderForecast(facts);
+      });
   }
 
   private setFf(on: boolean, why?: string) {
@@ -617,9 +805,13 @@ export class LaunchPhase implements Phase {
     const b = this.q<HTMLButtonElement>('[data-act="ff"]');
     const f = this.flight;
     const avail = !!f && ffAllowed(f) && !f.onRailsOk && !this.mapMode && f.t > 5;
-    b.hidden = !avail && !this.ff;
-    b.setAttribute('aria-pressed', String(this.ff));
-    b.innerHTML = this.ff ? '<span lang="th">⏸ หยุดเร่ง</span> <span lang="en">Stop fast-forward</span>' : '<span lang="th">⏩ เร่งไปดูผล</span> <span lang="en">Fast-forward</span>';
+    const hide = !avail && !this.ff;
+    // rewrite the button only when something changed: a button rebuilt every frame cannot be tapped reliably
+    if (b.hidden !== hide) b.hidden = hide;
+    const pressed = String(this.ff);
+    if (b.getAttribute('aria-pressed') !== pressed) b.setAttribute('aria-pressed', pressed);
+    const html = this.ff ? '<span lang="th">⏸ หยุดเร่ง</span> <span lang="en">Stop fast-forward</span>' : '<span lang="th">⏩ เร่งไปดูผล</span> <span lang="en">Fast-forward</span>';
+    if (b.dataset.state !== pressed) { b.dataset.state = pressed; b.innerHTML = html; }
   }
 
   /** What makes a fast-forward stop: something the player should watch (airspace, mission progress, the ground) */
@@ -736,6 +928,8 @@ export class LaunchPhase implements Phase {
       case 'sound': this.toggleSound(); break;
       case 'cleanup': { const st = this.siteState(); st.terrain.clear(); st.wrecks.length = 0; st.marks.length = 0; this.newFlightKeepLog(); break; }
       case 'cam': this.cycleCam(); break;
+      case 'riskcheck': this.updateForecast(true); break;
+      case 'applyhint': this.applyHint(); break;
       case 'zin': this.view.zoom *= 1.4; this.clampZoom(); break;
       case 'zout': this.view.zoom /= 1.4; this.clampZoom(); break;
       case 'ff':
@@ -885,7 +1079,9 @@ export class LaunchPhase implements Phase {
     this.k('t').textContent = f.t.toFixed(1);
     this.k('alt').textContent = fmtAlt(Math.max(0, v.lowestAlt()));
     this.k('vel').textContent = `${sp.toFixed(0)} m/s`;
-    this.k('mach').textContent = v.mach.toFixed(2);
+    // once the flight is over nothing moves: Mach and throttle must not keep the last in-flight values
+    const over = !!f.outcome || v.landed;
+    this.k('mach').textContent = (over ? 0 : v.mach).toFixed(2);
     this.k('vy').textContent = `${v.vUp >= 0 ? '+' : ''}${v.vUp.toFixed(0)} m/s`;
     if (this.hudNo++ % 5 === 0) this.apo = f.predictApogee();
     this.k('apo').textContent = v.vUp > 0 ? `${fmtAlt(this.apo)}${v.thrust > 0 ? ' +' : ''}` : f.maxAlt > 1 ? fmtAlt(f.maxAlt) : '—';
@@ -897,8 +1093,14 @@ export class LaunchPhase implements Phase {
     this.k('state').textContent = state;
     this.k('state').className = `pill ${f.outcome === 'landed' ? 'good' : f.outcome ? 'bad' : f.ignited ? 'live' : ''}`;
 
-    this.k('thr').textContent = `${Math.round(f.controls.throttle * 100)}%`;
+    // throttle only means something for a throttleable (liquid) engine that is still lit
+    const throttleable = v.engines.some((i) => i.engine!.liquid);
+    const burning = !over && v.engines.some((i) => i.engine!.lit && !i.engine!.out);
+    this.q('label.thr').hidden = !throttleable;
+    this.k('thr').parentElement!.hidden = !throttleable;
+    this.k('thr').textContent = burning ? `${Math.round(f.controls.throttle * 100)}%` : '—';
     (this.q<HTMLInputElement>('[data-in="thr"]')).value = String(Math.round(f.controls.throttle * 100));
+    this.q('.hud-bar').dataset.steer = v.gimbals.length > 0 || f.monoMax > 0 ? '1' : '0';
     const hot = v.items.reduce((m, i) => (i.temp > m.temp ? i : m), v.items[0]);
     this.k('temp').textContent = hot ? `${hot.temp.toFixed(0)} °C` : '—';
     this.k('temp').className = hot && hot.temp > hot.melt * 0.75 ? 'bad' : hot && hot.temp > 250 ? 'warn' : '';
@@ -917,9 +1119,11 @@ export class LaunchPhase implements Phase {
       : mm ? `RCS only · ${f.mono.toFixed(1)} kg mono` : 'No gimbal, no RCS — fins and luck only';
     this.k('target').textContent = f.controls.sas ? `${wrapDeg(f.controls.target * 180 / Math.PI).toFixed(0)}°` : 'manual';
     const go = this.q('[data-act="go"]');
-    go.textContent = !f.ignited ? 'IGNITION' : f.stages.length ? `STAGE · ${f.stages.length}` : 'STAGE';
+    go.textContent = !f.ignited ? 'IGNITION' : f.stages.length ? `STAGE · ${f.stages.length}` : f.outcome ? 'FLIGHT OVER' : 'IN FLIGHT';
     (go as HTMLButtonElement).disabled = f.ignited && !f.stages.length;
-    this.q<HTMLButtonElement>('[data-act="chute"]').disabled = !v.items.some((i) => i.chute?.state === 'packed');
+    const chuteBtn = this.q<HTMLButtonElement>('[data-act="chute"]');
+    chuteBtn.hidden = !v.items.some((i) => i.chute);            // nothing to deploy on a lantern or a Bang Fai
+    chuteBtn.disabled = !v.items.some((i) => i.chute?.state === 'packed');
     const t = this.view.target;
     this.k('cam').textContent = t.kind === 'vehicle' ? 'Vehicle' : t.kind === 'head' ? 'Zombie head' : t.kind === 'eva' ? 'Spacewalker' : `Dropped stage ${f.bodies.filter((b) => b !== f.vehicle).findIndex((b) => b.id === t.id) + 1}`;
     this.zombieCard();
@@ -993,7 +1197,8 @@ export class LaunchPhase implements Phase {
       const chute = v.items.some((it) => it.chute && (it.chute.state === 'open' || it.chute.state === 'opening' || (it.chute.state === 'packed' && f.controls.autoChute)));
       if (est.soon && est.vImpact > 20 && -v.vUp > 15 && !chute && !this.warpDropped) {
         this.warpDropped = true; this.setWarp(1);
-        this.logLine({ t: f.t, kind: 'info', text: `Coming down fast — ${Math.round(Math.max(0, v.lowestAlt()))} m up, falling ${Math.round(-v.vUp)} m/s. Time warp off so you can watch.` });
+        const sp = Math.hypot(v.vx, v.vy);
+        this.logLine({ t: f.t, kind: 'info', text: `Coming down fast — ${Math.round(Math.max(0, v.lowestAlt()))} m up, ${Math.round(sp)} m/s${sp + v.vUp > 8 ? ` (${Math.round(-v.vUp)} m/s straight down, the rest sideways)` : ''}. Time warp off so you can watch.` });
       }
     }
     if (v.vUp > 5) this.warpDropped = false;
@@ -1080,7 +1285,7 @@ export class LaunchPhase implements Phase {
     if (campaign.sandbox || !this.parts.length) return false;
     let progressed = false;
     const f = this.flight;
-    const rep = flightReport(f, this.parts.map((q) => q.defId), this.launchContext());
+    const rep = flightReport(f, this.parts.map((q) => q.defId), { ...this.launchContext(), ended: final });
     const cur = campaign.current();
     // the mission that was current at ignition is the one this flight reports on
     if (cur && this.objSeen.has('#done')) { /* a mission finished this flight — the next one starts next flight */ }
@@ -1120,6 +1325,7 @@ export class LaunchPhase implements Phase {
       };
       this.milestoneCard(`Mission ${m.label} complete · ${m.title}`, `Zombie Control approves. Unlocked: ${m.rewards.text}.`, 'assets/zombie/zombie_zero_g.png', missionCompleteTh(m, true));
       this.capcom.say('zombie', z[m.id] ?? 'Mission complete. More brains. More rockets.', 3, 'happy');
+      if (m.id === 'm2-ballistics') this.capcom.say('otter', 'The headman says it rose well — that means good rains this year. ฝนมาแล้ว! (The rain is coming.) Nobody tell the zombies it was physics.', 2, 'happy', true);
     } else {
       this.milestoneCard(`Mission ${m.label} complete · ${m.title}`, `Unlocked: ${m.rewards.text}. New entry in the Story log.`, m.story.image, missionCompleteTh(m, false));
       this.capcom.say(m.story.crew, m.story.text.split(/(?<=[.!?])\s/)[0], 3, 'happy');
@@ -1161,6 +1367,7 @@ export class LaunchPhase implements Phase {
     box.querySelector('span')!.textContent = a.detail;
     box.querySelector('small')!.textContent = a.basis;
     box.hidden = false;
+    this.q('.hud-radar').classList.remove('min');
     box.classList.remove('pop'); void (box as HTMLElement).offsetWidth; box.classList.add('pop');
     this.alertTimer = now + 7000;
     this.logLine({ t: a.t, kind: 'law', text: `${a.title} — ${a.detail}` });
@@ -1464,18 +1671,19 @@ export class LaunchPhase implements Phase {
 
   private startCountdown() {
     if (!this.parts.length) return;
+    this.goalAtLaunch = this.goalM();
     this.countdown = { start: performance.now(), said: -1 };
     // however the player reached the pad (Roll out button or the Launch tab), Retry has this design
     ensureRetrySnapshot({ parts: this.parts, telemetry: telemetry(this.parts), bench: loadBench() }, retryContext(this.parts));
     rememberLaunchChoice(this.choice());
-    this.q('.hud-site').hidden = true;
+    this.q('.hud-site').hidden = true; this.q('.hud-goal').hidden = true; this.k('forecast').hidden = true;
     this.capcom.say('lee', 'All stations, final poll. We are go for launch.', 4);
   }
 
   private abortCountdown() {
     this.countdown = null;
     const el = this.q('.countdown'); el.hidden = true;
-    this.q('.hud-site').hidden = false;
+    this.q('.hud-site').hidden = false; this.updateGoal(); this.updateForecast();
     this.capcom.say('lee', 'Hold, hold, hold! Countdown stopped.', 4);
   }
 
@@ -1635,12 +1843,37 @@ export class LaunchPhase implements Phase {
       landed: 'Landed', impact: 'Crashed', 'no-liftoff': 'Never left the pad', 'structural-failure': 'Broke up', timeout: 'Still flying',
     };
     this.k('sumtitle').textContent = title[r.outcome] ?? r.outcome;
-    this.k('sumz').textContent = r.zombie ? `${ZOMBIES[r.zombie].name}: ${r.zombieVerdict}` : r.zombieVerdict;
+    this.k('sumz').textContent = r.zombie ? `${ZOMBIES[r.zombie].name}: ${r.zombieVerdict}` : this.parts.some((q) => PART[q.defId].crew) ? r.zombieVerdict : '';
     const row = (k: string, v: string) => `<div><dt>${k}</dt><dd>${v}</dd></div>`;
     this.k('sumstats').innerHTML = row('Apogee', fmtAlt(r.maxAlt)) + row('Top speed', `${r.maxSpeed.toFixed(0)} m/s`)
       + row('Peak g (vehicle)', r.maxG.toFixed(1)) + row('Peak g (seat)', r.maxSeatG.toFixed(1))
       + row('Landing speed', `${r.impactSpeed.toFixed(1)} m/s`) + row('Range', `${(r.range / 1000).toFixed(2)} km`)
       + (this.monitor ? row('Airspace', this.monitor.alerts.length ? `${this.monitor.alerts.filter((a) => a.id !== 'fine').length} airspace alert${this.monitor.alerts.length > 2 ? 's' : ''}${this.monitor.fines ? ' · penalty recorded' : ''}` : 'Clear of Samui airspace') : '');
+
+    // the debrief: what happened and why, from the simulation's own numbers; then what to try; then the comparison
+    const facts = factsFromFlight(f, { parts: this.parts, site: this.site, quality: this.quality(), monitor: this.monitor, lantern: this.monitor ? { siteId: this.lanternSite.id, windFrom: this.windFrom } : null });
+    const goal = this.goalAtLaunch ?? this.goalM();
+    const prev = readDigest();
+    const partsKey = this.parts.map((q) => `${q.defId}${q.mat ?? ''}`).sort().join(',');
+    const digest = digestOf(facts, partsKey);
+    const needsAlt = facts.kind === 'rocket' && (facts.tumbleAtS !== null || (goal !== null && facts.apogeeM < goal));
+    const alternatives = needsAlt ? alternativesFor({ parts: this.parts, site: this.site, quality: this.quality() }, facts) : [];
+    const db = buildDebrief(facts, { goalM: goal, prev, alternatives });
+    const lang = (l: Note) => `<span lang="en">${l.en}</span><span lang="th">${l.th}</span>`;
+    const list = (key: string, lines: Note[]) => {
+      this.k(key).innerHTML = lines.map(lineHtml).join('');
+      (this.k(`${key}block`) as HTMLElement).hidden = !lines.length;
+    };
+    this.k('sumhead').className = `sum-head ${db.headline.tone}`;
+    this.k('sumhead').innerHTML = lang(db.headline);
+    list('sumwhy', db.causes); list('sumnext', db.next); list('sumcmp', db.compare);
+    const repeated = !!prev && prev.parts === digest.parts && prev.windMs === digest.windMs && prev.railAngleDeg === digest.railAngleDeg && prev.railM === digest.railM && prev.siteId === digest.siteId && prev.windFrom === digest.windFrom;
+    const badges = recordFlight({ facts, prev, repeated });
+    const bd = this.k('sumbadges') as HTMLElement;
+    bd.hidden = !badges.length;
+    bd.innerHTML = badges.map((b) => `<div class="sum-badge"><span aria-hidden="true">${b.icon}</span><div><b>${b.title} <small>${b.titleTh}</small></b><span lang="en">${b.text}</span><span lang="th">${b.textTh}</span></div></div>`).join('');
+    writeDigest(digest);
+
     // Banner from the story art: chair mishaps get the soot, Bang Fai gets the procession
     const banner = this.q<HTMLImageElement>('.sum-banner');
     const chairBad = f.seat === 'chair' && r.outcome !== 'landed';
@@ -1651,10 +1884,12 @@ export class LaunchPhase implements Phase {
     banner.onerror = () => { banner.hidden = true; };
     if (src) banner.src = src;
     this.q('.hud-summary').hidden = false;
+    drawTrack(this.k('sumtrack') as HTMLCanvasElement, facts.track, { apogeeM: facts.apogeeM, goalM: goal });
     // Retry rebuilds the launched design straight on the pad. Not offered after the Early Access finale.
     this.retryBtn?.remove();
     this.retryBtn = this.finaleShown ? null : mountRetryButton(this.q('.sum-actions'), quickRetry, () => bus.emit('phase:request', { phase: 'assembly' }));
     this.q('.sum-actions [data-act="again"]').hidden = !!this.retryBtn;
+    this.q('.hud-summary').scrollTop = 0;
   }
 }
 

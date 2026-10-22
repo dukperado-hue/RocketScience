@@ -12,6 +12,8 @@ export interface LaunchContext {
   island?: 'phangan' | 'samui';
   /** Airspace alert ids fired so far (AirspaceMonitor.alerts) */
   airspace: string[];
+  /** The flight is over (the end-of-flight evaluation); mid-flight reports leave this out */
+  ended?: boolean;
 }
 
 export function flightReport(f: Flight, partIds: string[], ctx: LaunchContext): FlightReport {
@@ -31,5 +33,6 @@ export function flightReport(f: Flight, partIds: string[], ctx: LaunchContext): 
     zombieAboard: kinds.has('zombie-sat') || (!!z && z.state !== 'pieces' && !f.eva),
     eva: !!f.eva || kinds.has('eva'),
     airspace: [...ctx.airspace],
+    ended: ctx.ended,
   };
 }
