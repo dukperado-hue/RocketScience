@@ -243,6 +243,12 @@ body.factory-dragging, body.factory-dragging * { cursor: grabbing !important; us
   .inv-jump::-webkit-scrollbar { display: none; }
   .inv-jump button { flex: 0 0 auto; min-height: 44px; padding: 0 14px; border: 1px solid var(--f-rule-strong); border-radius: 999px; background: #fff; font-size: 13px; font-weight: 600; cursor: pointer; }
   .inv-jump button small { color: var(--f-muted); font-weight: 400; margin-left: 4px; }
+  /* all four chips must be visible without sideways scrolling (a hidden scrollbar hid Mixing bench / Payloads on 360 px) */
+  @media (max-width: 479px) {
+    .inv-jump { display: grid; grid-template-columns: repeat(4, auto); justify-content: space-between; overflow-x: visible; }
+    .inv-jump button { padding: 0 8px; font-size: 12px; }
+    .inv-jump button small { display: none; }
+  }
   .inv-scroll { overflow: visible; }
   .ingredient { min-height: 56px; }
   .pc-manual { width: 36px; height: 36px; }

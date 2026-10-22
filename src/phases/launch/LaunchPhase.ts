@@ -928,7 +928,7 @@ export class LaunchPhase implements Phase {
       case 'sound': this.toggleSound(); break;
       case 'cleanup': { const st = this.siteState(); st.terrain.clear(); st.wrecks.length = 0; st.marks.length = 0; this.newFlightKeepLog(); break; }
       case 'cam': this.cycleCam(); break;
-      case 'riskcheck': this.updateForecast(true); break;
+      case 'riskcheck': this.updateForecast(true); this.k('forecast').scrollIntoView?.({ block: 'nearest' }); break; // on a phone the answer sits below the fold
       case 'applyhint': this.applyHint(); break;
       case 'zin': this.view.zoom *= 1.4; this.clampZoom(); break;
       case 'zout': this.view.zoom /= 1.4; this.clampZoom(); break;

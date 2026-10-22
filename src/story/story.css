@@ -43,7 +43,7 @@
 .rs-prologue h2 { margin: 0 0 6px; font-size: 17px; }
 .rs-prologue p { margin: 0 0 12px; color: #39404d; }
 .pr-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-.pr-actions button { font: inherit; font-weight: 650; padding: 8px 14px; border-radius: 10px; cursor: pointer; border: 1px solid #d0d5dd; background: #fff; }
+.pr-actions button { font: inherit; font-weight: 650; padding: 8px 14px; min-height: 44px; border-radius: 10px; cursor: pointer; border: 1px solid #d0d5dd; background: #fff; }
 .pr-actions .primary { background: #1f5fd1; border-color: #1f5fd1; color: #fff; }
 
 /* Summary banner + milestone card in the Launch view */
