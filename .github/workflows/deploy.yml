@@ -31,6 +31,8 @@ jobs:
           cp node_modules/three/examples/jsm/libs/draco/gltf/* public/draco/
           cp node_modules/three/examples/jsm/libs/basis/* public/basis/
       - run: npm run build
+        env:
+          VITE_BASE: /RocketScience/
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
