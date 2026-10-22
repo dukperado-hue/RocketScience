@@ -289,6 +289,8 @@ body.factory-dragging, body.factory-dragging * { cursor: grabbing !important; us
 .coach .coach-go { margin-top: 6px; font-weight: 650; }
 .coach .coach-go span[lang="en"] { display: block; font-weight: 400; font-size: 12px; color: var(--f-muted); }
 .coach-x { position: absolute; top: 4px; right: 4px; width: 28px; height: 28px; border: 0; background: transparent; font-size: 16px; cursor: pointer; }
+/* 44 px touch target around the 28 px icon */
+.coach-x::after { content: ''; position: absolute; inset: -8px; }
 .launch.coach-pulse { animation: coach-ring 1.4s ease-out infinite; }
 .launch.coach-pulse::before {
   content: 'เริ่มตรงนี้ · Start here ▼'; position: absolute; left: 50%; bottom: calc(100% + 6px); transform: translateX(-50%);

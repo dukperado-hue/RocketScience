@@ -19,7 +19,8 @@
 .st-panel section { padding: 18px 20px 6px; }
 .st-lede { margin: -4px 0 12px; color: #39404d; max-width: 70ch; }
 .st-toggle { font-size: 12.5px; color: #39404d; display: flex; gap: 6px; align-items: center; }
-.st-close { font: inherit; width: 34px; height: 34px; border-radius: 50%; border: 1px solid #e3e7ec; background: #fff; cursor: pointer; }
+.st-close { font: inherit; width: 34px; height: 34px; border-radius: 50%; border: 1px solid #e3e7ec; background: #fff; cursor: pointer; position: relative; flex: none; }
+.st-close::after { content: ''; position: absolute; inset: -6px; } /* 44 px touch target around the 34 px icon */
 .st-videos { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
 .st-video { position: relative; padding: 0; border: 0; border-radius: 12px; overflow: hidden; cursor: pointer; background: #000; text-align: left; font: inherit; }
 .st-video img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; opacity: 0.88; transition: opacity 0.2s, transform 0.3s; }
